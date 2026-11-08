@@ -537,7 +537,7 @@
   "J5": {
     "category": "ui",
     "test": "qa/cdp_workflow.ps1",
-    "status": "partial"
+    "status": "automated"
   },
   "J6": {
     "category": "ui",
@@ -552,7 +552,7 @@
   "J8": {
     "category": "ui",
     "test": "qa/cdp_workflow.ps1",
-    "status": "partial"
+    "status": "automated"
   },
   "J9": {
     "category": "ui",
@@ -562,7 +562,7 @@
   "J10": {
     "category": "ui",
     "test": "qa/cdp_workflow.ps1",
-    "status": "partial"
+    "status": "automated"
   },
   "J11": {
     "category": "ui",
@@ -592,7 +592,7 @@
   "K1": {
     "category": "provider",
     "test": "qa/test_phase1.py",
-    "status": "partial"
+    "status": "automated"
   },
   "K2": {
     "category": "provider",

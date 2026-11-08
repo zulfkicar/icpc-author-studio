@@ -72,6 +72,8 @@ try {
   setFollow(true);
   return {
     clarificationVisible: !!document.querySelector('.clarification-card'),
+    xssEscaped: !escapeHtml('<img src=x onerror=1>').includes('<img'),
+    composerFocusable: (() => { const c = document.getElementById('composer'); c.focus(); return document.activeElement.id === 'composer'; })(),
     followPaused,
     hunkRows,
     historyRows,
@@ -82,6 +84,10 @@ try {
   };
 })()
 "@
+  Invoke-Cdp 'Emulation.setDeviceMetricsOverride' @{ width = 320; height = 800; deviceScaleFactor = 1; mobile = $false } | Out-Null
+  $reflow = Eval 'document.documentElement.scrollWidth <= 320'
+  Invoke-Cdp 'Emulation.clearDeviceMetricsOverride' @{} | Out-Null
+  $result | Add-Member -NotePropertyName reflow320 -NotePropertyValue $reflow
   $result | ConvertTo-Json -Compress
 }
 finally {

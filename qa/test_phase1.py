@@ -7,7 +7,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from langchain.agents.middleware import ModelRequest
+from langchain.agents.middleware import ModelRequest, ModelRetryMiddleware
 from langchain_core.messages import HumanMessage
 
 import agent
@@ -74,6 +74,15 @@ def main() -> int:
         check("missing key fails clearly", True)
     else:
         check("missing key fails clearly", False)
+
+    attempts = {"n": 0}
+    def flaky(_request):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise RuntimeError("rate limited")
+        return "ok"
+    retry = ModelRetryMiddleware(max_retries=1, initial_delay=0.0, retry_on=(RuntimeError,))
+    check("model retry", retry.wrap_model_call(object(), flaky) == "ok" and attempts["n"] == 2, attempts)
 
     print("PHASE 1 TESTS PASSED")
     return 0
