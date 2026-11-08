@@ -1666,7 +1666,7 @@ function renderStageRail() {
     ["Review", !summary.unreviewed],
     ["Export", summary.lastStatus === "verified" && !summary.unreviewed],
   ];
-  host.innerHTML = stages.map(([label, done], index) => `<span class="stage-chip ${done ? "done" : ""}"><span class="stage-num">${index + 1}</span>${escapeHtml(label)}</span>`).join('<span class="stage-sep">?</span>');
+  host.innerHTML = stages.map(([label, done], index) => `<span class="stage-chip ${done ? "done" : ""}"><span class="stage-num">${index + 1}</span>${escapeHtml(label)}</span>`).join('<span class="stage-sep">&gt;</span>');
 }
 
 function renderPlan() {
