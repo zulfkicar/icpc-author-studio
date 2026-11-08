@@ -295,6 +295,21 @@ def run_server_cancel() -> None:
         cleanup(slug)
 
 
+def run_file_management() -> None:
+    print("file and folder management")
+    slug, _ = make_workspace("QA File Management")
+    try:
+        workspace.create_folder(slug, "qa_folder")
+        workspace.create_file(slug, "qa_folder/note.txt", "hello")
+        check("file created", (workspace.ws_path(slug) / "qa_folder" / "note.txt").read_text("utf-8") == "hello")
+        workspace.rename_entry(slug, "qa_folder/note.txt", "qa_folder/renamed.txt")
+        check("file renamed", (workspace.ws_path(slug) / "qa_folder" / "renamed.txt").is_file())
+        workspace.delete_entry(slug, "qa_folder")
+        check("folder deleted", not (workspace.ws_path(slug) / "qa_folder").exists())
+    finally:
+        cleanup(slug)
+
+
 def run_cost_meter() -> None:
     print("cost meter")
     slug, chat_id = make_workspace("QA Cost")
@@ -356,6 +371,7 @@ def main() -> int:
         run_same_workspace_serialization,
         run_server_cancel,
         run_cost_meter,
+        run_file_management,
         run_chat_management,
         run_reviewer,
     ]

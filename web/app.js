@@ -4,6 +4,7 @@ const state = {
   slug: null,
   summary: null,
   tree: [],
+  expanded: new Set(),
   changes: [],
   chats: [],
   chatId: null,
@@ -23,6 +24,9 @@ const state = {
   pendingMessage: null,
   pendingApproval: null,
   selectedContext: [],
+  samples: [],
+  activeSample: null,
+  testResults: [],
   renderedChangeIds: new Set(),
   fileMode: "view",
   streaming: { assistantEl: null, assistantText: "", reasoningEl: null, reasoningText: "" },
@@ -723,6 +727,60 @@ function renderProblemCard() {
 
 // ---------- tree ----------
 
+function treeExpandedKey() {
+  return "author-agent-expanded-" + state.slug;
+}
+
+function loadTreeExpanded() {
+  state.expanded = new Set();
+  if (!state.slug) return;
+  try {
+    const saved = JSON.parse(localStorage.getItem(treeExpandedKey()) || "null");
+    if (Array.isArray(saved)) {
+      state.expanded = new Set(saved.filter((item) => typeof item === "string"));
+      return;
+    }
+  } catch { /* default */ }
+  for (const row of state.tree) {
+    if (row.type === "dir" && !row.path.includes("/")) state.expanded.add(row.path);
+  }
+}
+
+function saveTreeExpanded() {
+  if (!state.slug) return;
+  localStorage.setItem(treeExpandedKey(), JSON.stringify([...state.expanded]));
+}
+
+function treeNodes() {
+  const root = { path: "", type: "dir", name: "", children: [] };
+  const map = new Map([["", root]]);
+  for (const row of state.tree) {
+    row.children = [];
+    row.name = row.path.split("/").pop();
+    map.set(row.path, row);
+  }
+  for (const row of state.tree) {
+    const parentPath = row.path.includes("/") ? row.path.slice(0, row.path.lastIndexOf("/")) : "";
+    (map.get(parentPath) || root).children.push(row);
+  }
+  const sort = (node) => {
+    node.children.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === "dir" ? -1 : 1));
+    node.children.forEach(sort);
+  };
+  sort(root);
+  return root;
+}
+
+function treeAction(label, title, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "tree-action";
+  button.title = title;
+  button.textContent = label;
+  button.addEventListener("click", (event) => { event.stopPropagation(); onClick(); });
+  return button;
+}
+
 function renderTree() {
   const host = $("file-tree");
   host.innerHTML = "";
@@ -731,30 +789,256 @@ function renderTree() {
     return;
   }
   const changed = new Set(state.changes.filter((c) => !c.reverted && !c.reviewed).map((c) => c.path));
-  for (const row of state.tree) {
-    const depth = (row.path.match(/\//g) || []).length;
-    if (row.type === "dir") {
-      const dir = document.createElement("div");
-      dir.className = "tree-dir";
-      dir.style.paddingLeft = (10 + depth * 10) + "px";
-      dir.textContent = row.path.split("/").pop();
-      host.appendChild(dir);
-      continue;
+
+  const renderNode = (node, depth) => {
+    if (node.path) {
+      const isDir = node.type === "dir";
+      const expanded = isDir && state.expanded.has(node.path);
+      const rowEl = document.createElement("div");
+      rowEl.className = "tree-row" + (isDir ? " tree-dir-row" : "") + (state.file && state.file.path === node.path ? " active" : "");
+      rowEl.style.paddingLeft = (8 + depth * 13) + "px";
+      const toggle = document.createElement("span");
+      toggle.className = "tree-toggle";
+      toggle.textContent = isDir ? (expanded ? "?" : "?") : "";
+      const ext = node.path.split(".").pop();
+      const glyph = isDir ? "?" : node.path.endsWith(".tex") ? "T" : node.path.endsWith(".cpp") ? "C" : node.path.endsWith(".py") ? "P" : node.path.endsWith(".in") ? "i" : node.path.endsWith(".ans") ? "o" : "?";
+      const icon = document.createElement("span");
+      icon.className = "tree-icon";
+      icon.textContent = isDir ? "?" : glyph;
+      const name = document.createElement("span");
+      name.className = "tree-name";
+      name.textContent = node.name;
+      name.title = node.path;
+      const size = document.createElement("span");
+      size.className = "size";
+      size.textContent = !isDir && node.size ? (node.size > 1024 ? Math.round(node.size / 1024) + "k" : node.size) : "";
+      const actions = document.createElement("span");
+      actions.className = "tree-actions";
+      if (isDir) {
+        actions.appendChild(treeAction("?", "New file in this folder", () => newEntry("file", node.path)));
+        actions.appendChild(treeAction("?", "New folder in this folder", () => newEntry("dir", node.path)));
+      }
+      actions.appendChild(treeAction("?", "Rename", () => renameEntry(node.path)));
+      actions.appendChild(treeAction("?", "Delete", () => deleteEntry(node.path, isDir)));
+      rowEl.append(toggle, icon, name, size, actions);
+      if (changed.has(node.path)) {
+        const dot = document.createElement("span");
+        dot.className = "change-dot";
+        dot.title = "Unreviewed change";
+        rowEl.appendChild(dot);
+      }
+      if (isDir) {
+        rowEl.addEventListener("click", () => {
+          if (state.expanded.has(node.path)) state.expanded.delete(node.path);
+          else state.expanded.add(node.path);
+          saveTreeExpanded();
+          renderTree();
+        });
+      } else {
+        rowEl.addEventListener("click", () => openFile(node.path));
+      }
+      host.appendChild(rowEl);
     }
-    const rowEl = document.createElement("div");
-    rowEl.className = "tree-row" + (state.file && state.file.path === row.path ? " active" : "");
-    rowEl.style.paddingLeft = (10 + depth * 10) + "px";
-    const ext = row.path.split(".").pop();
-    const glyph = row.path.endsWith(".tex") ? "T" : row.path.endsWith(".cpp") ? "C" : row.path.endsWith(".py") ? "P" : row.path.endsWith(".in") ? "i" : row.path.endsWith(".ans") ? "o" : "·";
-    rowEl.innerHTML = `<span class="glyph">${glyph}</span><span>${escapeHtml(row.path.split("/").pop())}</span><span class="size">${row.size ? (row.size > 1024 ? Math.round(row.size / 1024) + "k" : row.size) : ""}</span>`;
-    if (changed.has(row.path)) {
-      const dot = document.createElement("span");
-      dot.className = "change-dot";
-      dot.title = "Unreviewed change";
-      rowEl.appendChild(dot);
+    if (node.type === "dir" && (node.path === "" || state.expanded.has(node.path))) {
+      for (const child of node.children) renderNode(child, node.path ? depth + 1 : depth);
     }
-    rowEl.addEventListener("click", () => openFile(row.path));
-    host.appendChild(rowEl);
+  };
+  renderNode(treeNodes(), 0);
+}
+
+function treeParent(path) {
+  return path && path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+}
+
+async function newEntry(kind, baseDir = "") {
+  if (!state.slug || state.jobId) return;
+  const label = kind === "dir" ? "New folder path" : "New file path";
+  const suggestion = baseDir ? baseDir + "/" : "";
+  const path = prompt(label, suggestion);
+  if (!path || !path.trim()) return;
+  try {
+    await api(`/api/workspaces/${state.slug}/files`, {
+      method: "POST",
+      body: { path: path.trim(), kind },
+    });
+    if (kind === "dir") state.expanded.add(treeParent(path.trim()));
+    await refreshWorkspace();
+    toast(kind === "dir" ? "Folder created" : "File created");
+    if (kind === "file") await openFile(path.trim());
+  } catch (error) { toast(error.message, true); }
+}
+
+async function renameEntry(path) {
+  if (!state.slug || state.jobId) return;
+  const next = prompt("Rename to", path);
+  if (!next || next.trim() === path) return;
+  try {
+    await api(`/api/workspaces/${state.slug}/files`, {
+      method: "PATCH",
+      body: { path, newPath: next.trim() },
+    });
+    if (state.file && (state.file.path === path || state.file.path.startsWith(path + "/"))) {
+      state.file = null;
+      $("file-name").textContent = "No file selected";
+      $("file-view").hidden = true;
+      $("file-editor").hidden = true;
+      $("run-panel").hidden = true;
+    }
+    await refreshWorkspace();
+    toast("Renamed");
+  } catch (error) { toast(error.message, true); }
+}
+
+async function deleteEntry(path, isDir) {
+  if (!state.slug || state.jobId) return;
+  if (!confirm(`Delete ${isDir ? "folder" : "file"} "${path}"?${isDir ? " Its contents will be deleted too." : ""}`)) return;
+  try {
+    await api(`/api/workspaces/${state.slug}/files?path=${encodeURIComponent(path)}`, { method: "DELETE" });
+    if (state.file && (state.file.path === path || state.file.path.startsWith(path + "/"))) {
+      state.file = null;
+      $("file-name").textContent = "No file selected";
+      $("file-view").hidden = true;
+      $("file-editor").hidden = true;
+      $("run-panel").hidden = true;
+    }
+    await refreshWorkspace();
+    toast("Deleted");
+  } catch (error) { toast(error.message, true); }
+}
+
+function sampleTests() {
+  const paths = new Set(state.tree.filter((row) => row.type === "file").map((row) => row.path));
+  return [...paths]
+    .filter((path) => /^data\/sample\/.*\.in$/.test(path) && paths.has(path.replace(/\.in$/, ".ans")))
+    .sort()
+    .map((path) => ({ path, name: path.split("/").pop().replace(/\.in$/, ""), answer: path.replace(/\.in$/, ".ans") }));
+}
+
+function updateEditorChrome() {
+  const editor = $("file-editor");
+  const gutter = $("line-numbers");
+  const language = state.file ? languageForPath(state.file.path) : "?";
+  $("editor-language").textContent = language;
+  $("run-language").textContent = language;
+  const text = editor.value || "";
+  const lines = text.split("\n").length;
+  $("editor-lines").textContent = `${lines} lines`;
+  if (editor.hidden) {
+    gutter.hidden = true;
+    return;
+  }
+  gutter.hidden = false;
+  gutter.textContent = Array.from({ length: lines }, (_, index) => index + 1).join("\n");
+  gutter.scrollTop = editor.scrollTop;
+  const before = text.slice(0, editor.selectionStart || 0);
+  const line = before.split("\n").length;
+  const column = before.length - before.lastIndexOf("\n");
+  $("editor-cursor").textContent = `Ln ${line}, Col ${column}`;
+}
+
+function normalizeOutput(value) {
+  return String(value || "").replace(/\r\n/g, "\n").trim().split(/\s+/).join(" ");
+}
+
+function renderTestTabs() {
+  const host = $("test-tabs");
+  host.innerHTML = "";
+  for (const result of state.testResults) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "test-tab" + (result.name === state.activeSample ? " active" : "") + (result.pass ? " pass" : " fail");
+    button.textContent = `${result.pass ? "?" : "?"} ${result.name}`;
+    button.title = result.pass ? `Passed in ${Math.round(result.ms)} ms` : "Wrong answer";
+    button.addEventListener("click", () => selectTest(result));
+    host.appendChild(button);
+  }
+  if (!state.testResults.length) {
+    for (const sample of state.samples) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "test-tab" + (sample.name === state.activeSample ? " active" : "");
+      button.textContent = sample.name;
+      button.addEventListener("click", () => loadSampleInput(sample.path));
+      host.appendChild(button);
+    }
+  }
+}
+
+function renderTestResults() {
+  const host = $("test-results");
+  host.innerHTML = "";
+  host.hidden = !state.testResults.length;
+  for (const result of state.testResults) {
+    const row = document.createElement("div");
+    row.className = "test-result " + (result.pass ? "pass" : "fail");
+    const name = document.createElement("span");
+    name.className = "test-name";
+    name.textContent = result.name;
+    const status = document.createElement("span");
+    status.className = "test-status";
+    status.textContent = result.pass ? `Passed ? ${Math.round(result.ms)} ms` : (result.stage === "compile" ? "Compile error" : "Wrong answer");
+    row.appendChild(name);
+    row.appendChild(status);
+    row.addEventListener("click", () => selectTest(result));
+    host.appendChild(row);
+  }
+}
+
+async function selectTest(result) {
+  state.activeSample = result.name;
+  $("run-stdin").value = result.stdin || "";
+  $("run-output").hidden = false;
+  $("run-output").className = "run-output" + (result.pass ? "" : " err");
+  const parts = [`${result.name}: ${result.pass ? "Passed" : "Failed"} ? ${Math.round(result.ms)} ms`];
+  if (!result.pass) {
+    parts.push("", "expected:", result.expected || "(none)", "", "stdout:", result.stdout || "(empty)");
+    if (result.stderr) parts.push("", "stderr:", result.stderr);
+  }
+  $("run-output").textContent = parts.join("\n");
+  renderTestTabs();
+}
+
+async function runSamples() {
+  if (!state.slug || !state.file || !isRunnablePath(state.file.path)) return;
+  if (state.dirty) await saveFile();
+  const samples = sampleTests();
+  if (!samples.length) { toast("Add data/sample/*.in and *.ans first", true); return; }
+  state.samples = samples;
+  state.testResults = [];
+  $("run-output").hidden = true;
+  $("test-results").hidden = false;
+  $("test-results").innerHTML = '<div class="muted small">Running sample tests?</div>';
+  try {
+    for (const sample of samples) {
+      const input = await api(`/api/workspaces/${state.slug}/file?path=${encodeURIComponent(sample.path)}`);
+      const answer = await api(`/api/workspaces/${state.slug}/file?path=${encodeURIComponent(sample.answer)}`);
+      const run = await api(`/api/workspaces/${state.slug}/run`, {
+        method: "POST",
+        body: { path: state.file.path, stdin: input.content || "" },
+      });
+      const pass = Boolean(run.ok) && run.stage !== "compile" && normalizeOutput(run.stdout) === normalizeOutput(answer.content);
+      state.testResults.push({
+        name: sample.name,
+        pass,
+        stdin: input.content || "",
+        expected: answer.content || "",
+        stdout: run.stdout || "",
+        stderr: run.stderr || run.error || "",
+        ms: run.ms || 0,
+        stage: run.stage || "run",
+      });
+    }
+    state.activeSample = state.testResults[0] ? state.testResults[0].name : null;
+    renderTestTabs();
+    renderTestResults();
+    const passed = state.testResults.filter((item) => item.pass).length;
+    $("run-output").hidden = false;
+    $("run-output").className = "run-output" + (passed === state.testResults.length ? "" : " err");
+    $("run-output").textContent = `${passed}/${state.testResults.length} sample tests passed`;
+    toast(`${passed}/${state.testResults.length} sample tests passed`, passed !== state.testResults.length);
+  } catch (error) {
+    $("test-results").hidden = true;
+    toast(error.message, true);
   }
 }
 
@@ -769,6 +1053,10 @@ function renderFileView() {
   $("view-file").hidden = true;
   $("save-file").hidden = true;
   $("run-panel").hidden = !(file.text && isRunnablePath(file.path));
+  state.samples = file.text ? sampleTests() : [];
+  renderTestTabs();
+  renderTestResults();
+  updateEditorChrome();
   if (file.text) {
     highlightCodeElement(code, file.content || "", languageForPath(file.path));
   } else {
@@ -785,6 +1073,7 @@ function enterEditMode() {
   $("edit-file").hidden = true;
   $("view-file").hidden = false;
   $("save-file").hidden = !state.dirty;
+  updateEditorChrome();
   $("file-editor").focus();
 }
 
@@ -807,6 +1096,9 @@ async function openFile(path) {
     state.file = file;
     state.dirty = false;
     state.fileMode = "view";
+    state.testResults = [];
+    state.activeSample = null;
+    state.samples = file.text ? sampleTests() : [];
     $("file-name").textContent = file.path;
     $("file-meta").textContent = file.text ? `${file.size} bytes · ${languageForPath(file.path)}` : "binary";
     const editor = $("file-editor");
@@ -816,6 +1108,9 @@ async function openFile(path) {
     $("run-output").hidden = true;
     $("run-output").textContent = "";
     $("run-output").className = "run-output";
+    $("test-results").hidden = true;
+    $("test-results").innerHTML = "";
+    $("line-numbers").hidden = true;
     renderFileView();
     switchSide("files");
     switchTab("file");
@@ -842,23 +1137,32 @@ async function saveFile() {
   } catch (error) { toast(error.message, true); }
 }
 
-async function loadSampleInput() {
-  if (!state.slug) return;
+async function loadSampleInput(samplePath = null) {
+  if (!state.slug || !state.file) return;
+  state.samples = sampleTests();
+  const sample = samplePath
+    ? state.samples.find((item) => item.path === samplePath)
+    : state.samples.find((item) => item.name === state.activeSample) || state.samples[0];
+  if (!sample) { toast("No sample tests found", true); return; }
   try {
-    const file = await api(`/api/workspaces/${state.slug}/file?path=data/sample/01.in`);
+    const file = await api(`/api/workspaces/${state.slug}/file?path=${encodeURIComponent(sample.path)}`);
     $("run-stdin").value = file.text ? file.content : "";
-    toast("Sample input loaded");
-  } catch {
-    toast("No data/sample/01.in to load", true);
-  }
+    state.activeSample = sample.name;
+    renderTestTabs();
+    toast(`Loaded sample ${sample.name}`);
+  } catch (error) { toast(error.message, true); }
 }
 
 async function runFile() {
   if (!state.slug || !state.file || !isRunnablePath(state.file.path)) return;
+  if (state.dirty) await saveFile();
+  state.samples = sampleTests();
+  renderTestTabs();
   const output = $("run-output");
   output.hidden = false;
   output.className = "run-output";
-  output.textContent = "Running…";
+  output.textContent = "Running?";
+  $("test-results").hidden = true;
   try {
     const result = await api(`/api/workspaces/${state.slug}/run`, {
       method: "POST",
@@ -870,7 +1174,7 @@ async function runFile() {
     if (result.stage === "compile") {
       parts.push("Compilation failed", "", result.error || "", result.stderr || "");
     } else {
-      parts.push(`${result.timedOut ? "timed out" : "exit " + result.exitCode} · ${Math.round(result.ms || 0)} ms`);
+      parts.push(`${result.timedOut ? "timed out" : "exit " + result.exitCode} ? ${Math.round(result.ms || 0)} ms`);
       if ((result.stdout || "").trim()) parts.push("", "stdout:", result.stdout);
       if ((result.stderr || "").trim()) parts.push("", "stderr:", result.stderr);
       if (result.diagnostic) parts.push("", result.diagnostic);
@@ -1378,6 +1682,7 @@ async function selectWorkspace(slug) {
   localStorage.setItem("author-agent-slug", slug);
   $("workspace-select").value = slug;
   $("mode-select").value = localStorage.getItem("author-agent-mode") || "author";
+  loadTreeExpanded();
   await refreshWorkspace();
   await loadReport();
   loadContext();
@@ -1935,6 +2240,8 @@ function wire() {
   $("settings-cancel").addEventListener("click", () => $("settings-dialog").close());
   $("settings-form").addEventListener("submit", saveSettings);
   $("refresh-tree").addEventListener("click", async () => { await refreshWorkspace(); toast("Refreshed"); });
+  $("new-file").addEventListener("click", () => newEntry("file", ""));
+  $("new-folder").addEventListener("click", () => newEntry("dir", ""));
   $("send-btn").addEventListener("click", () => sendMessage());
   $("composer").addEventListener("keydown", (event) => {
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); sendMessage(); }
@@ -1973,13 +2280,20 @@ function wire() {
   $("file-editor").addEventListener("input", () => {
     state.dirty = true;
     $("save-file").hidden = false;
+    updateEditorChrome();
   });
+  $("file-editor").addEventListener("scroll", () => {
+    $("line-numbers").scrollTop = $("file-editor").scrollTop;
+  });
+  $("file-editor").addEventListener("keyup", updateEditorChrome);
+  $("file-editor").addEventListener("click", updateEditorChrome);
   $("save-file").addEventListener("click", saveFile);
   $("reload-file").addEventListener("click", () => state.file && openFile(state.file.path));
   $("edit-file").addEventListener("click", enterEditMode);
   $("view-file").addEventListener("click", enterViewMode);
   $("run-file").addEventListener("click", runFile);
-  $("load-sample").addEventListener("click", loadSampleInput);
+  $("run-tests").addEventListener("click", runSamples);
+  $("load-sample").addEventListener("click", () => loadSampleInput());
   document.querySelectorAll(".tabs button, .inspector-tabs button").forEach((button) => {
     button.addEventListener("click", () => switchTab(button.dataset.tab));
   });

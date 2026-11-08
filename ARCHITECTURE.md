@@ -56,7 +56,8 @@ server.py
   +--> agent.py            tool implementations + system prompt
   +--> workspace.py        path safety, scaffold, chats, changes, snapshots
   +--> verify.py           deterministic package verification + ZIP export
-  +--> winutil.py          headless Windows process execution
+  +--> winutil.py          local/remote executor client
+  +--> executor_server.py  isolated compiler/runner container
   `--> sandbox/sitecustomize.py  headless child Python processes
 ```
 
@@ -279,48 +280,49 @@ in transient host terminal windows.
 
 ### Security posture
 
-This is a trusted local authoring tool, not a hostile-tenant sandbox. The model
-can write Python and C++ and run it. Path checks and command allowlists are
-guardrails, not a security boundary against a determined model or a malicious
-workspace. Production hardening would add:
+The model can write Python and C++ and run it, so execution is separated from
+the app. The app container holds the provider key and checkpoints; the executor
+container holds the compilers and sees only `./workspaces`. The executor has no
+host port, no external network, a read-only root, dropped capabilities, no API
+key, and container CPU/memory/PID limits. The app reaches it only on an internal
+Docker network and fails closed when `AUTHOR_AGENT_REQUIRE_EXECUTOR=1`.
 
-- container or microVM execution with no host mounts,
-- a low-privilege service account,
-- seccomp/AppArmor and network isolation,
-- resource enforcement for CPU, memory and wall time,
-- a capability-scoped MCP adapter instead of broad host process execution.
-
-The current app does bind loopback only, checks `Host`/`Origin`, uses a strict
-CSP, stores the provider key locally and never returns it to the browser.
+This is the LeetCode-style execution-worker boundary, implemented as a separate
+container inside the Docker VM. It is not a hypervisor VM: a literal separate VM
+would run the same executor image on another host and set
+`AUTHOR_AGENT_EXECUTOR_URL` to it, with a shared workspace volume or object
+transfer. The app still checks `Host`/`Origin`, uses a strict CSP, stores the
+provider key locally and never returns it to the browser.
 
 ## 8. Deployment
 
-The app is packaged as a single container:
+The app is packaged as two services:
 
-- `Dockerfile`: `python:3.13-slim-bookworm` plus g++, the JDK, latexmk and TeX
-  Live packages (`lmodern` included).
-- `docker-compose.yml`: one service, published to `127.0.0.1:8787`, healthcheck,
-  `init`, `restart: unless-stopped`, `no-new-privileges`.
-- Runs as UID 1000 (`app`), not root.
-- Bind-mounts `./workspaces` and `./.author-agent` so existing problems, chats
-  and the provider key carry over. Named volumes are an alternative for an
-  isolated install.
+- `author-agent` (`Dockerfile`): UI, agent runtime, checkpoints and provider key.
+  Published to `127.0.0.1:8787`, healthcheck, `init`, `restart:
+  unless-stopped`, UID 1000.
+- `executor` (`Dockerfile.executor`): Python plus g++, the JDK, latexmk and TeX
+  Live. Read-only root, dropped capabilities, no host port, no external network,
+  no `.author-agent` mount, only `./workspaces`.
+- The app bind-mounts `./workspaces` and `./.author-agent`; the executor mounts
+  only `./workspaces`.
+- `AUTHOR_AGENT_EXECUTOR_URL=http://executor:8787` and
+  `AUTHOR_AGENT_REQUIRE_EXECUTOR=1` route and require remote execution.
 - `.dockerignore` excludes `.author-agent`, `workspaces`, `.env`, keys, logs and
-  build artifacts, so the image never contains private problem data or the API
+  build artifacts, so the images never contain private problem data or the API
   key.
-- `.env` is optional; the key can also be entered in Settings and stored in the
-  state directory.
 
-The container is the process boundary, not a per-submission sandbox. Model-written
-code runs as the app user inside the container and can see the mounted
-workspaces. For a multi-user service, run each submission in a separate
-container or microVM with a read-only checkout and no shared mounts.
+This is a process/container boundary, not a per-submission microVM. For a
+multi-user service, run the executor on a separate VM or cluster and give each
+submission its own disposable sandbox.
 
 ## 9. Provider layer
 
-- `ChatOpenAI` from `langchain-openai` is the adapter. It works with DeepSeek and
-  any OpenAI-compatible chat-completions endpoint.
-- Base URL, model, temperature, key and max tool rounds are local settings.
+- `ChatOpenAI` from `langchain-openai` is the adapter. It works with Explabs
+  and any OpenAI-compatible chat-completions endpoint.
+- Defaults: `https://api.example.invalid/v1` and
+  `configured-model`. Base URL, model, temperature, key and max tool
+  rounds are local settings.
 - Streaming is enabled. Provider `reasoning_content` is surfaced as **Thinking**
   cards when present; otherwise the agent is prompted to narrate its plan in
   normal assistant text.
@@ -331,7 +333,9 @@ container or microVM with a read-only checkout and no shared mounts.
   on 429/5xx, model-call limit from `maxToolRounds`, and a wider graph step budget
   because middleware nodes add steps.
 - `AIMessage.usage_metadata` is accumulated per turn and emitted as a usage
-  event; absent usage is labelled unreported. There is no cost meter.
+  event; `stream_usage=True` makes the Explabs stream report usage. Optional
+  input/output prices produce an estimated `costUsd`; absent usage is labelled
+  unreported.
 - The key lives in `.author-agent/config.json`, which is gitignored, or in
   environment overrides. It is never sent to the browser.
 
@@ -361,6 +365,11 @@ evidence.
   new session instead of destroying the old one.
 - **Chat management.** Search filters the sidebar; hover actions rename or delete
   a chat; deleting removes its checkpoint thread. Stop cancels the active task.
+- **VS Code-style files.** Folders expand/collapse with persisted state; header
+  and per-folder actions create files/folders; hover actions rename or delete.
+- **LeetCode-style runner.** The editor has line numbers, language/cursor/status
+  chrome, sample test tabs, custom stdin, per-test pass/fail results and a
+  "Run tests" action that goes through the executor.
 - **Plan first.** The `write_todos` tool maintains the task list; the runtime
   mirrors it into the per-chat plan. The Plan inspector
   shows both the authoring pipeline and the agent's current plan. This follows
@@ -452,6 +461,12 @@ patterns that fit ICPC authoring.
   summarization trigger, five concurrent workspaces, same-workspace
   serialization, graph and server-job cancellation, chat rename/delete and
   reviewer.
+- Executor boundary test: a C++ program printed the executor hostname, not the
+  app hostname; the full verifier (compiler, validator, reference, negative,
+  statement PDF) passed through the executor.
+- Headless Chrome interaction test: opened `submissions/accepted/ref.cpp`,
+  entered edit mode, verified line numbers/language, ran sample tests 1/1
+  through the executor and expanded a folder.
 - Headless Chrome DOM load: verifies mode/context/settings controls and the
   approval card render without JS console errors.
 
@@ -531,6 +546,8 @@ records rather than a single transcript.
 | `graph_agent.py` | `create_agent` runtime, middleware, checkpoints, streaming, tools, message conversion. |
 | `agent_state.py` | Typed `AuthorState` and working-memory bounds. |
 | `agent_middleware.py` | Pinned context and tool-error middleware. |
+| `executor_server.py` | Isolated compiler/runner worker; no key or external network. |
+| `Dockerfile.executor` | Executor image with g++, JDK and TeX toolchain. |
 | `agent.py` | Bounded tool dispatch, system prompt, workspace state note. |
 | `verify.py` | Deterministic verification and DOMjudge ZIP export. |
 | `workspace.py` | Path safety, scaffold, chats, plans, changes, diffs, snapshots. |

@@ -7,10 +7,14 @@ that would otherwise block a run (for example a missing DLL).
 """
 from __future__ import annotations
 
+import base64
+import json
 import os
 import signal
 import subprocess
 import time
+import urllib.error
+import urllib.request
 
 CREATE_NO_WINDOW = 0x08000000
 CREATE_NEW_PROCESS_GROUP = 0x00000200
@@ -94,8 +98,71 @@ def terminate_tree(process: subprocess.Popen) -> None:
                 pass
 
 
+def _executor_url() -> str:
+    return (os.environ.get("AUTHOR_AGENT_EXECUTOR_URL") or "").rstrip("/")
+
+
+def _executor_headers() -> dict:
+    token = os.environ.get("AUTHOR_AGENT_EXECUTOR_TOKEN") or ""
+    return {"X-Executor-Token": token} if token else {}
+
+
+def _safe_env(env: dict | None) -> dict:
+    allowed = {"TEXINPUTS", "PYTHONPATH", "PYTHONIOENCODING", "LANG", "LC_ALL"}
+    return {key: value for key, value in (env or {}).items() if key in allowed and isinstance(value, str)}
+
+
+def _remote_run(argv: list[str], cwd, data: bytes, timeout: float, env: dict | None, measure: bool) -> dict:
+    url = _executor_url()
+    if not url:
+        raise RuntimeError("Code execution requires the isolated executor; set AUTHOR_AGENT_EXECUTOR_URL")
+    body = json.dumps({
+        "argv": [str(item) for item in argv],
+        "cwd": str(cwd),
+        "stdin": base64.b64encode(data or b"").decode("ascii"),
+        "timeout": float(timeout),
+        "env": _safe_env(env),
+        "measure": bool(measure),
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        url + "/run",
+        data=body,
+        headers={"Content-Type": "application/json", **_executor_headers()},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=float(timeout) + 30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise RuntimeError(f"Executor HTTP {exc.code}: {detail[:2000]}") from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"Executor request failed: {exc}") from exc
+    if not isinstance(payload, dict) or "stdout" not in payload:
+        raise RuntimeError("Executor returned an invalid response")
+    return {
+        "ok": bool(payload.get("ok")),
+        "timedOut": bool(payload.get("timedOut")),
+        "returncode": payload.get("returncode"),
+        "stdout": base64.b64decode(payload.get("stdout") or ""),
+        "stderr": base64.b64decode(payload.get("stderr") or ""),
+        "ms": float(payload.get("ms") or 0.0),
+        **({"peakRssBytes": int(payload.get("peakRssBytes") or 0)} if measure else {}),
+    }
+
+
+def _require_local_or_executor() -> bool:
+    if _executor_url():
+        return True
+    if os.environ.get("AUTHOR_AGENT_REQUIRE_EXECUTOR") == "1":
+        raise RuntimeError("Code execution is disabled locally; the isolated executor is required")
+    return False
+
+
 def run_captured(argv: list[str], cwd, data: bytes = b"", timeout: float = 10.0, env: dict | None = None) -> dict:
     """Run a bounded command and always reap its process tree on timeout."""
+    if _require_local_or_executor():
+        return _remote_run(argv, cwd, data, timeout, env, measure=False)
     started = time.perf_counter()
     process = subprocess.Popen(
         argv,
@@ -140,6 +207,8 @@ def run_captured(argv: list[str], cwd, data: bytes = b"", timeout: float = 10.0,
 
 def run_measured(argv: list[str], cwd, data: bytes = b"", timeout: float = 30.0, env: dict | None = None) -> dict:
     """Like run_captured, but samples peak RSS for the process tree."""
+    if _require_local_or_executor():
+        return _remote_run(argv, cwd, data, timeout, env, measure=True)
     import threading
     import psutil
 

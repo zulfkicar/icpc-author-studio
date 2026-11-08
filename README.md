@@ -32,13 +32,22 @@ LangGraph (`langgraph` + `langchain-openai`) with the OpenAI-compatible provider
 
 ## Docker
 
-The image includes Python, LangGraph, g++, the JDK and a TeX Live toolchain, so
-the same verification path works without host toolchains.
+The compose stack has two services:
+
+- `author-agent` ? UI, agent, checkpoints and provider key.
+- `icpc-author-executor` ? isolated compiler/runner worker. It has g++, the JDK
+  and TeX Live, **no provider key**, **no host port**, **no external network**,
+  a read-only root, dropped capabilities and container CPU/memory/PID limits.
+  It sees only `./workspaces`.
+
+The app routes every compile/run/verify command to the executor; it does not
+execute model-written code itself.
 
 ```powershell
 docker compose up --build -d
 # open http://127.0.0.1:8787/
 docker compose logs -f author-agent
+docker compose logs -f executor
 docker compose down
 ```
 
@@ -62,10 +71,9 @@ scripts to keep the VM alive while the app is up:
 `docker compose up` / `down` still work while the keepalive is running. Use
 `-Distro <name>` if your WSL distro is not `Ubuntu`.
 
-By default the container bind-mounts `./workspaces` and `./.author-agent`, so it
-sees your existing problems, chats, reports and provider key. `docker compose
-down` leaves them untouched. On Linux hosts, make those directories writable by
-the container user (UID 1000):
+By default the app bind-mounts `./workspaces` and `./.author-agent`; the
+executor mounts **only** `./workspaces`. `docker compose down` leaves them
+untouched. On Linux hosts, make those directories writable by UID 1000:
 
 ```bash
 mkdir -p workspaces .author-agent
@@ -92,15 +100,31 @@ committed or baked into the image. The Settings UI works too and writes to
 The container binds the published port to host `127.0.0.1` only. Change the
 `ports` mapping in `docker-compose.yml` if you intentionally want LAN access.
 
+## Execution isolation
+
+This follows the LeetCode-style split between the product server and the code
+worker. The app container has the provider key and database; the executor
+container has the compilers and sees only package files. A program that prints
+its hostname prints the executor container ID, not the app container ID. The
+full deterministic verifier (compiler, validator, reference, negative and
+statement PDF) runs through the executor.
+
+For a literal separate VM, run the executor on that VM and point the app at it
+with `AUTHOR_AGENT_EXECUTOR_URL`; the app must be able to reach the executor over
+a private network and both must share the workspace volume. This machine has no
+Hyper-V, Multipass or Docker Desktop installed, so the current implementation
+uses a dedicated Docker sandbox worker inside the WSL VM. `AUTHOR_AGENT_REQUIRE_EXECUTOR=1`
+makes local execution fail closed if the executor is unavailable.
+
 ## Configure a provider
 
 Open **Settings** in the app and set:
 
 | Field | Default |
 |---|---|
-| Base URL | `https://api.deepseek.com/v1` |
-| Model | `deepseek-chat` |
-| API key | your DeepSeek key |
+| Base URL | `https://api.example.invalid/v1` |
+| Model | `configured-model` |
+| API key | your Explabs key (`xpl_...`) |
 
 Any OpenAI-compatible chat-completions endpoint with tool calling works,
 including OpenRouter (`https://openrouter.ai/api/v1`, e.g.
@@ -109,9 +133,9 @@ including OpenRouter (`https://openrouter.ai/api/v1`, e.g.
 browser. Environment overrides are also supported:
 
 ```powershell
-$env:AUTHOR_AGENT_API_KEY = "sk-..."
-$env:AUTHOR_AGENT_BASE_URL = "https://api.deepseek.com/v1"
-$env:AUTHOR_AGENT_MODEL = "deepseek-chat"
+$env:AUTHOR_AGENT_API_KEY = "xpl_..."
+$env:AUTHOR_AGENT_BASE_URL = "https://api.example.invalid/v1"
+$env:AUTHOR_AGENT_MODEL = "configured-model"
 ```
 
 ## Agent architecture
@@ -233,8 +257,12 @@ this MVP; the verifier will not pretend they are.
 
 ## IDE and readable output
 
+- The **Files** tab is an expandable tree with persisted folder state, new file,
+  new folder, rename and delete actions.
 - The **File** inspector has a syntax-highlighted **View** mode and an **Edit**
-  mode. highlight.js is vendored locally; there is no CDN.
+  mode with line numbers, language/cursor/status chrome and sample test tabs.
+  **Run tests** executes every `data/sample/*.in` against its `.ans` and shows
+  pass/fail cards; **Run** accepts custom stdin.
 - Code tool results and assistant code blocks are shown as highlighted code, not
   raw JSON. File writes show compact change cards with `+/-` stats and a diff
   link.
@@ -281,13 +309,13 @@ This keeps the essential author-assistant loop from
 Kept and expanded: durable SQLite checkpoints, pinned working memory, todo
 lists, context compaction, explicit file context, modes, human approval,
 typed tool registry, human-reviewed diffs, literal tests vs generators,
-reference/wrong-solution evidence, statement compilation, real subprocess
-execution, explicit verification, export gating and a real-provider eval loop.
+reference/wrong-solution evidence, statement compilation, isolated execution,
+explicit verification, export gating and a real-provider eval loop.
 
 Deliberately dropped for now: multi-user auth/RBAC, the full contest platform,
-live DOMjudge adapters, MCP transport, managed cost accounting, container
-sandboxes, a full Monaco/IDE session, interactive/custom-checker problems, and
-the Keycloak/Postgres stack. This is a single-user localhost tool, not the
+live DOMjudge adapters, MCP transport, managed cost accounting, a full
+Monaco/IDE session, interactive/custom-checker problems, and the
+Keycloak/Postgres stack. This is a single-user localhost tool, not the
 production platform.
 
 ## Known MVP limits
@@ -299,6 +327,9 @@ production platform.
 - Limits are measured from the reference runtime and memory; they are not
   manually chosen at problem creation.
 - One local user; no accounts, RBAC, audit trail or multi-tenant isolation.
+- The executor is a separate hardened container, not a hypervisor VM. A literal
+  separate VM requires running the same executor on that VM and sharing the
+  workspace over a private network.
 - Summary compaction is provider-dependent; pinned brief/decisions/todos carry
   the facts that matter. The summary itself is not deterministic.
 - Token counts are shown when the provider reports them. Cost is an estimate
@@ -307,22 +338,26 @@ production platform.
   subgraph. Its findings are proposals; it cannot approve or export.
 - The eval harness requires a real provider key and is intentionally excluded
   from CI.
-- Reference/negative languages: C++/C, Python, Java (toolchains must be on PATH).
+- Reference/negative languages: C++/C, Python, Java (the executor image provides
+  the toolchains).
 - The statement uses the local `icpcproblem.cls`; replace it with the official
   ICPC class if your contest toolchain provides one.
 
 ## Security note
 
-The `run_command` tool is allowlisted and path-confined, but `python` and
-compiled programs execute real code on this machine. This is a trusted local
-authoring tool: run it only with workspaces and model output you are willing to
-execute. It is not a hostile-tenant sandbox.
+The `run_command` tool is allowlisted and path-confined. Model-written code runs
+in the separate executor container, not the app container or WSL host, with no
+provider key, no external network, a read-only root, dropped capabilities and
+resource limits. This is a single-user local tool and a hardened container
+boundary, not a multi-tenant microVM platform; run each hostile submission in a
+separate VM or disposable sandbox if that is your threat model.
 
 ## Files
 
 ```
 server.py            loopback HTTP API, static UI, background jobs
 graph_agent.py       create_agent runtime, middleware, checkpoints, streaming
+executor_server.py   isolated compiler/runner worker (no key, no external network)
 agent_state.py       typed AuthorState + bounded working-memory helpers
 agent_middleware.py  pinned context and tool-error middleware
 agent.py             bounded tool dispatch + system prompt

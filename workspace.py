@@ -11,6 +11,7 @@ import hashlib
 import json
 import pathlib
 import re
+import shutil
 import threading
 import time
 import uuid
@@ -399,6 +400,49 @@ def delete_file(slug: str, rel: str, source: str = "agent") -> dict:
     entry = _record(slug, "delete", rel, before, None, source)
     return {"path": rel, "changed": True, "change": entry, "diff": diff(before, "", rel)}
 
+
+
+def create_folder(slug: str, rel: str) -> dict:
+    rel = validate_rel(rel)
+    path = resolve(slug, rel)
+    if path.exists():
+        raise ValueError("That path already exists")
+    path.mkdir(parents=True)
+    return {"path": rel, "type": "dir", "created": True}
+
+
+def create_file(slug: str, rel: str, content: str = "") -> dict:
+    rel = validate_rel(rel)
+    path = resolve(slug, rel)
+    if path.exists():
+        raise ValueError("That path already exists")
+    result = write_text(slug, rel, content, source="user")
+    return {"path": rel, "type": "file", "created": True, **result}
+
+
+def rename_entry(slug: str, rel: str, new_rel: str) -> dict:
+    rel = validate_rel(rel)
+    new_rel = validate_rel(new_rel)
+    source = resolve(slug, rel)
+    target = resolve(slug, new_rel)
+    if not source.exists():
+        raise FileNotFoundError("Path not found")
+    if target.exists():
+        raise ValueError("The target path already exists")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    source.rename(target)
+    return {"path": new_rel, "oldPath": rel, "type": "dir" if target.is_dir() else "file"}
+
+
+def delete_entry(slug: str, rel: str) -> dict:
+    rel = validate_rel(rel)
+    path = resolve(slug, rel)
+    if path.is_file():
+        return delete_file(slug, rel, source="user")
+    if path.is_dir():
+        shutil.rmtree(path)
+        return {"path": rel, "type": "dir", "deleted": True}
+    raise FileNotFoundError("Path not found")
 
 def revert(slug: str, change_id: str) -> dict:
     items = changes(slug)

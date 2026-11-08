@@ -50,6 +50,8 @@
     <div id="side-files" class="side-panel">
       <div class="side-head">
         <span>Workspace</span>
+        <button id="new-file" class="icon-btn" title="New file">&#43;</button>
+        <button id="new-folder" class="icon-btn" title="New folder">&#9633;</button>
         <button id="refresh-tree" class="icon-btn" title="Refresh files">&#8635;</button>
       </div>
       <div id="file-tree" class="tree"></div>
@@ -136,19 +138,30 @@
         <button id="save-file" class="primary small" hidden>Save</button>
         <button id="reload-file" class="quiet small" hidden>Reload</button>
       </div>
-      <div class="file-view-wrap">
-        <pre id="file-view" class="file-view" hidden><code id="file-code" class="hljs"></code></pre>
-        <textarea id="file-editor" class="file-editor" spellcheck="false" placeholder="Select a file in the Files tab." disabled></textarea>
+      <div class="editor-shell">
+        <div id="line-numbers" class="line-numbers" hidden></div>
+        <div class="editor-main">
+          <pre id="file-view" class="file-view" hidden><code id="file-code" class="hljs"></code></pre>
+          <textarea id="file-editor" class="file-editor" spellcheck="false" placeholder="Select a file in the Files tab." disabled></textarea>
+        </div>
+      </div>
+      <div class="editor-status">
+        <span id="editor-language">?</span>
+        <span id="editor-cursor">Ln 1, Col 1</span>
+        <span id="editor-lines" class="spacer"></span>
       </div>
       <div id="run-panel" class="run-panel" hidden>
         <div class="run-panel-head">
           <span>Run</span>
-          <span class="muted small">stdin</span>
+          <span id="run-language" class="muted small"></span>
           <span class="spacer"></span>
           <button id="load-sample" class="quiet small">Load sample</button>
+          <button id="run-tests" class="quiet small">Run tests</button>
           <button id="run-file" class="primary small">Run</button>
         </div>
-        <textarea id="run-stdin" class="run-stdin" rows="3" placeholder="Input passed to the program on stdin"></textarea>
+        <div id="test-tabs" class="test-tabs"></div>
+        <div id="test-results" class="test-results" hidden></div>
+        <textarea id="run-stdin" class="run-stdin" rows="3" placeholder="Custom input passed to the program on stdin"></textarea>
         <pre id="run-output" class="run-output" hidden></pre>
       </div>
     </div>

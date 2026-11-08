@@ -769,7 +769,7 @@ def _graph(cfg: dict, saver):
 
 def _model(cfg: dict) -> ChatOpenAI:
     if not cfg.get("apiKey"):
-        raise RuntimeError("No API key is configured. Open Settings and add a DeepSeek or OpenRouter key.")
+        raise RuntimeError("No API key is configured. Open Settings and add an Explabs or OpenAI-compatible key.")
     # httpx2/OpenAI streaming can fail on compressed responses in the pinned
     # dependency set (`process() takes no keyword arguments`). Ask providers for
     # an identity-encoded response.
@@ -778,13 +778,14 @@ def _model(cfg: dict) -> ChatOpenAI:
     if "openrouter" in base:
         headers.update({"HTTP-Referer": "http://127.0.0.1", "X-Title": "ICPC Author Agent"})
     return ChatOpenAI(
-        model=str(cfg.get("model") or "deepseek-chat"),
+        model=str(cfg.get("model") or "configured-model"),
         api_key=str(cfg.get("apiKey")),
         base_url=base or None,
         temperature=float(cfg.get("temperature", 0.2)),
         max_retries=1,
         timeout=300,
         streaming=True,
+        stream_usage=True,
         extra_body={"max_tokens": 8000},
         default_headers=headers or None,
     )

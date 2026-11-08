@@ -17,16 +17,16 @@ WORKSPACES = ROOT / "workspaces"
 TEMPLATES = ROOT / "templates"
 
 DEFAULTS = {
-    "baseUrl": "https://api.deepseek.com/v1",
-    "model": "deepseek-chat",
+    "baseUrl": "https://api.example.invalid/v1",
+    "model": "configured-model",
     "apiKey": "",
     "temperature": 0.2,
     "maxToolRounds": 24,
     "reviewWrites": False,
     "summaryTriggerTokens": 30000,
     "summaryKeepMessages": 12,
-    "inputPricePerMillion": 0.0,
-    "outputPricePerMillion": 0.0,
+    "inputPricePerMillion": 0.375,
+    "outputPricePerMillion": 1.5,
 }
 
 _LOCK = threading.Lock()

@@ -14,18 +14,68 @@ services:
       AUTHOR_AGENT_API_KEY: "${AUTHOR_AGENT_API_KEY:-}"
       AUTHOR_AGENT_BASE_URL: "${AUTHOR_AGENT_BASE_URL:-}"
       AUTHOR_AGENT_MODEL: "${AUTHOR_AGENT_MODEL:-}"
+      AUTHOR_AGENT_EXECUTOR_URL: "http://executor:8787"
+      AUTHOR_AGENT_EXECUTOR_TOKEN: "${AUTHOR_AGENT_EXECUTOR_TOKEN:-}"
+      AUTHOR_AGENT_REQUIRE_EXECUTOR: "1"
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
     volumes:
       # Existing local problems, chats, plans and reports.
       - ./workspaces:/app/workspaces
-      # Existing local provider settings and key.
+      # Existing local provider settings and key (app only; never the executor).
       - ./.author-agent:/app/.author-agent
     security_opt:
       - no-new-privileges:true
+    depends_on:
+      executor:
+        condition: service_healthy
+    networks:
+      - default
+      - sandbox
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/api/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  executor:
+    build:
+      context: .
+      dockerfile: Dockerfile.executor
+    image: icpc-author-executor:local
+    container_name: icpc-author-executor
+    init: true
+    restart: unless-stopped
+    read_only: true
+    user: "1000:1000"
+    environment:
+      AUTHOR_AGENT_WORKSPACES: "/app/workspaces"
+      AUTHOR_AGENT_EXECUTOR_TOKEN: "${AUTHOR_AGENT_EXECUTOR_TOKEN:-}"
+      AUTHOR_AGENT_EXECUTOR_SLOTS: "4"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      # The executor sees only package files. No provider key, no app state.
+      - ./workspaces:/app/workspaces
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: "2.0"
+    networks:
+      - sandbox
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  sandbox:
+    internal: true

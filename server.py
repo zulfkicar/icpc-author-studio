@@ -283,6 +283,10 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send_error_json("A chat turn is already running for this problem", 409)
                 body = self.read_json()
                 return self.send_json(workspace.rename_chat(slug, chat_id, body.get("title")))
+            if len(parts) == 4 and parts[0] == "api" and parts[1] == "workspaces" and parts[3] == "files":
+                body = self.read_json()
+                with workspace_lock(parts[2]):
+                    return self.send_json(workspace.rename_entry(parts[2], body.get("path"), body.get("newPath")))
             return self.send_error_json("Not found", 404)
         except FileNotFoundError as exc:
             return self.send_error_json(str(exc), 404)
@@ -303,6 +307,11 @@ class Handler(BaseHTTPRequestHandler):
                 workspace.delete_chat(slug, chat_id)
                 graph_agent.delete_thread(slug, chat_id)
                 return self.send_json(workspace.list_chats(slug))
+            if len(parts) == 4 and parts[0] == "api" and parts[1] == "workspaces" and parts[3] == "files":
+                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                rel = (query.get("path") or [""])[0]
+                with workspace_lock(parts[2]):
+                    return self.send_json(workspace.delete_entry(parts[2], rel))
             return self.send_error_json("Not found", 404)
         except FileNotFoundError as exc:
             return self.send_error_json(str(exc), 404)
@@ -348,6 +357,12 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/api/workspaces/"):
                 parts = [p for p in path.split("/") if p]
                 slug = parts[2]
+                if len(parts) == 4 and parts[3] == "files":
+                    body = self.read_json()
+                    with workspace_lock(slug):
+                        if str(body.get("kind") or "file") == "dir":
+                            return self.send_json(workspace.create_folder(slug, str(body.get("path") or "")))
+                        return self.send_json(workspace.create_file(slug, str(body.get("path") or "")))
                 if len(parts) == 4 and parts[3] == "file":
                     body = self.read_json()
                     result = workspace.write_text(slug, body.get("path", ""), body.get("content", ""), source="user")
