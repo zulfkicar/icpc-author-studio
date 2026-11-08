@@ -2,6 +2,7 @@
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+HTML = (ROOT / "web" / "index.html").read_text("utf-8")
 JS = (ROOT / "web" / "app.js").read_text("utf-8")
 CSS = (ROOT / "web" / "style.css").read_text("utf-8")
 
@@ -24,6 +25,7 @@ def main():
     check("test labels are textual", 'result.pass ? "PASS" : "FAIL"' in JS)
     check("tab close glyph", 'close.textContent = "\\u00d7"' in JS)
     check("no literal question-mark actions", 'treeAction("?"' not in JS)
+    check("judge0 quick run wired", 'judge0-run' in HTML and 'runJudge0' in JS and 'judge0Url' in JS)
     print("UI CONTRACT TESTS PASSED")
     return 0
 

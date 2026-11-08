@@ -39,7 +39,12 @@ enforces:
 
 ## Where Judge0 fits
 
-Use it as an optional IDE quick-run service:
+Use it as an optional IDE quick-run service. Add the URL in **Settings ? Judge0
+URL** and a **Judge0** button appears in the Run panel for runnable files. It
+posts to `/api/workspaces/<slug>/judge0/run`, which reads the workspace source
+and calls the adapter. It never writes a verifier report or export gate.
+
+Programmatically:
 
 ```python
 from judge0_adapter import quick_run
@@ -64,6 +69,18 @@ Then set `AUTHOR_AGENT_JUDGE0_URL=http://127.0.0.1:2358` for the app.
 
 ## Evidence
 
-`qa/test_judge0_adapter.py` runs the adapter against a local fake Judge0 server
-and checks accepted output, compilation errors, metadata normalisation and the
-`verificationAuthority: False` contract.
+`qa/test_judge0_adapter.py` runs the adapter and `run_file` against a local fake
+Judge0 server and checks accepted output, compilation errors, metadata
+normalisation, the workspace file path and the `verificationAuthority: False`
+contract. `qa/test_ui_contracts.py` checks that the Run-panel button and
+`runJudge0` wiring are present. The UI button is only shown when a Judge0 URL is
+configured.
+
+End-to-end route evidence (fake Judge0 on the executor network):
+
+```text
+POST /api/settings {judge0Url: http://executor:2358}
+POST /api/workspaces/sum-test/judge0/run {path: submissions/accepted/ref.cpp}
+  ok=true, stdout=judge0-route-ok, status=Accepted,
+  verificationAuthority=false
+```

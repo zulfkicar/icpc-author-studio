@@ -17,6 +17,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import workspace
+
 LANGUAGE_IDS = {
     "c": 50,
     "cpp": 54,
@@ -62,6 +64,19 @@ def _request(base_url: str, source: str, language: str, stdin: str, token: str,
         raise RuntimeError(f"Judge0 HTTP {exc.code}: {detail[:1000]}") from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise RuntimeError(f"Judge0 request failed: {exc}") from exc
+
+
+def run_file(slug: str, path: str, stdin: str = "", *, base_url: str | None = None,
+             token: str | None = None, time_limit: float = 2.0, memory_mb: int = 256) -> dict:
+    """Read a workspace source file and run it through Judge0."""
+    content = workspace.read_text(slug, path).get("content") or ""
+    language = path.rsplit(".", 1)[-1] if "." in path else "cpp"
+    result = quick_run(
+        content, language, stdin,
+        base_url=base_url, token=token, time_limit=time_limit, memory_mb=memory_mb,
+    )
+    result["path"] = path
+    return result
 
 
 def quick_run(source: str, language: str = "cpp", stdin: str = "", *,

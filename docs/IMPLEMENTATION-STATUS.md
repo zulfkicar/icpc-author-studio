@@ -111,7 +111,11 @@ Judge0 decision: [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md)
 - `eval/run_eval.py` real-provider `sum` and `claim` fixtures verified; see
   [`EVAL-RESULTS.md`](EVAL-RESULTS.md).
 - `judge0_adapter.py` optional quick-run backend; Judge0 is not a verification
-  authority. See [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md).
+  authority. Settings expose a Judge0 URL/token, the Run panel shows a Judge0
+  button when configured, and `/api/workspaces/<slug>/judge0/run` calls the
+  adapter. A fake Judge0 route test returned `ok=true`, `stdout=judge0-route-ok`,
+  `status=Accepted`, `verificationAuthority=false`. See
+  [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md).
 
 ## Evidence
 
@@ -154,7 +158,7 @@ qa/accessibility_axe.ps1
   AXE ACCESSIBILITY AUDIT PASSED
 
 qa/cdp_workflow.ps1
-  mcpRows=5, mcpToggle=true, mcpSave=true, treeGlyphsOk=true,
+  judge0Visible=true, mcpRows=5, mcpToggle=true, mcpSave=true, treeGlyphsOk=true,
   approvalDedupe=true, clarificationVisible=true, xssEscaped=true,
   composerFocusable=true, followPaused=true, hunkRows=1, historyRows=9,
   mentionVisible=true, reflow320=true, keyboard focus moves

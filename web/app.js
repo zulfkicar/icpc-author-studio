@@ -1095,6 +1095,7 @@ function renderFileView() {
   $("view-file").hidden = true;
   $("save-file").hidden = true;
   $("run-panel").hidden = !(file.text && isRunnablePath(file.path));
+  $("judge0-run").hidden = !(state.settings && state.settings.judge0Url && file.text && isRunnablePath(file.path));
   state.samples = file.text ? sampleTests() : [];
   renderTestTabs();
   renderTestResults();
@@ -1193,6 +1194,26 @@ async function loadSampleInput(samplePath = null) {
     renderTestTabs();
     toast(`Loaded sample ${sample.name}`);
   } catch (error) { toast(error.message, true); }
+}
+
+async function runJudge0() {
+  if (!state.slug || !state.file || !state.settings || !state.settings.judge0Url) return;
+  const output = $("run-output");
+  output.hidden = false;
+  output.className = "run-output";
+  output.textContent = "Judge0\u2026";
+  try {
+    const result = await api(`/api/workspaces/${state.slug}/judge0/run`, {
+      method: "POST",
+      body: { path: state.file.path, stdin: $("run-stdin").value },
+    });
+    const parts = [result.stdout, result.stderr, result.compileOutput, result.message].filter(Boolean);
+    output.className = "run-output" + (result.ok ? "" : " err");
+    output.textContent = parts.join("\n") || result.status || "No output";
+  } catch (error) {
+    output.className = "run-output err";
+    output.textContent = error.message;
+  }
 }
 
 async function runFile() {
@@ -2312,6 +2333,8 @@ function openSettings() {
   form.fallbackModel.value = settings.fallbackModel || "";
   form.fallbackBaseUrl.value = settings.fallbackBaseUrl || "";
   form.fallbackApiKey.value = "";
+  form.judge0Url.value = settings.judge0Url || "";
+  form.judge0Token.value = "";
   form.inputPricePerMillion.value = settings.inputPricePerMillion ?? 0;
   form.outputPricePerMillion.value = settings.outputPricePerMillion ?? 0;
   form.clearKey.checked = false;
@@ -2337,6 +2360,7 @@ async function saveSettings(event) {
     requestTimeoutSeconds: Number(form.requestTimeoutSeconds.value || 300),
     fallbackModel: form.fallbackModel.value.trim(),
     fallbackBaseUrl: form.fallbackBaseUrl.value.trim(),
+    judge0Url: form.judge0Url.value.trim(),
     inputPricePerMillion: Number(form.inputPricePerMillion.value || 0),
     outputPricePerMillion: Number(form.outputPricePerMillion.value || 0),
     reviewWrites: form.reviewWrites.checked,
@@ -2344,6 +2368,7 @@ async function saveSettings(event) {
   };
   if (form.apiKey.value.trim()) body.apiKey = form.apiKey.value.trim();
   if (form.fallbackApiKey.value.trim()) body.fallbackApiKey = form.fallbackApiKey.value.trim();
+  if (form.judge0Token.value.trim()) body.judge0Token = form.judge0Token.value.trim();
   try {
     state.settings = await api("/api/settings", { method: "POST", body });
     $("settings-dialog").close();
@@ -2739,6 +2764,7 @@ function wire() {
   $("edit-file").addEventListener("click", enterEditMode);
   $("view-file").addEventListener("click", enterViewMode);
   $("run-file").addEventListener("click", runFile);
+  $("judge0-run").addEventListener("click", runJudge0);
   $("run-tests").addEventListener("click", runSamples);
   $("load-sample").addEventListener("click", () => loadSampleInput());
   document.querySelectorAll(".tabs button, .inspector-tabs button").forEach((button) => {

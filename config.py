@@ -37,6 +37,8 @@ DEFAULTS = {
     "fallbackModelWindowTokens": 0,
     "maxRetries": 2,
     "requestTimeoutSeconds": 300,
+    "judge0Url": "",
+    "judge0Token": "",
 }
 
 MODEL_PRICING = {
@@ -105,7 +107,7 @@ def load() -> dict:
 def save(update: dict) -> dict:
     with _LOCK:
         data = load()
-        for key in ("baseUrl", "model", "apiKey", "temperature", "maxToolRounds", "reviewWrites", "contextBudgetTokens", "modelWindowTokens", "maxOutputTokens", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion", "fallbackModel", "fallbackBaseUrl", "fallbackApiKey", "fallbackModelWindowTokens", "maxRetries", "requestTimeoutSeconds"):
+        for key in ("baseUrl", "model", "apiKey", "temperature", "maxToolRounds", "reviewWrites", "contextBudgetTokens", "modelWindowTokens", "maxOutputTokens", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion", "fallbackModel", "fallbackBaseUrl", "fallbackApiKey", "fallbackModelWindowTokens", "maxRetries", "requestTimeoutSeconds", "judge0Url", "judge0Token"):
             if key in update and update[key] is not None:
                 data[key] = update[key]
         data["temperature"] = max(0.0, min(2.0, float(data.get("temperature", 0.2))))
@@ -146,6 +148,8 @@ def public(data: dict | None = None) -> dict:
         "fallbackModel": data.get("fallbackModel", ""),
         "fallbackBaseUrl": data.get("fallbackBaseUrl", ""),
         "hasFallbackKey": bool(data.get("fallbackApiKey")),
+        "judge0Url": data.get("judge0Url", ""),
+        "hasJudge0Token": bool(data.get("judge0Token")),
         "fallbackModelWindowTokens": int(data.get("fallbackModelWindowTokens", 0) or 0),
         "maxRetries": int(data.get("maxRetries", 2)),
         "requestTimeoutSeconds": int(data.get("requestTimeoutSeconds", 300)),

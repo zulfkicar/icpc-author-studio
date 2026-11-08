@@ -23,6 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import agent
 import config
 import graph_agent
+import judge0_adapter
 import mcp_consent
 import mcp_server
 import verify
@@ -406,7 +407,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/settings":
                 body = self.read_json()
                 update = {}
-                for key in ("baseUrl", "model", "temperature", "maxToolRounds", "reviewWrites", "contextBudgetTokens", "modelWindowTokens", "maxOutputTokens", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion", "fallbackModel", "fallbackBaseUrl", "fallbackApiKey", "maxRetries", "requestTimeoutSeconds"):
+                for key in ("baseUrl", "model", "temperature", "maxToolRounds", "reviewWrites", "contextBudgetTokens", "modelWindowTokens", "maxOutputTokens", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion", "fallbackModel", "fallbackBaseUrl", "fallbackApiKey", "maxRetries", "requestTimeoutSeconds", "judge0Url"):
                     if key in body:
                         update[key] = body[key]
                 if body.get("clearKey"):
@@ -541,6 +542,17 @@ class Handler(BaseHTTPRequestHandler):
                 if len(parts) == 4 and parts[3] == "run":
                     body = self.read_json()
                     return self.send_json(verify.run_source(slug, str(body.get("path") or ""), str(body.get("stdin") or "")))
+                if len(parts) == 5 and parts[3] == "judge0" and parts[4] == "run":
+                    body = self.read_json()
+                    cfg = config.load()
+                    if not cfg.get("judge0Url"):
+                        raise ValueError("Judge0 is not configured in Settings")
+                    return self.send_json(judge0_adapter.run_file(
+                        slug, str(body.get("path") or ""), str(body.get("stdin") or ""),
+                        base_url=str(cfg.get("judge0Url") or ""),
+                        token=str(cfg.get("judge0Token") or ""),
+                        time_limit=2.0, memory_mb=256,
+                    ))
                 if len(parts) == 4 and parts[3] == "measure-limits":
                     def run_limits(emit, cancelled):
                         result = verify.measure_limits(slug, cancelled=cancelled)

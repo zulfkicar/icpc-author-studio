@@ -10,7 +10,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import config
 import judge0_adapter
+import shutil
+import workspace
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -67,6 +70,18 @@ def main() -> int:
             check("judge0 rejects unknown language", True)
         else:
             check("judge0 rejects unknown language", False)
+
+        created = workspace.create("QA Judge0", "judge0 adapter")
+        slug = created["slug"]
+        try:
+            workspace.write_text(slug, "ref.cpp", "int main(){return 0;}\n", source="test")
+            result = judge0_adapter.run_file(slug, "ref.cpp", base_url=base)
+            check("judge0 run_file", result["ok"] and result["path"] == "ref.cpp", result)
+        finally:
+            shutil.rmtree(workspace.ws_path(slug), ignore_errors=True)
+
+        public = config.public({"judge0Url": "http://judge0", "judge0Token": "secret-token"})
+        check("judge0 token hidden", "judge0Token" not in public and public["hasJudge0Token"] and public["judge0Url"] == "http://judge0", public)
     finally:
         server.shutdown()
         server.server_close()

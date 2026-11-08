@@ -59,8 +59,8 @@ qa/accessibility_axe.ps1
   AXE ACCESSIBILITY AUDIT PASSED
 
 qa/cdp_workflow.ps1
-  mcpRows=5, mcpToggle=true, mcpSave=true, treeGlyphsOk=true,
-  keyboardFocus moves, reflow320=true, console errors none
+  judge0Visible=true, mcpRows=5, mcpToggle=true, mcpSave=true,
+  treeGlyphsOk=true, keyboardFocus moves, reflow320=true, console errors none
 
 qa/soak_cdp.ps1
   {"iterations":30,"elapsedMs":213,"growth":82,"errors":[]}

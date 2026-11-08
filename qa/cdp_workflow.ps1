@@ -17,6 +17,7 @@ graph_agent.run_turn(slug, chat, 'seed checkpoint', lambda *_: None)
 workspace.save_pending(slug, chat, [{"id": "cdp-clar", "value": {"type": "clarification", "questions": ["Which format?"], "options": ["a", "b"], "recommended": "a"}}])
 workspace.write_text(slug, 'notes.txt', 'a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n', source='test')
 workspace.write_text(slug, 'notes.txt', 'a\nB\nc\nd\ne\nf\ng\nh\ni\nJ\n', source='test')
+workspace.write_text(slug, 'hello.cpp', 'int main(){return 0;}\n', source='test')
 print(slug + ' ' + chat)
 "@
 $setupResult = $setup | python -
@@ -92,7 +93,13 @@ try {
   const mcpToggle = !!document.getElementById('mcp-enabled');
   const mcpSave = !!document.getElementById('mcp-save');
   const treeGlyphs = Array.from(document.querySelectorAll('.tree-icon')).map((node) => node.textContent);
+  await api('/api/settings', { method: 'POST', body: { judge0Url: 'http://127.0.0.1:2358' } });
+  state.settings = (await api('/api/state')).settings;
+  await openFile('hello.cpp');
+  const judge0Visible = !document.getElementById('judge0-run').hidden;
+  await api('/api/settings', { method: 'POST', body: { judge0Url: '' } });
   return {
+    judge0Visible,
     mcpRows,
     mcpToggle,
     mcpSave,

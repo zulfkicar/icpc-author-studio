@@ -163,6 +163,7 @@
           <span class="spacer"></span>
           <button id="load-sample" class="quiet small">Load sample</button>
           <button id="run-tests" class="quiet small">Run tests</button>
+          <button id="judge0-run" class="quiet small" hidden>Judge0</button>
           <button id="run-file" class="primary small">Run</button>
         </div>
         <div id="test-tabs" class="test-tabs"></div>
@@ -238,6 +239,10 @@
     </div>
     <label>Fallback base URL <input name="fallbackBaseUrl" placeholder="optional"></label>
     <label>Fallback API key <input name="fallbackApiKey" type="password" placeholder="Leave blank to keep the saved fallback key" autocomplete="off"></label>
+    <div class="grid2">
+      <label>Judge0 URL (optional quick-run) <input name="judge0Url" placeholder="http://127.0.0.1:2358"></label>
+      <label>Judge0 token <input name="judge0Token" type="password" placeholder="Leave blank to keep the saved token" autocomplete="off"></label>
+    </div>
     <div class="grid2">
       <label>Input $ / 1M tokens <input name="inputPricePerMillion" type="number" min="0" step="0.0001" value="0"></label>
       <label>Output $ / 1M tokens <input name="outputPricePerMillion" type="number" min="0" step="0.0001" value="0"></label>
