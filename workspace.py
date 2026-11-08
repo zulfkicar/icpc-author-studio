@@ -15,6 +15,7 @@ import shutil
 import threading
 import time
 import uuid
+import zipfile
 
 from config import TEMPLATES, WORKSPACES
 
@@ -680,6 +681,23 @@ def save_plan(slug: str, chat_id: str, steps: list[dict]) -> dict:
     return value
 
 
+def _clarifications_file(slug: str, chat_id: str) -> pathlib.Path:
+    if not re.fullmatch(r"[a-f0-9]{12}", str(chat_id or "")):
+        raise ValueError("Invalid chat id")
+    return _chats_root(slug) / f"{chat_id}.clarifications.json"
+
+
+def get_clarifications(slug: str, chat_id: str) -> list[dict]:
+    value = _read_json(_clarifications_file(slug, chat_id), [])
+    return value if isinstance(value, list) else []
+
+
+def save_clarifications(slug: str, chat_id: str, items: list[dict]) -> list[dict]:
+    clean = [item for item in (items or []) if isinstance(item, dict)][-50:]
+    _write_json(_clarifications_file(slug, chat_id), clean)
+    return clean
+
+
 def get_chat(slug: str, chat_id: str) -> dict:
     index = ensure_chats(slug)
     meta = next((c for c in index["chats"] if c["id"] == chat_id), None)
@@ -688,7 +706,7 @@ def get_chat(slug: str, chat_id: str) -> dict:
     messages = _read_json(_chat_file(slug, chat_id), [])
     if not isinstance(messages, list):
         messages = []
-    return {**meta, "messages": messages, "plan": get_plan(slug, chat_id), "pending": get_pending(slug, chat_id)}
+    return {**meta, "messages": messages, "plan": get_plan(slug, chat_id), "pending": get_pending(slug, chat_id), "clarifications": get_clarifications(slug, chat_id)}
 
 
 def save_chat_messages(slug: str, chat_id: str, messages: list[dict]) -> dict:
@@ -746,6 +764,160 @@ def diff(before: str, after: str, rel: str) -> str:
         fromfile=f"a/{rel}",
         tofile=f"b/{rel}",
     ))
+
+
+def parse_hunks(diff_text: str) -> list[dict]:
+    """Parse a unified diff into selectable hunks."""
+    hunks: list[dict] = []
+    current = None
+    for line in str(diff_text or "").splitlines(keepends=True):
+        if line.startswith("@@"):
+            match = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
+            if not match:
+                continue
+            current = {
+                "index": len(hunks),
+                "header": line.rstrip("\n"),
+                "oldStart": int(match.group(1)),
+                "oldCount": int(match.group(2) or 1),
+                "newStart": int(match.group(3)),
+                "newCount": int(match.group(4) or 1),
+                "lines": [],
+            }
+            hunks.append(current)
+        elif current is not None:
+            current["lines"].append(line)
+    return hunks
+
+
+def apply_hunks(slug: str, change_id: str, selected: list[int] | None = None) -> dict:
+    """Apply only selected hunks from a recorded change."""
+    items = changes(slug)
+    entry = next((item for item in items if item["id"] == change_id), None)
+    if entry is None:
+        raise FileNotFoundError("Change not found")
+    if entry.get("reverted"):
+        raise ValueError("Change was reverted")
+    before = entry.get("before") or ""
+    after = entry.get("after") or ""
+    hunks = parse_hunks(diff(before, after, entry["path"]))
+    if not hunks:
+        raise ValueError("No hunks to apply")
+    wanted = {int(item) for item in (selected if selected is not None else range(len(hunks)))}
+    if any(item < 0 or item >= len(hunks) for item in wanted):
+        raise ValueError("Selected hunk is out of range")
+    before_lines = before.splitlines(keepends=True)
+    result = []
+    cursor = 0
+    for hunk in hunks:
+        start = max(0, hunk["oldStart"] - 1)
+        if start < cursor or start > len(before_lines):
+            raise ValueError("Hunk is out of order")
+        result.extend(before_lines[cursor:start])
+        old_segment = []
+        new_segment = []
+        for line in hunk["lines"]:
+            if line.startswith(" "):
+                old_segment.append(line[1:])
+                new_segment.append(line[1:])
+            elif line.startswith("-"):
+                old_segment.append(line[1:])
+            elif line.startswith("+"):
+                new_segment.append(line[1:])
+        result.extend(new_segment if hunk["index"] in wanted else old_segment)
+        cursor = start + len(old_segment)
+    result.extend(before_lines[cursor:])
+    content = "".join(result)
+    written = write_text(slug, entry["path"], content, source="user")
+    return {"path": entry["path"], "applied": sorted(wanted), "hunks": len(hunks), "content": content, **written}
+
+
+def _snapshots_root(slug: str, chat_id: str) -> pathlib.Path:
+    if not re.fullmatch(r"[a-f0-9]{12}", str(chat_id or "")):
+        raise ValueError("Invalid chat id")
+    path = _state_dir(slug) / "snapshots" / chat_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def snapshot_turn(slug: str, chat_id: str) -> dict:
+    """Create a workspace snapshot before a turn. Excludes app/build state."""
+    root = ws_path(slug)
+    folder = _snapshots_root(slug, chat_id)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    snapshot_id = f"{stamp}-{uuid.uuid4().hex[:8]}"
+    target = folder / f"{snapshot_id}.zip"
+    manifest = {"id": snapshot_id, "chatId": chat_id, "at": now(), "files": {}}
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
+        for item in sorted(root.rglob("*")):
+            if item.is_dir():
+                continue
+            rel = item.relative_to(root).as_posix()
+            parts = set(item.relative_to(root).parts)
+            if parts & {".agent", "__pycache__", ".git", "build", "tmp"}:
+                continue
+            if item.suffix.lower() in (".tmp", ".pyc"):
+                continue
+            zf.write(item, rel)
+            manifest["files"][rel] = hashlib.sha256(item.read_bytes()).hexdigest()
+        zf.writestr(".snapshot.json", json.dumps(manifest, indent=2))
+    items = sorted(folder.glob("*.zip"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in items[20:]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    return {"id": snapshot_id, "path": target.relative_to(root).as_posix(), "files": len(manifest["files"])}
+
+
+def list_snapshots(slug: str, chat_id: str) -> list[dict]:
+    folder = _snapshots_root(slug, chat_id)
+    out = []
+    for path in sorted(folder.glob("*.zip"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            out.append({"id": path.stem, "at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(path.stat().st_mtime)), "size": path.stat().st_size})
+        except OSError:
+            pass
+    return out
+
+
+def restore_snapshot(slug: str, chat_id: str, snapshot_id: str) -> dict:
+    folder = _snapshots_root(slug, chat_id)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", snapshot_id or ""):
+        raise ValueError("Invalid snapshot id")
+    archive = folder / f"{snapshot_id}.zip"
+    if not archive.is_file():
+        raise FileNotFoundError("Snapshot not found")
+    root = ws_path(slug)
+    staging = folder / f".restore-{uuid.uuid4().hex[:8]}"
+    staging.mkdir(parents=True, exist_ok=False)
+    try:
+        with zipfile.ZipFile(archive) as zf:
+            for member in zf.infolist():
+                if member.is_dir():
+                    continue
+                target = (staging / member.filename).resolve()
+                if not target.is_relative_to(staging):
+                    raise ValueError("Snapshot contains an unsafe path")
+            zf.extractall(staging)
+        for item in list(root.iterdir()):
+            if item.name == ".agent":
+                continue
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+        for item in staging.iterdir():
+            if item.name == ".snapshot.json":
+                continue
+            target = root / item.name
+            if item.is_dir():
+                shutil.copytree(item, target)
+            else:
+                shutil.copy2(item, target)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return {"id": snapshot_id, "restored": True}
 
 
 def snapshot_hash(slug: str) -> str:

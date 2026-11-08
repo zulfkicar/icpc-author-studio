@@ -19,20 +19,26 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import (
     HumanInTheLoopMiddleware,
     ModelCallLimitMiddleware,
+    ModelFallbackMiddleware,
+    ModelRetryMiddleware,
     SummarizationMiddleware,
     TodoListMiddleware,
+    ToolRetryMiddleware,
 )
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, RemoveMessage, ToolMessage
 from langchain_core.tools import InjectedToolCallId, tool
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import InjectedState
-from langgraph.types import Command
+from langgraph.types import Command, interrupt
 
-from agent_middleware import PinnedContextMiddleware, ToolErrorMiddleware
+from agent_middleware import ContextBudgetMiddleware, PinnedContextMiddleware, ToolErrorMiddleware
 from agent_state import AuthorState, clean_brief, clean_decisions, clean_list
 import agent
 import config
+import prompt_loader
+import skill_registry
 import winutil
 import workspace
 
@@ -43,6 +49,18 @@ reference assumptions and negative solutions that do not exercise the intended d
 Never read `data/secret`, answer files, or hidden test data. Return a concise set of
 findings with exact file paths and, where useful, a suggested test. Do not claim a
 package is verified; the deterministic verifier is the authority."""
+
+TEST_DESIGNER_PROMPT = """You are an independent ICPC test designer. You do not write files or run code.
+Given the statement, constraints, reference, validator and current tests, propose missing
+edge cases, boundary cases, adversarial cases, performance cases and negative-solution
+families. Do not read secret answers. Return concrete test ideas with expected purpose and
+why the current suite is insufficient. You cannot verify or approve."""
+
+VERIFIER_AUDITOR_PROMPT = """You are an independent verifier auditor. You do not edit, approve or mark
+anything verified. Inspect the verification report, checker/interactor evidence and test
+coverage. Look for false passes, checker accepts-everything or rejects-valid behavior,
+malformed-output handling, interactive protocol gaps, stale evidence and weak negative
+solutions. Return findings with severity, exact evidence and recommended self-tests."""
 
 
 _LOOP = None
@@ -298,23 +316,107 @@ REVIEWER_TOOLS = [reviewer_list_files, reviewer_read_file, reviewer_report]
 
 
 @tool
-async def review_package(request: str = "Review this package for ambiguity and weak tests.", state: Annotated[dict, InjectedState] = None) -> dict:
-    """Ask an independent, read-only reviewer agent for proposal-only findings."""
-    cfg = config.load()
-    reviewer_model = _model(cfg)
-    reviewer = create_agent(
-        reviewer_model,
+def ask_user(
+    questions: list[str],
+    tool_call_id: Annotated[str, InjectedToolCallId],
+    context: str = "",
+    options: list[str] = None,
+    recommended: str = "",
+    state: Annotated[dict, InjectedState] = None,
+) -> Command:
+    """Ask the user for high-impact clarification. Pauses the graph until answered."""
+    cleaned = [" ".join(str(item).split())[:500] for item in (questions or []) if str(item).strip()]
+    if not cleaned:
+        raise ValueError("At least one clarification question is required")
+    cleaned = cleaned[:3]
+    payload = {
+        "type": "clarification",
+        "questions": cleaned,
+        "context": " ".join(str(context or "").split())[:2000],
+        "options": [str(item)[:200] for item in (options or [])[:8]],
+        "recommended": str(recommended or "")[:500],
+    }
+    answer = interrupt(payload)
+    if isinstance(answer, dict):
+        answers = answer.get("answers") or answer.get("answer") or answer
+    else:
+        answers = answer
+    record = {"questions": cleaned, "answers": answers, "context": payload["context"]}
+    text = f"User clarification: {answers}"
+    return Command(update={
+        "messages": [ToolMessage(content=text, tool_call_id=tool_call_id)],
+        "clarifications": [record],
+        "pending_clarification": {},
+    })
+
+
+@tool
+def list_skills() -> dict:
+    """List available progressive-disclosure skills and their one-line purpose."""
+    return {"skills": [
+        {"name": item.name, "description": item.description, "when_to_use": item.when_to_use, "version": item.version}
+        for item in skill_registry.all_skills()
+    ]}
+
+
+@tool
+def load_skill(
+    name: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
+    state: Annotated[dict, InjectedState] = None,
+) -> Command:
+    """Load a specialized skill's full checklist into pinned context. At most two may be active."""
+    active, skill = skill_registry.activate(state.get("active_skills") if state else [], name)
+    return Command(update={
+        "active_skills": active,
+        "messages": [ToolMessage(
+            content=f"Loaded skill {skill.name}. Its checklist is now pinned for the next model call.",
+            tool_call_id=tool_call_id,
+        )],
+    })
+
+
+@tool
+def unload_skill(
+    name: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
+    state: Annotated[dict, InjectedState] = None,
+) -> Command:
+    """Unload a skill and remove its instructions from pinned context."""
+    active = skill_registry.deactivate(state.get("active_skills") if state else [], name)
+    return Command(update={
+        "active_skills": active,
+        "messages": [ToolMessage(content=f"Unloaded skill {name}.", tool_call_id=tool_call_id)],
+    })
+
+
+def _review_subgraph(cfg: dict, *, prompt: str, name: str):
+    """Wrap a read-only create_agent worker in a real StateGraph subgraph."""
+    model = _model(cfg)
+    worker = create_agent(
+        model,
         REVIEWER_TOOLS,
         state_schema=AuthorState,
-        system_prompt=REVIEWER_PROMPT,
-        name="icpc_reviewer",
+        system_prompt=prompt,
+        name=name,
     )
+    builder = StateGraph(AuthorState)
+    builder.add_node("review", worker)
+    builder.add_edge(START, "review")
+    builder.add_edge("review", END)
+    return builder.compile(), model
+
+
+async def _run_review_subgraph(request: str, state: dict | None, *, prompt: str, name: str) -> dict:
+    cfg = config.load()
+    graph, model = _review_subgraph(cfg, prompt=prompt, name=name)
     try:
-        result = await reviewer.ainvoke({
+        result = await graph.ainvoke({
             "messages": [HumanMessage(content=str(request))],
-            "slug": state.get("slug"),
-            "chat_id": state.get("chat_id") or "reviewer",
+            "slug": (state or {}).get("slug"),
+            "chat_id": (state or {}).get("chat_id") or name,
             "decisions": [],
+            "clarifications": [],
         })
         value = getattr(result, "value", result)
         messages = value.get("messages", []) if isinstance(value, dict) else []
@@ -322,9 +424,27 @@ async def review_package(request: str = "Review this package for ambiguity and w
         return {"review": text}
     finally:
         try:
-            await reviewer_model.async_client.close()
+            await model.async_client.close()
         except Exception:
             pass
+
+
+@tool
+async def review_package(request: str = "Review this package for ambiguity and weak tests.", state: Annotated[dict, InjectedState] = None) -> dict:
+    """Ask an independent, read-only reviewer subgraph for proposal-only findings."""
+    return await _run_review_subgraph(request, state, prompt=REVIEWER_PROMPT, name="icpc_reviewer")
+
+
+@tool
+async def ask_test_designer(request: str = "Propose missing tests.", state: Annotated[dict, InjectedState] = None) -> dict:
+    """Ask a read-only test-designer subagent for missing cases; it cannot write files."""
+    return await _run_review_subgraph(request, state, prompt=TEST_DESIGNER_PROMPT, name="icpc_test_designer")
+
+
+@tool
+async def ask_verifier_auditor(request: str = "Audit the verification evidence.", state: Annotated[dict, InjectedState] = None) -> dict:
+    """Ask a read-only verifier auditor for evidence gaps; it cannot approve or verify."""
+    return await _run_review_subgraph(request, state, prompt=VERIFIER_AUDITOR_PROMPT, name="icpc_verifier_auditor")
 
 
 TOOLS = [
@@ -345,6 +465,12 @@ TOOLS = [
     record_decision,
     set_focus,
     review_package,
+    ask_user,
+    list_skills,
+    load_skill,
+    unload_skill,
+    ask_test_designer,
+    ask_verifier_auditor,
 ]
 
 
@@ -604,6 +730,7 @@ def _save_snapshot(slug: str, chat_id: str, snapshot) -> dict:
         workspace.save_chat_messages(slug, chat_id, messages)
     todos = values.get("todos") or []
     workspace.save_plan(slug, chat_id, _plan_from_todos(todos))
+    workspace.save_clarifications(slug, chat_id, values.get("clarifications") or [])
     return values
 
 
@@ -643,6 +770,11 @@ async def _run_turn_async(
             # model-call limit. ModelCallLimitMiddleware still caps real calls.
             "recursion_limit": max(60, int(cfg.get("maxToolRounds", 24)) * 6 + 20),
         }
+        if resume is None:
+            try:
+                workspace.snapshot_turn(slug, chat_id)
+            except Exception as exc:
+                emit("warning", {"text": f"Snapshot could not be created: {exc}"})
         graph, graph_model = _graph(cfg, saver)
         existing = await saver.aget_tuple(thread_config)
         if existing is not None and resume is None:
@@ -661,6 +793,7 @@ async def _run_turn_async(
                 "selected_context": clean_list(selected_context or [], 25),
                 "todos": _todos_from_plan(workspace.get_plan(slug, chat_id)),
                 "decisions": [],
+                "clarifications": workspace.get_clarifications(slug, chat_id),
             }
         else:
             input_state = {
@@ -670,6 +803,7 @@ async def _run_turn_async(
                 "mode": mode or "author",
                 "selected_context": clean_list(selected_context or [], 25),
                 "decisions": [],
+                "clarifications": [],
             }
 
         final_text = ""
@@ -739,6 +873,7 @@ async def _run_turn_async(
 
 def _graph(cfg: dict, saver):
     model = _model(cfg)
+    fallback_models = _fallback_models(cfg)
     review_writes = bool(cfg.get("reviewWrites"))
     interrupt_on = {"export_package": {"allowed_decisions": ["approve", "reject"]}}
     if review_writes:
@@ -748,17 +883,38 @@ def _graph(cfg: dict, saver):
         model,
         TOOLS,
         state_schema=AuthorState,
-        system_prompt=agent.SYSTEM,
+        system_prompt=prompt_loader.compose_system(),
         middleware=[
             PinnedContextMiddleware(),
+            ContextBudgetMiddleware(
+                model_window_tokens=int(cfg.get("modelWindowTokens", 1_048_576)),
+                max_output_tokens=int(cfg.get("maxOutputTokens", 393_216)),
+            ),
             SummarizationMiddleware(
                 model=model,
-                trigger=("tokens", int(cfg.get("summaryTriggerTokens", 30000))),
-                keep=("messages", int(cfg.get("summaryKeepMessages", 12))),
+                trigger=("tokens", int(cfg.get("summaryTriggerTokens", 500_000))),
+                keep=("messages", int(cfg.get("summaryKeepMessages", 24))),
             ),
             TodoListMiddleware(),
             HumanInTheLoopMiddleware(interrupt_on=interrupt_on, interrupt_mode="per_call"),
             ToolErrorMiddleware(),
+            ModelRetryMiddleware(
+                max_retries=max(0, int(cfg.get("maxRetries", 2))),
+                initial_delay=1.0,
+                max_delay=30.0,
+                on_failure="error",
+            ),
+            *([ModelFallbackMiddleware(*fallback_models)] if fallback_models else []),
+            ToolRetryMiddleware(
+                max_retries=max(0, int(cfg.get("maxRetries", 2))),
+                tools=[
+                    "list_files", "read_file", "search_workspace",
+                    "list_tests", "report_summary", "read_report",
+                ],
+                initial_delay=0.5,
+                max_delay=10.0,
+                on_failure="continue",
+            ),
             ModelCallLimitMiddleware(run_limit=max(8, int(cfg.get("maxToolRounds", 24)))),
         ],
         checkpointer=saver,
@@ -767,28 +923,108 @@ def _graph(cfg: dict, saver):
     return graph, model
 
 
-def _model(cfg: dict) -> ChatOpenAI:
-    if not cfg.get("apiKey"):
+def _chat_model(cfg: dict, *, model: str, api_key: str, base_url: str) -> ChatOpenAI:
+    if not api_key:
         raise RuntimeError("No API key is configured. Open Settings and add an Explabs or OpenAI-compatible key.")
-    # httpx2/OpenAI streaming can fail on compressed responses in the pinned
-    # dependency set (`process() takes no keyword arguments`). Ask providers for
-    # an identity-encoded response.
     headers = {"Accept-Encoding": "identity"}
-    base = str(cfg.get("baseUrl") or "")
-    if "openrouter" in base:
+    if "openrouter" in base_url:
         headers.update({"HTTP-Referer": "http://127.0.0.1", "X-Title": "ICPC Author Agent"})
     return ChatOpenAI(
-        model=str(cfg.get("model") or "configured-model"),
-        api_key=str(cfg.get("apiKey")),
-        base_url=base or None,
+        model=model,
+        api_key=api_key,
+        base_url=base_url or None,
         temperature=float(cfg.get("temperature", 0.2)),
-        max_retries=1,
-        timeout=300,
+        max_retries=0,
+        timeout=max(10, int(cfg.get("requestTimeoutSeconds", 300))),
         streaming=True,
         stream_usage=True,
-        extra_body={"max_tokens": 8000},
+        max_tokens=max(1, int(cfg.get("maxOutputTokens", 393_216))),
         default_headers=headers or None,
     )
+
+
+def _model(cfg: dict) -> ChatOpenAI:
+    return _chat_model(
+        cfg,
+        model=str(cfg.get("model") or "configured-model"),
+        api_key=str(cfg.get("apiKey") or ""),
+        base_url=str(cfg.get("baseUrl") or ""),
+    )
+
+
+def _fallback_models(cfg: dict) -> list[ChatOpenAI]:
+    model = str(cfg.get("fallbackModel") or "").strip()
+    if not model:
+        return []
+    return [_chat_model(
+        cfg,
+        model=model,
+        api_key=str(cfg.get("fallbackApiKey") or cfg.get("apiKey") or ""),
+        base_url=str(cfg.get("fallbackBaseUrl") or cfg.get("baseUrl") or ""),
+    )]
+
+
+def list_history(slug: str, chat_id: str) -> list[dict]:
+    """List durable checkpoints for conversation-only restore."""
+    async def _list():
+        cfg = config.load()
+        db = workspace.checkpoint_path(slug)
+        async with AsyncSqliteSaver.from_conn_string(str(db)) as saver:
+            await saver.setup()
+            graph, model = _graph(cfg, saver)
+            try:
+                out = []
+                async for snapshot in graph.aget_state_history({"configurable": {"thread_id": chat_id}}):
+                    values = snapshot.values or {}
+                    messages = values.get("messages") or []
+                    users = [item for item in messages if getattr(item, "type", "") == "human"]
+                    out.append({
+                        "checkpointId": (snapshot.config or {}).get("configurable", {}).get("checkpoint_id"),
+                        "createdAt": str(getattr(snapshot, "created_at", "") or ""),
+                        "messages": len(messages),
+                        "lastUser": str(getattr(users[-1], "content", ""))[:300] if users else "",
+                    })
+                    if len(out) >= 100:
+                        break
+                return out
+            finally:
+                try:
+                    await model.async_client.close()
+                except Exception:
+                    pass
+    return _run_coro(_list())
+
+
+def restore_history(slug: str, chat_id: str, checkpoint_id: str) -> dict:
+    """Restore the visible transcript to a checkpoint (conversation-only)."""
+    async def _restore():
+        cfg = config.load()
+        db = workspace.checkpoint_path(slug)
+        async with AsyncSqliteSaver.from_conn_string(str(db)) as saver:
+            await saver.setup()
+            graph, model = _graph(cfg, saver)
+            try:
+                found = None
+                async for snapshot in graph.aget_state_history({"configurable": {"thread_id": chat_id}}):
+                    cid = (snapshot.config or {}).get("configurable", {}).get("checkpoint_id")
+                    if cid == checkpoint_id:
+                        found = snapshot
+                        break
+                if found is None:
+                    raise FileNotFoundError("Checkpoint not found")
+                values = found.values or {}
+                messages = [item for item in (_from_lc(m) for m in values.get("messages", [])) if item]
+                workspace.save_chat_messages(slug, chat_id, messages)
+                workspace.save_plan(slug, chat_id, _plan_from_todos(values.get("todos") or []))
+                workspace.save_clarifications(slug, chat_id, values.get("clarifications") or [])
+                await saver.adelete_thread(chat_id)
+                return {"restored": True, "checkpointId": checkpoint_id, "messages": len(messages)}
+            finally:
+                try:
+                    await model.async_client.close()
+                except Exception:
+                    pass
+    return _run_coro(_restore())
 
 
 def run_turn(slug: str, chat_id: str, user_message: str, emit, cancelled=None, mode=None, selected_context=None) -> dict:
@@ -822,13 +1058,14 @@ def run_turn(slug: str, chat_id: str, user_message: str, emit, cancelled=None, m
         raise
 
 
-def resume_turn(slug: str, chat_id: str, decisions, emit, cancelled=None) -> dict:
+def resume_turn(slug: str, chat_id: str, decisions=None, emit=None, cancelled=None, clarification=None) -> dict:
     winutil.prepare()
     if cancelled is not None and cancelled():
         raise RuntimeError("Cancelled by user")
     cfg = config.load()
+    resume_value = clarification if clarification is not None else decisions
     final_text, rounds, usage, interrupts, values = _run_coro(_run_turn_async(
-        slug, chat_id, "", emit, cfg, None, None, cancelled, resume=decisions,
+        slug, chat_id, "", emit, cfg, None, None, cancelled, resume=resume_value,
     ), key=f"chat:{slug}:{chat_id}")
     return {
         "text": final_text,

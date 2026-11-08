@@ -405,8 +405,11 @@ class Handler(BaseHTTPRequestHandler):
                     body = self.read_json()
                     chat_id = parts[4]
                     decisions = body.get("decisions")
-                    if not decisions:
-                        raise ValueError("Approval decisions are required")
+                    clarification = body.get("clarification")
+                    if clarification is None and "answers" in body:
+                        clarification = {"answers": body.get("answers")}
+                    if not decisions and clarification is None:
+                        raise ValueError("Approval decisions or clarification answers are required")
                     workspace.get_chat(slug, chat_id)
                     with CHAT_LOCK:
                         if slug in ACTIVE_CHATS:
@@ -415,7 +418,7 @@ class Handler(BaseHTTPRequestHandler):
 
                     def run_resume(emit, cancelled):
                         try:
-                            return graph_agent.resume_turn(slug, chat_id, decisions, emit, cancelled)
+                            return graph_agent.resume_turn(slug, chat_id, decisions, emit, cancelled, clarification=clarification)
                         finally:
                             with CHAT_LOCK:
                                 ACTIVE_CHATS.discard(slug)

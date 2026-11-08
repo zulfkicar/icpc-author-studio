@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import threading
 
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -23,10 +24,24 @@ DEFAULTS = {
     "temperature": 0.2,
     "maxToolRounds": 24,
     "reviewWrites": False,
-    "summaryTriggerTokens": 30000,
-    "summaryKeepMessages": 12,
+    "contextBudgetTokens": 500000,
+    "modelWindowTokens": 1048576,
+    "maxOutputTokens": 393216,
+    "summaryTriggerTokens": 500000,
+    "summaryKeepMessages": 24,
     "inputPricePerMillion": 0.375,
     "outputPricePerMillion": 1.5,
+    "fallbackModel": "",
+    "fallbackBaseUrl": "",
+    "fallbackApiKey": "",
+    "maxRetries": 2,
+    "requestTimeoutSeconds": 300,
+}
+
+MODEL_PRICING = {
+    "configured-model": {"input": 0.375, "output": 1.5},
+    "configured-model": {"input": 0.3, "output": 1.2},
+    "configured-model": {"input": 0.15, "output": 0.5},
 }
 
 _LOCK = threading.Lock()
@@ -40,10 +55,12 @@ def _ensure() -> None:
 def load() -> dict:
     _ensure()
     data = dict(DEFAULTS)
+    raw = {}
     try:
-        raw = json.loads(CONFIG_PATH.read_text("utf-8"))
-        if isinstance(raw, dict):
-            data.update(raw)
+        loaded = json.loads(CONFIG_PATH.read_text("utf-8"))
+        if isinstance(loaded, dict):
+            raw = loaded
+            data.update(loaded)
     except FileNotFoundError:
         pass
     except (ValueError, OSError):
@@ -57,6 +74,12 @@ def load() -> dict:
         data["baseUrl"] = base_url
     if model:
         data["model"] = model
+    pricing = MODEL_PRICING.get(str(data.get("model") or ""))
+    if pricing:
+        if "inputPricePerMillion" not in raw:
+            data["inputPricePerMillion"] = pricing["input"]
+        if "outputPricePerMillion" not in raw:
+            data["outputPricePerMillion"] = pricing["output"]
     max_rounds = os.environ.get("AUTHOR_AGENT_MAX_TOOL_ROUNDS")
     if max_rounds:
         try:
@@ -81,7 +104,7 @@ def load() -> dict:
 def save(update: dict) -> dict:
     with _LOCK:
         data = load()
-        for key in ("baseUrl", "model", "apiKey", "temperature", "maxToolRounds", "reviewWrites", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion"):
+        for key in ("baseUrl", "model", "apiKey", "temperature", "maxToolRounds", "reviewWrites", "contextBudgetTokens", "modelWindowTokens", "maxOutputTokens", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion", "fallbackModel", "fallbackBaseUrl", "fallbackApiKey", "maxRetries", "requestTimeoutSeconds"):
             if key in update and update[key] is not None:
                 data[key] = update[key]
         data["temperature"] = max(0.0, min(2.0, float(data.get("temperature", 0.2))))
@@ -89,6 +112,16 @@ def save(update: dict) -> dict:
         _ensure()
         CONFIG_PATH.write_text(json.dumps(data, indent=2), "utf-8")
         return data
+
+
+def redact(value) -> str:
+    """Remove provider keys and obvious key-shaped tokens from diagnostics."""
+    text = str(value)
+    data = load()
+    for key in (data.get("apiKey"), data.get("fallbackApiKey")):
+        if key and len(str(key)) >= 8:
+            text = text.replace(str(key), "[REDACTED_API_KEY]")
+    return re.sub(r"\b(?:xpl_|sk-)[A-Za-z0-9_-]{8,}\b", "[REDACTED_API_KEY]", text)
 
 
 def public(data: dict | None = None) -> dict:
@@ -102,8 +135,16 @@ def public(data: dict | None = None) -> dict:
         "temperature": data.get("temperature", 0.2),
         "maxToolRounds": data.get("maxToolRounds", 24),
         "reviewWrites": bool(data.get("reviewWrites", False)),
-        "summaryTriggerTokens": int(data.get("summaryTriggerTokens", 30000)),
-        "summaryKeepMessages": int(data.get("summaryKeepMessages", 12)),
+        "contextBudgetTokens": int(data.get("contextBudgetTokens", 500000)),
+        "modelWindowTokens": int(data.get("modelWindowTokens", 1048576)),
+        "maxOutputTokens": int(data.get("maxOutputTokens", 393216)),
+        "summaryTriggerTokens": int(data.get("summaryTriggerTokens", 500000)),
+        "summaryKeepMessages": int(data.get("summaryKeepMessages", 24)),
         "inputPricePerMillion": float(data.get("inputPricePerMillion", 0.0)),
         "outputPricePerMillion": float(data.get("outputPricePerMillion", 0.0)),
+        "fallbackModel": data.get("fallbackModel", ""),
+        "fallbackBaseUrl": data.get("fallbackBaseUrl", ""),
+        "hasFallbackKey": bool(data.get("fallbackApiKey")),
+        "maxRetries": int(data.get("maxRetries", 2)),
+        "requestTimeoutSeconds": int(data.get("requestTimeoutSeconds", 300)),
     }

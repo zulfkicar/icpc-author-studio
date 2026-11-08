@@ -44,6 +44,7 @@
         <button id="new-chat" class="icon-btn" title="New chat">+</button>
       </div>
       <input id="chat-search" class="chat-search" placeholder="Search chats" autocomplete="off">
+      <div id="chat-tabs" class="chat-tabs"></div>
       <div id="chat-list" class="chat-list"></div>
     </div>
 
@@ -106,7 +107,8 @@
         <button id="context-btn" class="context-chip context-button" type="button">+ context</button>
         <span id="context-chips" class="context-chips"></span>
       </div>
-      <textarea id="composer" rows="3" placeholder="Ask the agent to author, debug, test, or explain. Ctrl+Enter to send."></textarea>
+      <textarea id="composer" rows="3" placeholder="Ask the agent to author, debug, test, or explain. Ctrl+Enter to send. Type @ to mention a file."></textarea>
+      <div id="mention-menu" class="mention-menu" hidden></div>
       <div class="composer-row">
         <span class="hint">Deterministic verification gates export. The agent cannot approve its own work.</span>
         <button id="send-btn" class="primary">Send</button>

@@ -160,6 +160,83 @@ def run(body: dict) -> dict:
     }
 
 
+def run_interactive(body: dict) -> dict:
+    """Run validator/interactor and solution with connected pipes."""
+    validator = _safe_argv(body.get("validator") or [])
+    solution = _safe_argv(body.get("solution") or [])
+    cwd = _safe_cwd(str(body.get("cwd") or WORKSPACES))
+    timeout = max(1.0, min(MAX_TIMEOUT, float(body.get("timeout") or 20.0)))
+    transcript: list[dict] = []
+    lock = threading.Lock()
+
+    def log(direction: str, data: bytes) -> None:
+        if not data:
+            return
+        text = data.decode("utf-8", "replace")
+        for line in text.splitlines() or [""]:
+            with lock:
+                transcript.append({"direction": direction, "text": line[:2000]})
+
+    validator_proc = subprocess.Popen(
+        validator, cwd=str(cwd), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, preexec_fn=_limits(timeout),
+    )
+    solution_proc = subprocess.Popen(
+        solution, cwd=str(cwd), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, preexec_fn=_limits(timeout),
+    )
+
+    def pump(source_fd: int, target_fd: int, direction: str) -> None:
+        try:
+            while True:
+                chunk = os.read(source_fd, 4096)
+                if not chunk:
+                    break
+                log(direction, chunk)
+                os.write(target_fd, chunk)
+        except Exception:
+            pass
+        finally:
+            try:
+                os.close(target_fd)
+            except Exception:
+                pass
+
+    threads = [
+        threading.Thread(target=pump, args=(validator_proc.stdout.fileno(), solution_proc.stdin.fileno(), "judge"), daemon=True),
+        threading.Thread(target=pump, args=(solution_proc.stdout.fileno(), validator_proc.stdin.fileno(), "solution"), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    timed_out = False
+    try:
+        validator_proc.wait(timeout=timeout)
+        solution_proc.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        for proc in (validator_proc, solution_proc):
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+    for thread in threads:
+        thread.join(timeout=1)
+    validator_err = validator_proc.stderr.read() if validator_proc.stderr else b""
+    solution_err = solution_proc.stderr.read() if solution_proc.stderr else b""
+    return {
+        "ok": not timed_out and validator_proc.returncode == 0,
+        "timedOut": timed_out,
+        "validatorReturncode": validator_proc.returncode,
+        "solutionReturncode": solution_proc.returncode,
+        "transcript": transcript[:5000],
+        "validatorStderr": base64.b64encode(validator_err[:MAX_OUTPUT]).decode("ascii"),
+        "solutionStderr": base64.b64encode(solution_err[:MAX_OUTPUT]).decode("ascii"),
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "AuthorExecutor/0.1"
 
@@ -180,7 +257,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"error": "Not found"}, 404)
 
     def do_POST(self):
-        if urllib.parse.urlparse(self.path).path != "/run":
+        path = urllib.parse.urlparse(self.path).path
+        if path not in ("/run", "/interact"):
             return self._json({"error": "Not found"}, 404)
         if TOKEN and self.headers.get("X-Executor-Token") != TOKEN:
             return self._json({"error": "Unauthorized"}, 403)
@@ -192,7 +270,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(body, dict):
                 raise ValueError("Invalid request")
             with SEMAPHORE:
-                return self._json(run(body))
+                return self._json(run(body) if path == "/run" else run_interactive(body))
         except Exception as exc:  # noqa: BLE001
             return self._json({"error": f"{type(exc).__name__}: {exc}"}, 400)
 

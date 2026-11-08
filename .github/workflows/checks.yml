@@ -20,9 +20,24 @@ jobs:
         run: |
           python -m py_compile \
             server.py agent.py agent_state.py agent_middleware.py graph_agent.py \
-            workspace.py verify.py config.py winutil.py executor_server.py \
-            eval/run_eval.py qa/stress_agent.py
+            workspace.py verify.py config.py winutil.py executor_server.py schemas.py skill_registry.py prompt_loader.py package_model.py verification_modes.py mcp_server.py \
+            eval/run_eval.py qa/stress_agent.py qa/test_phase1.py qa/test_skills.py \
+            qa/test_verification_modes.py qa/test_interactive.py qa/test_hunks.py qa/test_snapshots.py qa/test_mcp.py
       - name: Check UI JavaScript
         run: node --check web/app.js
+      - name: Run Phase 1 tests
+        run: python qa/test_phase1.py
+      - name: Run skill tests
+        run: python qa/test_skills.py
+      - name: Run verification-mode tests
+        run: python qa/test_verification_modes.py
+      - name: Run interactive tests
+        run: python qa/test_interactive.py
+      - name: Run hunk tests
+        run: python qa/test_hunks.py
+      - name: Run snapshot tests
+        run: python qa/test_snapshots.py
+      - name: Run MCP tests
+        run: python qa/test_mcp.py
       - name: Run deterministic stress suite
         run: python qa/stress_agent.py

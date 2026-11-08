@@ -134,6 +134,49 @@ def run_hitl() -> None:
         cleanup(slug)
 
 
+def run_clarification() -> None:
+    print("clarification")
+    slug, chat_id = make_workspace("QA Clarification")
+    try:
+        use_model(FakeChat(responses=[
+            AIMessage(content="", tool_calls=[{
+                "name": "ask_user",
+                "args": {
+                    "questions": ["Should the output be a+b or a-b?"],
+                    "context": "The statement and checker disagree.",
+                    "options": ["a+b", "a-b"],
+                    "recommended": "a+b",
+                },
+                "id": "q1",
+            }]),
+            AIMessage(content="clarified"),
+        ]))
+        result = graph_agent.run_turn(slug, chat_id, "author", lambda *_: None)
+        check("clarification paused", result["paused"] and result["interrupts"][0]["value"].get("type") == "clarification", result)
+        use_model(FakeChat(auto_text="clarified"))
+        resumed = graph_agent.resume_turn(slug, chat_id, None, lambda *_: None, clarification={"answers": ["a+b"]})
+        check("clarification resumed", not resumed["paused"] and resumed["text"] == "clarified", resumed)
+        check("clarification recorded", bool(workspace.get_chat(slug, chat_id).get("clarifications")), workspace.get_chat(slug, chat_id).get("clarifications"))
+    finally:
+        cleanup(slug)
+
+
+def run_history_restore() -> None:
+    print("conversation history restore")
+    slug, chat_id = make_workspace("QA History")
+    try:
+        use_model(FakeChat(auto_text="first"))
+        graph_agent.run_turn(slug, chat_id, "one", lambda *_: None)
+        history = graph_agent.list_history(slug, chat_id)
+        check("history listed", bool(history) and bool(history[0].get("checkpointId")), history)
+        target = next((item for item in history if item.get("messages", 0) > 0), history[-1])
+        result = graph_agent.restore_history(slug, chat_id, target["checkpointId"])
+        check("history restored", result.get("restored") is True, result)
+        check("restored transcript", len(workspace.get_chat(slug, chat_id)["messages"]) >= 2, workspace.get_chat(slug, chat_id)["messages"])
+    finally:
+        cleanup(slug)
+
+
 def run_review_write() -> None:
     print("review-mode write approval")
     slug, chat_id = make_workspace("QA Review Write")
@@ -363,6 +406,8 @@ def main() -> int:
     tests = [
         run_durability,
         run_hitl,
+        run_clarification,
+        run_history_restore,
         run_review_write,
         run_checkpoint_repair,
         run_summarization,

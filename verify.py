@@ -20,6 +20,8 @@ import uuid
 import zipfile
 
 from config import TEMPLATES
+import package_model
+import verification_modes
 import winutil
 import workspace
 
@@ -163,11 +165,20 @@ def _tokens(value: bytes) -> list[bytes]:
     return value.split()
 
 
-def _compare(actual: bytes, expected: bytes) -> bool:
-    return _tokens(actual) == _tokens(expected)
+def _compare(actual: bytes, expected: bytes, tolerance: float | None = None) -> bool:
+    if tolerance is None:
+        return _tokens(actual) == _tokens(expected)
+    try:
+        left = [float(item) for item in _tokens(actual)]
+        right = [float(item) for item in _tokens(expected)]
+    except ValueError:
+        return False
+    if len(left) != len(right):
+        return False
+    return all(math.isfinite(a) and math.isfinite(b) and abs(a - b) <= tolerance for a, b in zip(left, right))
 
 
-def _verdict(result: dict, expected: bytes | None, time_limit: float) -> str:
+def _verdict(result: dict, expected: bytes | None, time_limit: float, compare=None) -> str:
     if result["timedOut"]:
         return "TLE"
     if not result["ok"]:
@@ -176,28 +187,19 @@ def _verdict(result: dict, expected: bytes | None, time_limit: float) -> str:
         return "RE"
     if expected is None:
         return "NO_ANSWER"
-    return "AC" if _compare(result["stdout"], expected) else "WA"
+    return "AC" if (compare(result["stdout"], expected) if compare else _compare(result["stdout"], expected)) else "WA"
 
 
 def _tests(slug: str) -> list[dict]:
-    root = workspace.ws_path(slug)
-    tests = []
-    for kind in ("sample", "secret"):
-        folder = root / "data" / kind
-        if not folder.is_dir():
-            continue
-        for path in sorted(folder.glob("*.in")):
-            if path.name.startswith("."):
-                continue
-            answer = path.with_suffix(".ans")
-            tests.append({
-                "name": f"{kind}/{path.name}",
-                "kind": kind,
-                "input": path,
-                "answer": answer,
-                "relative": path.relative_to(root).as_posix(),
-            })
-    return tests
+    package = package_model.load(slug)
+    return [{
+        "name": test.name,
+        "kind": test.kind,
+        "input": test.input,
+        "answer": test.answer or test.input.with_suffix(".ans"),
+        "group": test.group,
+        "relative": test.relative,
+    } for test in package.tests]
 
 
 def _validator(slug: str) -> pathlib.Path | None:
@@ -221,9 +223,15 @@ def _structure(slug: str, tests: list[dict], accepted: list[dict], negative: lis
     def check(name: str, status: str, detail: str) -> None:
         checks.append({"name": name, "status": status, "detail": detail})
 
-    for rel in ("problem.yaml", "domjudge-problem.ini", "problem_statement/problem.en.tex"):
-        check(f"File {rel}", "pass" if (root / rel).is_file() else "fail",
-              "present" if (root / rel).is_file() else "missing")
+    required = ["problem.yaml"]
+    if (root / "problem_statement/problem.en.tex").is_file():
+        required.append("problem_statement/problem.en.tex")
+    if (root / "statement/problem.en.tex").is_file():
+        required.append("statement/problem.en.tex")
+    if (root / "domjudge-problem.ini").is_file():
+        required.append("domjudge-problem.ini")
+    for rel in required:
+        check(f"File {rel}", "pass", "present")
     meta = _read_meta(slug)
     check("Problem name", "pass" if meta.get("name") else "fail",
           meta.get("name") or "no name in problem.yaml or domjudge-problem.ini")
@@ -459,11 +467,53 @@ def measure_limits(slug: str, cancelled=None) -> dict:
     }
 
 
+def _verify_interactive(slug: str, package: package_model.Package, cancelled=None) -> dict:
+    root = package.root
+    tests = _tests(slug)
+    solutions = _solutions(slug)
+    accepted = [s for s in solutions if s["kind"] == "accepted"]
+    negative = [s for s in solutions if s["kind"] == "negative"]
+    validator = _validator(slug)
+    checks = _structure(slug, tests, accepted, negative, validator)
+    checks.append({
+        "name": "Problem type",
+        "status": "pass" if package.is_interactive else "fail",
+        "detail": package.problem_type,
+    })
+    group_errors = package_model.group_errors(package)
+    checks.append({
+        "name": "Test groups",
+        "status": "pass" if not group_errors else "fail",
+        "detail": "; ".join(group_errors) if group_errors else "valid",
+    })
+    selftest = verification_modes.interactive_selftest(slug)
+    checks.append({"name": "Interactive self-test", "status": selftest["status"], "detail": selftest["detail"]})
+    errors = [f"{item['name']}: {item['detail']}" for item in checks if item["status"] == "fail"]
+    warnings = [f"{item['name']}: {item['detail']}" for item in checks if item["status"] in ("warn", "skipped")]
+    if not accepted:
+        errors.append("Interactive problems need an accepted reference")
+    return {
+        "status": "verified" if not errors else "failed",
+        "errors": errors,
+        "warnings": warnings,
+        "checks": checks,
+        "tests": [{"test": item["relative"], "kind": item["kind"], "group": item.get("group", ""), "interactive": True} for item in tests],
+        "negative": [{"path": item["path"], "status": "proposal", "interactive": True} for item in negative],
+        "counts": {"tests": len(tests), "accepted": len(accepted), "negative": len(negative), "groups": len(package.groups())},
+        "limits": workspace.state(slug).get("measuredLimits") or {},
+        "interactiveSelftest": selftest,
+        "at": workspace.now(),
+    }
+
+
 def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
     winutil.prepare()
     deadline = time.monotonic() + VERIFY_BUDGET_SECONDS
     _check_cancel(cancelled, deadline)
     root = workspace.ws_path(slug)
+    package = package_model.load(slug)
+    if package.is_interactive:
+        return _verify_interactive(slug, package, cancelled)
     meta = _read_meta(slug)
     tests = _tests(slug)
     solutions = _solutions(slug)
@@ -471,6 +521,19 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
     negative = [s for s in solutions if s["kind"] == "negative"]
     validator = _validator(slug)
     checks = _structure(slug, tests, accepted, negative, validator)
+    group_errors = package_model.group_errors(package)
+    checks.append({
+        "name": "Test groups",
+        "status": "pass" if not group_errors else "fail",
+        "detail": "; ".join(group_errors) if group_errors else "valid",
+    })
+    checker_selftest = verification_modes.checker_selftest(slug)
+    if checker_selftest["status"] != "skipped":
+        checks.append({
+            "name": "Checker self-test",
+            "status": "pass" if checker_selftest["status"] == "pass" else "fail",
+            "detail": checker_selftest["detail"],
+        })
     limit_state = workspace.state(slug)
     limits_measured = bool(limit_state.get("limitsMeasured"))
     measured = limit_state.get("measuredLimits") or {}
@@ -505,6 +568,26 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
 
     compiled = {}
     build_root = _new_build_dir(slug)
+    checker_argv = None
+    if package.output_validator is not None:
+        compiled_checker = verification_modes._build_program(
+            slug, package.output_validator.relative_to(package.root).as_posix(), build_root
+        )
+        if compiled_checker.get("ok"):
+            checker_argv = compiled_checker["argv"]
+        else:
+            errors.append("Checker failed to compile: " + str(compiled_checker.get("error", ""))[-1000:])
+
+    def compare(actual: bytes, expected: bytes, test: dict) -> bool:
+        if checker_argv is not None:
+            output_path = build_root / f"actual-{uuid.uuid4().hex[:8]}.out"
+            output_path.write_bytes(actual)
+            result = verification_modes._run_checker(
+                checker_argv, test["input"], output_path, test["answer"], build_root
+            )
+            return bool(result["ok"])
+        return _compare(actual, expected, package.float_tolerance())
+
     for solution in accepted + negative:
         _check_cancel(cancelled, deadline)
         compiled[solution["path"]] = _compile(slug, solution, build_root)
@@ -546,7 +629,7 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
                 continue
             result = _run(comp["argv"], cwd=root, data=test["input"].read_bytes(),
                           timeout=meta["timeLimitSeconds"] + 0.5)
-            verdict = _verdict(result, expected, meta["timeLimitSeconds"])
+            verdict = _verdict(result, expected, meta["timeLimitSeconds"], compare=lambda a, e: compare(a, e, test))
             row["solutions"].append({
                 "path": solution["path"], "verdict": verdict, "ms": round(result["ms"], 1),
                 "stderr": result["stderr"].decode("utf-8", "replace")[-500:] if verdict != "AC" else "",
@@ -575,7 +658,7 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
             expected = test["answer"].read_bytes() if test["answer"].is_file() else None
             result = _run(comp["argv"], cwd=root, data=test["input"].read_bytes(),
                           timeout=meta["timeLimitSeconds"] + 0.5)
-            verdict = _verdict(result, expected, meta["timeLimitSeconds"])
+            verdict = _verdict(result, expected, meta["timeLimitSeconds"], compare=lambda a, e: compare(a, e, test))
             counts[verdict] = counts.get(verdict, 0) + 1
             if verdict != "AC":
                 kills.append({"test": test["relative"], "verdict": verdict, "kind": test["kind"]})

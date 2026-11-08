@@ -11,8 +11,11 @@ from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from langchain_core.messages import SystemMessage, ToolMessage
+from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.errors import GraphBubbleUp
 
+import prompt_loader
+import skill_registry
 import workspace
 from agent_state import AuthorState, MAX_CONTEXT_FILES
 
@@ -59,7 +62,10 @@ def _pinned_context(state: dict) -> str:
     if focus:
         lines.extend(["", f"CURRENT FOCUS: {focus}"])
     mode = state.get("mode") or "author"
-    lines.extend(["", MODE_INSTRUCTIONS.get(mode, MODE_INSTRUCTIONS["author"])])
+    lines.extend(["", prompt_loader.mode_text(mode)])
+    skills = state.get("active_skills") or []
+    if skills:
+        lines.extend(["", "ACTIVE SKILLS", skill_registry.pinned_text(skills)])
     todos = state.get("todos") or []
     if todos:
         lines.append("")
@@ -111,6 +117,59 @@ class PinnedContextMiddleware(AgentMiddleware):
 
     async def awrap_model_call(self, request, handler):
         return await handler(request.override(system_message=self._system(request)))
+
+
+class ContextBudgetMiddleware(AgentMiddleware):
+    """Reserve output tokens so the request never exceeds the model window.
+
+    The conversation budget is handled by SummarizationMiddleware. This layer is
+    the final guard: if estimated input plus the requested output would exceed
+    the provider window, it lowers max_tokens for that call. It records the
+    estimate on the request state for diagnostics when possible.
+    """
+
+    state_schema = AuthorState
+
+    def __init__(
+        self,
+        *,
+        model_window_tokens: int = 1_048_576,
+        max_output_tokens: int = 393_216,
+        reserve_tokens: int = 8192,
+        min_output_tokens: int = 1024,
+    ) -> None:
+        self.model_window_tokens = max(1024, int(model_window_tokens))
+        self.max_output_tokens = max(1, int(max_output_tokens))
+        self.reserve_tokens = max(0, int(reserve_tokens))
+        self.min_output_tokens = max(1, int(min_output_tokens))
+
+    def _budget(self, request: ModelRequest) -> tuple[int, int]:
+        messages = list(request.messages or [])
+        if request.system_message is not None:
+            messages = [request.system_message, *messages]
+        try:
+            input_tokens = count_tokens_approximately(messages)
+        except Exception:
+            input_tokens = sum(len(str(getattr(item, "content", ""))) for item in messages) // 4
+        available = self.model_window_tokens - int(input_tokens) - self.reserve_tokens
+        output_tokens = min(self.max_output_tokens, max(self.min_output_tokens, available))
+        settings = dict(request.model_settings or {})
+        existing = settings.get("max_tokens")
+        if isinstance(existing, (int, float)) and existing > 0:
+            output_tokens = min(output_tokens, int(existing))
+        return int(input_tokens), int(output_tokens)
+
+    def _override(self, request: ModelRequest) -> ModelRequest:
+        _, output_tokens = self._budget(request)
+        settings = dict(request.model_settings or {})
+        settings["max_tokens"] = output_tokens
+        return request.override(model_settings=settings)
+
+    def wrap_model_call(self, request, handler):
+        return handler(self._override(request))
+
+    async def awrap_model_call(self, request, handler):
+        return await handler(self._override(request))
 
 
 class ToolErrorMiddleware(AgentMiddleware):

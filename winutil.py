@@ -151,6 +151,40 @@ def _remote_run(argv: list[str], cwd, data: bytes, timeout: float, env: dict | N
     }
 
 
+def run_interactive(solution: list[str], validator: list[str], cwd, timeout: float = 20.0) -> dict:
+    """Run an interactive validator and solution through the isolated executor."""
+    url = _executor_url()
+    if not url:
+        raise RuntimeError("Interactive execution requires the isolated executor")
+    body = json.dumps({
+        "solution": [str(item) for item in solution],
+        "validator": [str(item) for item in validator],
+        "cwd": str(cwd),
+        "timeout": float(timeout),
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        url + "/interact", data=body,
+        headers={"Content-Type": "application/json", **_executor_headers()}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=float(timeout) + 30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise RuntimeError(f"Executor HTTP {exc.code}: {detail[:2000]}") from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"Executor request failed: {exc}") from exc
+    return {
+        "ok": bool(payload.get("ok")),
+        "timedOut": bool(payload.get("timedOut")),
+        "validatorReturncode": payload.get("validatorReturncode"),
+        "solutionReturncode": payload.get("solutionReturncode"),
+        "transcript": payload.get("transcript") or [],
+        "validatorStderr": base64.b64decode(payload.get("validatorStderr") or ""),
+        "solutionStderr": base64.b64decode(payload.get("solutionStderr") or ""),
+    }
+
+
 def _require_local_or_executor() -> bool:
     if _executor_url():
         return True

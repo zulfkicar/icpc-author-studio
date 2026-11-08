@@ -27,6 +27,8 @@ const state = {
   samples: [],
   activeSample: null,
   testResults: [],
+  openTabs: [],
+  mentionQuery: null,
   renderedChangeIds: new Set(),
   fileMode: "view",
   streaming: { assistantEl: null, assistantText: "", reasoningEl: null, reasoningText: "" },
@@ -1279,7 +1281,110 @@ function chatTitle(chat) {
   return (chat && chat.title) || "New chat";
 }
 
-function renderChatList() {
+function tabsStorageKey() {
+  return "author-agent-tabs-" + state.slug;
+}
+
+function loadChatTabs() {
+  state.openTabs = [];
+  if (!state.slug) return;
+  try {
+    const value = JSON.parse(localStorage.getItem(tabsStorageKey()) || "[]");
+    if (Array.isArray(value)) state.openTabs = value.filter((id) => state.chats.some((chat) => chat.id === id));
+  } catch { state.openTabs = []; }
+}
+
+function saveChatTabs() {
+  if (state.slug) localStorage.setItem(tabsStorageKey(), JSON.stringify(state.openTabs));
+}
+
+function openChatTab(chatId) {
+  if (!chatId) return;
+  if (!state.openTabs.includes(chatId)) state.openTabs.push(chatId);
+  state.openTabs = state.openTabs.slice(-8);
+  saveChatTabs();
+}
+
+function closeChatTab(chatId, event) {
+  if (event) event.stopPropagation();
+  state.openTabs = state.openTabs.filter((id) => id !== chatId);
+  saveChatTabs();
+  renderChatTabs();
+}
+
+function renderChatTabs() {
+  const host = $("chat-tabs");
+  if (!host) return;
+  host.innerHTML = "";
+  for (const id of state.openTabs) {
+    const chat = state.chats.find((item) => item.id === id);
+    if (!chat) continue;
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.className = "chat-tab" + (id === state.chatId ? " active" : "");
+    tab.textContent = chatTitle(chat);
+    tab.title = chatTitle(chat);
+    tab.addEventListener("click", () => selectChat(id));
+    const close = document.createElement("span");
+    close.className = "chat-tab-close";
+    close.textContent = "?";
+    close.title = "Close tab";
+    close.addEventListener("click", (event) => closeChatTab(id, event));
+    tab.appendChild(close);
+    host.appendChild(tab);
+  }
+}
+
+function mentionCandidates(query) {
+  const q = String(query || "").toLowerCase();
+  return state.tree
+    .filter((row) => row.type === "file" && row.text && !row.path.startsWith("data/secret/") && !row.path.endsWith(".ans"))
+    .filter((row) => !q || row.path.toLowerCase().includes(q))
+    .slice(0, 8);
+}
+
+function hideMentions() {
+  state.mentionQuery = null;
+  const menu = $("mention-menu");
+  if (menu) menu.hidden = true;
+}
+
+function renderMentions() {
+  const composer = $("composer");
+  const menu = $("mention-menu");
+  if (!composer || !menu) return;
+  const before = composer.value.slice(0, composer.selectionStart || 0);
+  const match = before.match(/@([A-Za-z0-9_./-]*)$/);
+  if (!match) { hideMentions(); return; }
+  const query = match[1];
+  state.mentionQuery = { start: before.length - match[0].length, query };
+  const candidates = mentionCandidates(query);
+  if (!candidates.length) { hideMentions(); return; }
+  menu.innerHTML = "";
+  for (const row of candidates) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "mention-item";
+    button.textContent = row.path;
+    button.addEventListener("click", () => {
+      const info = state.mentionQuery;
+      if (!info) return;
+      const after = composer.value.slice(composer.selectionStart || 0);
+      composer.value = composer.value.slice(0, info.start) + "@" + row.path + " " + after;
+      composer.focus();
+      if (!state.selectedContext.includes(row.path)) {
+        state.selectedContext.push(row.path);
+        saveContext();
+        renderContextChips();
+      }
+      hideMentions();
+    });
+    menu.appendChild(button);
+  }
+  menu.hidden = false;
+}
+
+async function newChat() {
   const host = $("chat-list");
   host.innerHTML = "";
   const query = state.chatQuery.trim().toLowerCase();
@@ -1329,6 +1434,7 @@ function renderChatList() {
     ? `${formatTime(active.updatedAt)} · ${active.messageCount || 0} messages${state.jobId && state.jobChatId === active.id ? " · working" : ""}`
     : "";
   $("composer-chat").textContent = active ? chatTitle(active) : "no chat";
+  renderChatTabs();
 }
 
 async function loadChats(preferredId) {
@@ -1340,7 +1446,10 @@ async function loadChats(preferredId) {
   const id = candidates.find((value) => value && state.chats.some((chat) => chat.id === value));
   state.chatId = id || null;
   if (state.chatId) localStorage.setItem(`author-agent-chat-${state.slug}`, state.chatId);
+  loadChatTabs();
+  if (state.chatId) openChatTab(state.chatId);
   renderChatList();
+  renderChatTabs();
   return state.chatId;
 }
 
@@ -1349,7 +1458,9 @@ async function selectChat(chatId) {
   if (!chatId || chatId === state.chatId) return;
   state.chatId = chatId;
   localStorage.setItem(`author-agent-chat-${state.slug}`, chatId);
+  openChatTab(chatId);
   renderChatList();
+  renderChatTabs();
   await loadConversation();
 }
 
@@ -1486,6 +1597,24 @@ function pipelineSteps() {
   ];
 }
 
+function renderStageRail() {
+  const host = $("stage-rail");
+  if (!host) return;
+  const summary = state.summary || {};
+  const report = summary.lastReport || {};
+  const stages = [
+    ["Plan", Boolean((state.plan && state.plan.steps || []).length)],
+    ["Generate", Boolean((state.tree || []).length)],
+    ["Validate", Boolean((report.checks || []).some((c) => c.name === "Validator results" && c.status === "pass"))],
+    ["Answers", Boolean(report.answers && report.answers.written)],
+    ["Measure", Boolean(summary.limitsMeasured)],
+    ["Verify", summary.lastStatus === "verified"],
+    ["Review", !summary.unreviewed],
+    ["Export", summary.lastStatus === "verified" && !summary.unreviewed],
+  ];
+  host.innerHTML = stages.map(([label, done], index) => `<span class="stage-chip ${done ? "done" : ""}"><span class="stage-num">${index + 1}</span>${escapeHtml(label)}</span>`).join('<span class="stage-sep">?</span>');
+}
+
 function renderPlan() {
   const host = $("plan-body");
   const pipeline = pipelineSteps();
@@ -1537,6 +1666,21 @@ function renderPlanStrip() {
 
 // ---------- report ----------
 
+function renderCheckerMatrix(selftest) {
+  if (!selftest || !selftest.cases || !selftest.cases.length) return "";
+  const rows = selftest.cases.map((item) => `<tr><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.expected)}</td><td class="${item.pass ? "status-pass" : "status-fail"}">${escapeHtml(item.actual)}</td><td>${escapeHtml(item.message || "")}</td></tr>`).join("");
+  return `<h3>Checker self-test <span class="chip ${selftest.status === "pass" ? "AC" : "WA"}">${escapeHtml(selftest.status)}</span></h3><table class="table"><thead><tr><th>Case</th><th>Expected</th><th>Actual</th><th>Message</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderInteractiveMatrix(selftest) {
+  if (!selftest || !selftest.cases || !selftest.cases.length) return "";
+  const rows = selftest.cases.map((item) => {
+    const transcript = (item.transcript || []).map((line) => `${line.direction}: ${line.text}`).join("\n");
+    return `<tr><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.expected)}</td><td class="${item.pass ? "status-pass" : "status-fail"}">${escapeHtml(item.actual)}</td><td><pre class="inline-log">${escapeHtml(transcript)}</pre></td></tr>`;
+  }).join("");
+  return `<h3>Interactive self-test <span class="chip ${selftest.status === "pass" ? "AC" : "WA"}">${escapeHtml(selftest.status)}</span></h3><table class="table"><thead><tr><th>Case</th><th>Expected</th><th>Actual</th><th>Transcript</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 function renderReport(report) {
   const host = $("report-body");
   if (!report || report.status === "none") {
@@ -1587,6 +1731,8 @@ function renderReport(report) {
     </tbody></table>
     <h3>Checks</h3>
     <table class="table"><thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead><tbody>${checkRows || '<tr><td colspan="3" class="muted">none</td></tr>'}</tbody></table>
+    ${renderCheckerMatrix(report.checkerSelftest)}
+    ${renderInteractiveMatrix(report.interactiveSelftest)}
     <h3>Reference vs answers</h3>
     <table class="table"><thead><tr><th>Test</th><th>Kind</th><th>Reference verdict</th></tr></thead><tbody>${testRows || '<tr><td colspan="3" class="muted">none</td></tr>'}</tbody></table>
     <h3>Negative solutions</h3>
@@ -1632,6 +1778,7 @@ async function refreshWorkspace() {
     renderChanges();
     if (summary.lastReport) renderReport(summary.lastReport);
     renderPlan();
+    renderStageRail();
     renderChatList();
   } catch (error) { toast(error.message, true); }
 }
@@ -2109,6 +2256,11 @@ function approvalActions(value) {
 
 function renderApproval(interrupts) {
   if (!interrupts || !interrupts.length) return;
+  const clarifications = interrupts.filter((item) => item.value && item.value.type === "clarification");
+  if (clarifications.length) {
+    renderClarification(clarifications);
+    return;
+  }
   state.pendingApproval = interrupts;
   const card = document.createElement("div");
   card.className = "approval-card";
@@ -2149,6 +2301,73 @@ function renderApproval(interrupts) {
   card.appendChild(buttons);
   addEventCard(card);
   $("send-btn").disabled = true;
+}
+
+function renderClarification(interrupts) {
+  state.pendingApproval = interrupts;
+  const card = document.createElement("div");
+  card.className = "approval-card clarification-card";
+  const title = document.createElement("div");
+  title.className = "approval-title";
+  title.textContent = "Clarification needed";
+  card.appendChild(title);
+  const inputs = [];
+  for (const item of interrupts) {
+    const value = item.value || {};
+    if (value.context) {
+      const context = document.createElement("div");
+      context.className = "muted small";
+      context.textContent = value.context;
+      card.appendChild(context);
+    }
+    for (const [index, question] of (value.questions || []).entries()) {
+      const label = document.createElement("label");
+      label.className = "clarification-question";
+      label.textContent = question;
+      const area = document.createElement("textarea");
+      area.rows = 2;
+      area.placeholder = value.recommended ? `Recommended: ${value.recommended}` : "Your answer";
+      area.value = value.recommended || "";
+      area.dataset.question = String(index);
+      label.appendChild(area);
+      card.appendChild(label);
+      inputs.push(area);
+    }
+    if (value.options && value.options.length) {
+      const hint = document.createElement("div");
+      hint.className = "muted small";
+      hint.textContent = "Options: " + value.options.join(" ? ");
+      card.appendChild(hint);
+    }
+  }
+  const buttons = document.createElement("div");
+  buttons.className = "approval-actions";
+  const submit = document.createElement("button");
+  submit.className = "primary small";
+  submit.textContent = "Submit answer";
+  submit.addEventListener("click", () => resumeClarification(inputs.map((input) => input.value.trim())));
+  buttons.appendChild(submit);
+  card.appendChild(buttons);
+  addEventCard(card);
+  $("send-btn").disabled = true;
+}
+
+async function resumeClarification(answers) {
+  if (!state.slug || !state.chatId) return;
+  try {
+    const job = await api(`/api/workspaces/${state.slug}/chats/${state.chatId}/resume`, {
+      method: "POST",
+      body: { clarification: { answers } },
+    });
+    state.pendingApproval = null;
+    document.querySelectorAll(".clarification-card").forEach((card) => card.remove());
+    state.jobId = job.id;
+    state.jobChatId = state.chatId;
+    state.jobEvents = 0;
+    $("send-btn").disabled = true;
+    $("agent-state").textContent = "resuming?";
+    pollJob(job.id);
+  } catch (error) { toast(error.message, true); }
 }
 
 async function resumeApproval(decision) {
@@ -2243,7 +2462,10 @@ function wire() {
   $("new-file").addEventListener("click", () => newEntry("file", ""));
   $("new-folder").addEventListener("click", () => newEntry("dir", ""));
   $("send-btn").addEventListener("click", () => sendMessage());
+  $("composer").addEventListener("input", renderMentions);
+  $("composer").addEventListener("click", renderMentions);
   $("composer").addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideMentions();
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); sendMessage(); }
   });
   $("verify-btn").addEventListener("click", () => runToolJob("verify", { writeAnswers: false }));
@@ -2299,6 +2521,9 @@ function wire() {
   });
   document.querySelectorAll(".side-tabs button").forEach((button) => {
     button.addEventListener("click", () => switchSide(button.dataset.side));
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("#mention-menu") && event.target.id !== "composer") hideMentions();
   });
   window.addEventListener("beforeunload", (event) => {
     if (!state.dirty) return;
