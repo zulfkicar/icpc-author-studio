@@ -1,7 +1,8 @@
 # ICPC Author Agent — Master Plan
 
-Status: implementation plan  
-Baseline: `f16ff8d`  
+Status: implementation plan
+Baseline: `f16ff8d`
+Design specification: [`DESIGN.md`](DESIGN.md)
 Canonical verification plan: [`ADVERSARIAL-VERIFICATION.md`](ADVERSARIAL-VERIFICATION.md)
 
 ## 1. Purpose
