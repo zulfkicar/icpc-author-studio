@@ -1,7 +1,7 @@
 # Implementation Status
 
 Updated: 2026-11-08  
-Latest commit: `pending`  
+Latest implementation commit: see `git log`  
 Specification: [`MASTER-PLAN.md`](MASTER-PLAN.md)  
 Verification: [`ADVERSARIAL-VERIFICATION.md`](ADVERSARIAL-VERIFICATION.md)  
 Design: [`DESIGN.md`](DESIGN.md)
