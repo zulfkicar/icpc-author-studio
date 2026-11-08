@@ -158,8 +158,13 @@ the `.` root, so relative paths such as `problem.yaml` and
 inspector tab; secret tests and `.ans` files remain blocked.
 
 The UI was rebuilt from scratch: top bar, section rail, stage stepper, elevated
-composer, evidence inspector and per-tool MCP cards. Screenshots and the audit
-are in [`docs/VISUAL-AUDIT.md`](docs/VISUAL-AUDIT.md).
+composer, evidence inspector and per-tool MCP cards. Long chats now scroll with
+a visible scrollbar while the composer and file run panel stay in view, and all
+rename/delete/discard/restore flows use one accessible dialog. Screenshots and
+the audit are in [`docs/VISUAL-AUDIT.md`](docs/VISUAL-AUDIT.md). The state
+machine inventory is in [`docs/STATE-MACHINES.md`](docs/STATE-MACHINES.md) and
+the full Cline/VS Code/Judge0-informed IDE plan is in
+[`docs/UI-UX-REDESIGN.md`](docs/UI-UX-REDESIGN.md).
 
 ## Configure a provider
 
@@ -432,9 +437,9 @@ config.py            local provider configuration
 winutil.py           headless Windows process execution
 sandbox/             sitecustomize for headless child Python processes
 templates/           ICPC statement class and DOMjudge scaffold
-web/                 chat timeline, chats/files/changes sidebar, inspector
+web/                 workbench shell, editor, chat, inspector, state machines
 web/vendor/          locally bundled highlight.js and axe-core
-docs/                master plan, design, adversarial verification, status, eval, visual audit, decisions
+docs/                master plan, design, adversarial verification, status, eval, visual audit, state machines, IDE redesign, decisions
 eval/                real-provider authoring eval harness + fixtures
 qa/                  deterministic fake-model stress/regression suite
 scripts/             reliable WSL Docker up/down wrappers
