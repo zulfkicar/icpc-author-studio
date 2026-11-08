@@ -18,8 +18,9 @@ from typing import Annotated, Literal, TypedDict
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import InjectedState, create_react_agent
+from langgraph.prebuilt import InjectedState, ToolNode, create_react_agent
 from pydantic import BaseModel, Field
 
 import agent
@@ -159,17 +160,18 @@ def _model(cfg: dict) -> ChatOpenAI:
         max_retries=1,
         timeout=300,
         streaming=True,
-        model_kwargs={"max_tokens": 8000},
+        extra_body={"max_tokens": 8000},
         default_headers=headers or None,
     )
 
 
-def _graph(cfg: dict):
+def _graph(cfg: dict, checkpointer=None):
     return create_react_agent(
         _model(cfg),
-        TOOLS,
+        ToolNode(TOOLS, handle_tool_errors=True),
         prompt=_prompt,
         state_schema=AgentState,
+        checkpointer=checkpointer,
         name="icpc_author_agent",
     )
 
@@ -186,6 +188,47 @@ def _content_text(content) -> str:
                 parts.append(str(item.get("text") or item.get("content") or ""))
         return "".join(parts)
     return "" if content is None else str(content)
+
+
+def _repair_history(messages: list[dict]) -> list[dict]:
+    """Make saved history valid for the next graph turn.
+
+    A tool exception or a server restart can leave an AIMessage with tool_calls
+    but no matching ToolMessage. LangGraph rejects that history. Insert a
+    synthetic error result so the model can recover instead of losing the chat.
+    """
+    repaired: list[dict] = []
+    pending: list[str] = []
+
+    def flush() -> None:
+        nonlocal pending
+        for call_id in pending:
+            repaired.append({
+                "role": "tool",
+                "tool_call_id": call_id,
+                "content": json.dumps({
+                    "error": "Previous tool call did not complete; the run was interrupted before a result was recorded."
+                }),
+            })
+        pending = []
+
+    for message in messages:
+        role = message.get("role")
+        if role in ("user", "assistant") and pending:
+            flush()
+        if role == "assistant":
+            repaired.append(message)
+            pending = [call.get("id") for call in (message.get("tool_calls") or []) if call.get("id")]
+        elif role == "tool":
+            call_id = message.get("tool_call_id")
+            if call_id in pending:
+                pending.remove(call_id)
+                repaired.append(message)
+            # Orphan tool messages are dropped rather than breaking validation.
+        else:
+            repaired.append(message)
+    flush()
+    return repaired
 
 
 def _to_lc(message: dict) -> BaseMessage | None:
@@ -285,8 +328,9 @@ def _emit_tool_side_effects(name: str, result: dict, emit) -> None:
         emit("plan", result)
 
 
-async def _run_turn_async(slug: str, chat_id: str, user_message: str, emit, cfg: dict, collected: list[BaseMessage], cancelled=None) -> tuple[str, int]:
-    graph = _graph(cfg)
+async def _run_turn_async(slug: str, chat_id: str, user_message: str, emit, cfg: dict, collected: list[BaseMessage], cancelled=None) -> tuple[str, int, list[BaseMessage] | None]:
+    checkpointer = MemorySaver()
+    graph = _graph(cfg, checkpointer)
     thread_id = f"{chat_id}-{uuid.uuid4().hex[:10]}"
     graph_config = {
         "configurable": {"thread_id": thread_id},
@@ -335,7 +379,12 @@ async def _run_turn_async(slug: str, chat_id: str, user_message: str, emit, cfg:
             output = data.get("output")
             if isinstance(output, ToolMessage):
                 collected.append(output)
-    return final_text, rounds
+        elif kind == "on_tool_error":
+            error = _content_text(data.get("error") or "Tool call failed")
+            emit("tool_result", {"name": name, "result": {"error": error}})
+    snapshot = graph.get_state(graph_config)
+    final_messages = snapshot.values.get("messages") if snapshot and snapshot.values else None
+    return final_text, rounds, final_messages
 
 
 def run_turn(slug: str, chat_id: str, user_message: str, emit, cancelled=None) -> dict:
@@ -344,7 +393,10 @@ def run_turn(slug: str, chat_id: str, user_message: str, emit, cancelled=None) -
         raise RuntimeError("Cancelled by user")
     cfg = config.load()
     chat = workspace.get_chat(slug, chat_id)
-    history = chat.get("messages") or []
+    original_history = chat.get("messages") or []
+    history = _repair_history(original_history)
+    if history != original_history:
+        workspace.save_chat_messages(slug, chat_id, history)
     user_message = str(user_message)[:20000]
 
     lc_history = [message for message in (_to_lc(item) for item in history) if message is not None]
@@ -358,8 +410,9 @@ def run_turn(slug: str, chat_id: str, user_message: str, emit, cancelled=None) -
         raise RuntimeError("No API key is configured. Open Settings and add a DeepSeek or OpenRouter key.")
 
     try:
-        final_text, rounds = asyncio.run(_run_turn_async(slug, chat_id, user_message, emit, cfg, collected, cancelled))
-        converted = [item for item in (_from_lc(m) for m in collected) if item]
+        final_text, rounds, final_messages = asyncio.run(_run_turn_async(slug, chat_id, user_message, emit, cfg, collected, cancelled))
+        source = final_messages if final_messages is not None else collected
+        converted = [item for item in (_from_lc(m) for m in source) if item]
         workspace.save_chat_messages(slug, chat_id, converted)
         return {"text": final_text, "chatId": chat_id, "rounds": rounds}
     except Exception as exc:  # noqa: BLE001

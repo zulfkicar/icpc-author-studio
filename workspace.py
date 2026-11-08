@@ -85,9 +85,19 @@ def _read_json(path: pathlib.Path, default):
 
 def _write_json(path: pathlib.Path, value) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(value, indent=2), "utf-8")
-    tmp.replace(path)
+    data = json.dumps(value, indent=2)
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(data, "utf-8")
+        tmp.replace(path)
+    except OSError:
+        # Some mounted filesystems reject atomic replace; fall back to a direct write.
+        path.write_text(data, "utf-8")
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _state_dir(slug: str) -> pathlib.Path:
@@ -335,26 +345,27 @@ def _line_stats(before: str | None, after: str | None) -> tuple[int, int]:
 
 
 def _record(slug: str, action: str, rel: str, before: str | None, after: str | None, source: str) -> dict:
-    items = changes(slug)
-    added, removed = _line_stats(before, after)
-    entry = {
-        "id": uuid.uuid4().hex[:12],
-        "at": now(),
-        "source": source,
-        "action": action,
-        "path": rel,
-        "before": before,
-        "after": after,
-        "additions": added,
-        "deletions": removed,
-        "reviewed": False,
-        "reverted": False,
-    }
-    items.append(entry)
-    if len(items) > 400:
-        items = items[-400:]
-    _write_json(_changes_path(slug), items)
-    return entry
+    with _LOCK:
+        items = changes(slug)
+        added, removed = _line_stats(before, after)
+        entry = {
+            "id": uuid.uuid4().hex[:12],
+            "at": now(),
+            "source": source,
+            "action": action,
+            "path": rel,
+            "before": before,
+            "after": after,
+            "additions": added,
+            "deletions": removed,
+            "reviewed": False,
+            "reverted": False,
+        }
+        items.append(entry)
+        if len(items) > 400:
+            items = items[-400:]
+        _write_json(_changes_path(slug), items)
+        return entry
 
 
 def write_text(slug: str, rel: str, content: str, source: str = "agent") -> dict:

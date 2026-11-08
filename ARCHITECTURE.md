@@ -231,9 +231,11 @@ a durable artifact.
 ### Why the graph itself is stateless per turn
 
 The graph receives the stored history plus the new user message on each turn.
-Workspace files are the durable state. This keeps recovery simple and makes the
-filesystem the single source of truth. The next step is a LangGraph checkpointer
-so an interrupted graph can resume from a node rather than replaying the turn.
+Workspace files are the durable state. A per-turn `MemorySaver` checkpointer is
+used only to read the definitive final message list (including handled tool
+errors) before saving it; it is not a durable session store. The next step is a
+persistent checkpointer (SQLite/Postgres) so an interrupted graph can resume
+from a node rather than replaying the turn.
 
 ## 7. Execution model (Windows)
 
@@ -373,7 +375,8 @@ patterns that fit ICPC authoring.
 | Failure | Behavior |
 |---|---|
 | Provider error / no key | User message is already persisted; error card; context is not lost. |
-| Tool error | Model receives the error result and can diagnose; UI shows it. |
+| Tool error | `ToolNode(handle_tool_errors=True)` turns it into a `ToolMessage`; the model can diagnose and the transcript stays valid. Legacy dangling tool calls are repaired when a chat is loaded. |
+| Concurrent workspace writes | Jobs are serialized per workspace; metadata files use unique temporary names and atomic replace. |
 | Compile failure | Report says `CE`; not counted as a kill or a pass. |
 | Validator reject | Report shows the input and exit code. |
 | Wrong solution survives | Verification fails with a concrete survivor. |

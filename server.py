@@ -32,6 +32,13 @@ JOBS: dict[str, dict] = {}
 JOB_LOCK = threading.Lock()
 CHAT_LOCK = threading.Lock()
 ACTIVE_CHATS: set[str] = set()
+WORKSPACE_LOCKS: dict[str, threading.Lock] = {}
+WORKSPACE_LOCKS_GUARD = threading.Lock()
+
+
+def workspace_lock(slug: str) -> threading.Lock:
+    with WORKSPACE_LOCKS_GUARD:
+        return WORKSPACE_LOCKS.setdefault(slug, threading.Lock())
 
 
 def now() -> str:
@@ -52,7 +59,11 @@ def start_job(title: str, slug: str | None, fn, chat_id: str | None = None) -> d
     def cancelled() -> bool:
         return bool(job.get("cancelRequested"))
 
+    run_lock = workspace_lock(slug) if slug else None
+
     def run() -> None:
+        if run_lock is not None:
+            run_lock.acquire()
         try:
             result = fn(emit, cancelled)
             with JOB_LOCK:
@@ -72,6 +83,9 @@ def start_job(title: str, slug: str | None, fn, chat_id: str | None = None) -> d
                 job["state"] = "error"
                 job["error"] = f"{type(exc).__name__}: {exc}"
                 job["events"].append({"at": now(), "kind": "error", "data": {"error": job["error"]}})
+        finally:
+            if run_lock is not None:
+                run_lock.release()
 
     with JOB_LOCK:
         JOBS[job_id] = job
