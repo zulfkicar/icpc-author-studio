@@ -221,6 +221,10 @@ sum:   verified, 29 tests, 3 negatives, 1,325,603 input tokens
   Judge0 release with cgroup v2 support would remove that workaround.
 - **Manual screen-reader traversal:** axe (0 violations) and keyboard/dialog
   checks pass; a human screen-reader session is still a manual step.
+- **Verifier backend:** the deterministic verifier still executes through the
+  bwrap worker. Judge0 and the real Isolate worker are live quick-run backends;
+  moving full checker/interactor orchestration into Isolate is the next backend
+  step.
 - **Adversarial depth:** all 146 rows have automated owners, but some use
   deterministic contract tests rather than live third-party fault injection
   (for example an actual disk-full filesystem rather than `RLIMIT_FSIZE`, or a
