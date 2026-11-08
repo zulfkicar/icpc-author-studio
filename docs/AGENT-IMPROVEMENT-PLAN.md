@@ -13,10 +13,13 @@ Pinned stack: `langchain 1.4.9`, `langgraph 1.2.20`, `langchain-core 1.7.6`,
 > - Real-provider smoke test and HTTP HITL test passed.
 > - Sum eval authored a package; one repair turn removed a negative solution
 >   that was actually correct for the constraints; verification is green.
-> - Remaining: summary middleware is implemented but not trigger-tested at
->   scale; concurrent checkpointer access is guarded by per-workspace job locks
->   but not stress-tested; reviewer is a nested read-only agent, not a separate
->   subgraph; v3 streaming deferred.
+> - Stress suite `qa/stress_agent.py` passes durability, HITL, review writes,
+>   checkpoint repair, summarization trigger, concurrent workspaces,
+>   same-workspace serialization, graph/server cancellation, cost and chat
+>   management.
+> - Remaining: reviewer is a nested read-only agent, not a separate subgraph;
+>   v3 streaming deferred; restore-to-turn, inline hunk review, MCP, DOMjudge
+>   integration and custom judging are not implemented.
 
 > **Research update (2026-11-08):** read
 > [`AGENT-DECISIONS.md`](AGENT-DECISIONS.md) first. `create_react_agent` is

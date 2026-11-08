@@ -359,6 +359,8 @@ evidence.
 - **Durable chats, not a single transcript.** Users return to a problem over
   days. Chats are listed with title, time and message count; New chat creates a
   new session instead of destroying the old one.
+- **Chat management.** Search filters the sidebar; hover actions rename or delete
+  a chat; deleting removes its checkpoint thread. Stop cancels the active task.
 - **Plan first.** The `write_todos` tool maintains the task list; the runtime
   mirrors it into the per-chat plan. The Plan inspector
   shows both the authoring pipeline and the agent's current plan. This follows
@@ -424,7 +426,7 @@ patterns that fit ICPC authoring.
 | Windows loader error | Headless execution; diagnostic maps known NTSTATUS codes. |
 | Workspace changes after verify | Summary becomes `stale`; export blocked. |
 | Unreviewed changes | Export blocked until review. |
-| Job cancellation | Stop marks the job cancelled; partial context is saved. |
+| Job cancellation | Stop cancels the registered asyncio task, aborting the provider stream; the job becomes cancelled and partial context is preserved. |
 | Server restart | Workspaces, chats, plans, changes and reports are on disk. |
 
 ## 11. Testing and evidence
@@ -445,8 +447,13 @@ patterns that fit ICPC authoring.
 - A real-provider eval baseline (`eval/run_eval.py --fixture sum`) authored a
   package; one repair turn removed a negative solution that was actually correct
   for the constraints; the verifier finished green.
-- Headless Chrome DOM load: verifies the app boots and renders without JS
-  console errors.
+- Deterministic stress suite (`qa/stress_agent.py`) passes: durability, usage
+  and cost, todo mirroring, HITL export, review writes, checkpoint repair,
+  summarization trigger, five concurrent workspaces, same-workspace
+  serialization, graph and server-job cancellation, chat rename/delete and
+  reviewer.
+- Headless Chrome DOM load: verifies mode/context/settings controls and the
+  approval card render without JS console errors.
 
 Not yet tested: real DOMjudge import, Linux/macOS execution,
 interactive/custom-checker problems, or a hostile-code sandbox.
@@ -462,12 +469,12 @@ interactive/custom-checker problems, or a hostile-code sandbox.
 4. **Inline review.** Accept/reject hunks in a unified diff view.
 5. **Richer context.** @-mention files/evidence and pin specific verifier checks
    beyond the current selected-context list.
-6. **Chat management.** Rename/delete/search, recency groups, unread indicators,
-   tabs for open chats (the Linear pattern).
-7. **True cancellation.** Abort the provider HTTP request, not just the event
-   loop.
-8. **Cost meter.** Token usage is captured; add provider pricing and per-workspace
-   cost.
+6. **Chat management.** Rename/delete/search is implemented; add recency groups,
+   unread indicators and tabs for open chats (the Linear pattern).
+7. **Cancellation.** Implemented by cancelling the asyncio task and aborting the
+   provider stream; add a provider-specific timeout policy if needed.
+8. **Cost meter.** Token usage and optional per-turn cost estimates are
+   implemented; add billing integrations or a shared price table.
 9. **MCP adapter.** Expose the same command services through a scoped MCP server;
    no second permissive policy.
 10. **DOMjudge integration.** Import/export against a real contest, with native
@@ -533,6 +540,7 @@ records rather than a single transcript.
 | `web/` | Chat timeline, chats/files/changes sidebar, Plan/File/Report/Diff inspector, highlighted code viewer and Run panel. |
 | `web/vendor/` | Locally bundled highlight.js and theme. |
 | `eval/` | Real-provider eval harness, fixtures and generated results. |
+| `qa/` | Deterministic fake-model stress/regression suite. |
 | `docs/` | Research/decision docs and LangGraph diagram. |
 | `scripts/` | Reliable WSL Docker up/down wrappers. |
 | `templates/` | ICPC statement class and DOMjudge package scaffold. |

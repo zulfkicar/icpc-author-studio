@@ -572,6 +572,41 @@ def create_chat(slug: str, title: str | None = None) -> dict:
     return meta
 
 
+def rename_chat(slug: str, chat_id: str, title: str) -> dict:
+    index = ensure_chats(slug)
+    meta = next((c for c in index["chats"] if c["id"] == chat_id), None)
+    if meta is None:
+        raise FileNotFoundError("Chat not found")
+    clean = " ".join(str(title or "").split())[:70]
+    if not clean:
+        raise ValueError("A chat title is required")
+    meta["title"] = clean
+    meta["updatedAt"] = now()
+    _save_chats_index(slug, index)
+    return meta
+
+
+def delete_chat(slug: str, chat_id: str) -> dict:
+    index = ensure_chats(slug)
+    meta = next((c for c in index["chats"] if c["id"] == chat_id), None)
+    if meta is None:
+        raise FileNotFoundError("Chat not found")
+    index["chats"] = [c for c in index["chats"] if c["id"] != chat_id]
+    if index.get("activeChat") == chat_id:
+        index["activeChat"] = index["chats"][0]["id"] if index["chats"] else None
+    _save_chats_index(slug, index)
+    for path in (_chat_file(slug, chat_id), _plan_file(slug, chat_id)):
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+    try:
+        _pending_file(slug, chat_id).unlink()
+    except FileNotFoundError:
+        pass
+    return index
+
+
 def _plan_file(slug: str, chat_id: str) -> pathlib.Path:
     if not re.fullmatch(r"[a-f0-9]{12}", str(chat_id or "")):
         raise ValueError("Invalid chat id")

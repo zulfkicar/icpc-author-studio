@@ -151,6 +151,21 @@ body.resizing * { cursor: col-resize !important; }
 .side-head button.icon-btn { margin-left: auto; }
 .side-actions { border-top: 1px solid var(--line); padding-top: 10px; }
 
+.chat-search {
+  width: calc(100% - 24px); margin: 0 12px 8px; padding: 5px 8px;
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: 5px;
+  color: var(--text); font-size: 11px;
+}
+.chat-search:focus { outline: none; border-color: var(--accent); }
+.chat-item { position: relative; }
+.chat-actions { position: absolute; top: 7px; right: 7px; display: none; gap: 2px; }
+.chat-item:hover .chat-actions { display: flex; }
+.chat-actions button {
+  width: 20px; height: 20px; padding: 0; border: 1px solid var(--line);
+  background: var(--bg-2); color: var(--muted); border-radius: 4px; cursor: pointer;
+  font-size: 12px; line-height: 1;
+}
+.chat-actions button:hover { color: var(--text); border-color: var(--line-2); }
 .chat-list { flex: 1; overflow: auto; padding: 6px; }
 .chat-item {
   padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer;

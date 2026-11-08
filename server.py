@@ -270,6 +270,45 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc()
             return self.send_error_json(str(exc), 500)
 
+    def do_PATCH(self):
+        if not self._host_ok() or not self._same_origin():
+            return self.send_error_json("Invalid origin", 403)
+        path = urllib.parse.urlparse(self.path).path
+        parts = [p for p in path.split("/") if p]
+        try:
+            if len(parts) == 5 and parts[0] == "api" and parts[1] == "workspaces" and parts[3] == "chats":
+                slug, chat_id = parts[2], parts[4]
+                with CHAT_LOCK:
+                    if slug in ACTIVE_CHATS:
+                        return self.send_error_json("A chat turn is already running for this problem", 409)
+                body = self.read_json()
+                return self.send_json(workspace.rename_chat(slug, chat_id, body.get("title")))
+            return self.send_error_json("Not found", 404)
+        except FileNotFoundError as exc:
+            return self.send_error_json(str(exc), 404)
+        except ValueError as exc:
+            return self.send_error_json(str(exc), 400)
+
+    def do_DELETE(self):
+        if not self._host_ok() or not self._same_origin():
+            return self.send_error_json("Invalid origin", 403)
+        path = urllib.parse.urlparse(self.path).path
+        parts = [p for p in path.split("/") if p]
+        try:
+            if len(parts) == 5 and parts[0] == "api" and parts[1] == "workspaces" and parts[3] == "chats":
+                slug, chat_id = parts[2], parts[4]
+                with CHAT_LOCK:
+                    if slug in ACTIVE_CHATS:
+                        return self.send_error_json("A chat turn is already running for this problem", 409)
+                workspace.delete_chat(slug, chat_id)
+                graph_agent.delete_thread(slug, chat_id)
+                return self.send_json(workspace.list_chats(slug))
+            return self.send_error_json("Not found", 404)
+        except FileNotFoundError as exc:
+            return self.send_error_json(str(exc), 404)
+        except ValueError as exc:
+            return self.send_error_json(str(exc), 400)
+
     def do_POST(self):
         if not self._host_ok() or not self._same_origin():
             return self.send_error_json("Invalid origin", 403)
@@ -284,11 +323,13 @@ class Handler(BaseHTTPRequestHandler):
                         job["cancelRequested"] = True
                 if job is None:
                     return self.send_error_json("Job not found", 404)
+                if job.get("slug") and job.get("chatId"):
+                    graph_agent.cancel_turn(job["slug"], job["chatId"])
                 return self.send_json({"ok": True, "jobId": job_id})
             if path == "/api/settings":
                 body = self.read_json()
                 update = {}
-                for key in ("baseUrl", "model", "temperature", "maxToolRounds", "reviewWrites"):
+                for key in ("baseUrl", "model", "temperature", "maxToolRounds", "reviewWrites", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion"):
                     if key in body:
                         update[key] = body[key]
                 if body.get("clearKey"):

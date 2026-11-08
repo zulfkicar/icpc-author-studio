@@ -9,6 +9,7 @@ This module uses the supported `create_agent` harness with middleware:
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import threading
 import uuid
@@ -46,6 +47,8 @@ package is verified; the deterministic verifier is the authority."""
 
 _LOOP = None
 _LOOP_LOCK = threading.Lock()
+_TASKS: dict[str, asyncio.Task] = {}
+_TASKS_LOCK = threading.Lock()
 
 
 def _event_loop():
@@ -57,13 +60,67 @@ def _event_loop():
         return _LOOP
 
 
-def _run_coro(coro):
-    """Run a coroutine on one persistent loop.
+def _run_coro(coro, key: str | None = None):
+    """Run a coroutine on one persistent loop and register its task by key."""
+    loop = _event_loop()
+    done: concurrent.futures.Future = concurrent.futures.Future()
 
-    asyncio.run() closes the loop after every turn; the OpenAI/httpx async
-    clients can outlive that loop and then fail with 'Event loop is closed'.
-    """
-    return asyncio.run_coroutine_threadsafe(coro, _event_loop()).result()
+    def create() -> None:
+        task = loop.create_task(coro)
+        if key:
+            with _TASKS_LOCK:
+                _TASKS[key] = task
+
+        def finish(finished: asyncio.Task) -> None:
+            try:
+                if finished.cancelled():
+                    done.set_exception(RuntimeError("Cancelled by user"))
+                    return
+                error = finished.exception()
+                if error is not None:
+                    done.set_exception(error)
+                else:
+                    done.set_result(finished.result())
+            finally:
+                if key:
+                    with _TASKS_LOCK:
+                        if _TASKS.get(key) is task:
+                            _TASKS.pop(key, None)
+
+        task.add_done_callback(finish)
+
+    loop.call_soon_threadsafe(create)
+    try:
+        return done.result()
+    except asyncio.CancelledError as exc:
+        raise RuntimeError("Cancelled by user") from exc
+
+
+def delete_thread(slug: str, chat_id: str) -> None:
+    """Best-effort removal of a deleted chat's checkpoint thread."""
+
+    async def remove() -> None:
+        db = workspace.checkpoint_path(slug)
+        async with AsyncSqliteSaver.from_conn_string(str(db)) as saver:
+            await saver.setup()
+            await saver.adelete_thread(chat_id)
+
+    try:
+        _run_coro(remove())
+    except Exception:
+        pass
+
+
+def cancel_turn(slug: str, chat_id: str) -> bool:
+    """Cancel the provider coroutine for a chat, aborting the HTTP stream."""
+    key = f"chat:{slug}:{chat_id}"
+    with _TASKS_LOCK:
+        task = _TASKS.get(key)
+    if task is None:
+        return False
+    loop = task.get_loop()
+    loop.call_soon_threadsafe(task.cancel)
+    return True
 
 
 def _run(slug: str, name: str, args: dict) -> dict:
@@ -664,6 +721,14 @@ async def _run_turn_async(
         else:
             workspace.clear_pending(slug, chat_id)
         if usage:
+            try:
+                usage["costUsd"] = round(
+                    int(usage.get("input_tokens", 0)) / 1_000_000 * float(cfg.get("inputPricePerMillion", 0.0))
+                    + int(usage.get("output_tokens", 0)) / 1_000_000 * float(cfg.get("outputPricePerMillion", 0.0)),
+                    6,
+                )
+            except (TypeError, ValueError):
+                usage["costUsd"] = None
             emit("usage", usage)
         try:
             await graph_model.async_client.close()
@@ -686,7 +751,11 @@ def _graph(cfg: dict, saver):
         system_prompt=agent.SYSTEM,
         middleware=[
             PinnedContextMiddleware(),
-            SummarizationMiddleware(model=model, trigger=("tokens", 30000), keep=("messages", 12)),
+            SummarizationMiddleware(
+                model=model,
+                trigger=("tokens", int(cfg.get("summaryTriggerTokens", 30000))),
+                keep=("messages", int(cfg.get("summaryKeepMessages", 12))),
+            ),
             TodoListMiddleware(),
             HumanInTheLoopMiddleware(interrupt_on=interrupt_on, interrupt_mode="per_call"),
             ToolErrorMiddleware(),
@@ -730,7 +799,7 @@ def run_turn(slug: str, chat_id: str, user_message: str, emit, cancelled=None, m
     try:
         final_text, rounds, usage, interrupts, values = _run_coro(_run_turn_async(
             slug, chat_id, user_message, emit, cfg, mode, selected_context, cancelled,
-        ))
+        ), key=f"chat:{slug}:{chat_id}")
         result = {
             "text": final_text,
             "chatId": chat_id,
@@ -759,7 +828,7 @@ def resume_turn(slug: str, chat_id: str, decisions, emit, cancelled=None) -> dic
     cfg = config.load()
     final_text, rounds, usage, interrupts, values = _run_coro(_run_turn_async(
         slug, chat_id, "", emit, cfg, None, None, cancelled, resume=decisions,
-    ))
+    ), key=f"chat:{slug}:{chat_id}")
     return {
         "text": final_text,
         "chatId": chat_id,

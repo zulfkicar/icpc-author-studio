@@ -7,6 +7,7 @@ const state = {
   changes: [],
   chats: [],
   chatId: null,
+  chatQuery: "",
   plan: { steps: [] },
   file: null,
   dirty: false,
@@ -977,21 +978,40 @@ function chatTitle(chat) {
 function renderChatList() {
   const host = $("chat-list");
   host.innerHTML = "";
-  if (!state.chats.length) {
-    host.innerHTML = '<div class="pad muted">No conversations yet.</div>';
+  const query = state.chatQuery.trim().toLowerCase();
+  const chats = state.chats.filter((chat) => !query || chatTitle(chat).toLowerCase().includes(query));
+  if (!chats.length) {
+    host.innerHTML = `<div class="pad muted">${query ? "No matching conversations." : "No conversations yet."}</div>`;
   }
-  for (const chat of state.chats) {
+  for (const chat of chats) {
     const item = document.createElement("div");
     const running = Boolean(state.jobId && state.jobChatId === chat.id);
     item.className = "chat-item" + (chat.id === state.chatId ? " active" : "") + (running ? " running" : "") + (state.jobId ? " disabled" : "");
     const title = document.createElement("div");
     title.className = "chat-item-title";
     title.textContent = chatTitle(chat);
+    title.title = "Double-click to rename";
     const meta = document.createElement("div");
     meta.className = "chat-item-meta";
     meta.innerHTML = `<span class="chat-dot"></span><span>${escapeHtml(formatTime(chat.updatedAt))}</span><span>·</span><span>${chat.messageCount || 0} msgs</span>`;
+    const actions = document.createElement("span");
+    actions.className = "chat-actions";
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.title = "Rename chat";
+    rename.textContent = "✎";
+    rename.addEventListener("click", (event) => { event.stopPropagation(); renameChat(chat.id); });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.title = "Delete chat";
+    remove.textContent = "×";
+    remove.addEventListener("click", (event) => { event.stopPropagation(); deleteChat(chat.id); });
+    actions.appendChild(rename);
+    actions.appendChild(remove);
+    title.addEventListener("dblclick", (event) => { event.stopPropagation(); renameChat(chat.id); });
     item.appendChild(title);
     item.appendChild(meta);
+    item.appendChild(actions);
     if (!state.jobId) item.addEventListener("click", () => selectChat(chat.id));
     host.appendChild(item);
   }
@@ -1027,6 +1047,36 @@ async function selectChat(chatId) {
   localStorage.setItem(`author-agent-chat-${state.slug}`, chatId);
   renderChatList();
   await loadConversation();
+}
+
+async function renameChat(chatId) {
+  if (!state.slug || state.jobId) return;
+  const chat = state.chats.find((item) => item.id === chatId);
+  if (!chat) return;
+  const title = prompt("Rename conversation", chatTitle(chat));
+  if (title === null) return;
+  if (!title.trim() || title.trim() === chatTitle(chat)) return;
+  try {
+    await api(`/api/workspaces/${state.slug}/chats/${chatId}`, { method: "PATCH", body: { title: title.trim() } });
+    await loadChats(chatId);
+    toast("Chat renamed");
+  } catch (error) { toast(error.message, true); }
+}
+
+async function deleteChat(chatId) {
+  if (!state.slug || state.jobId) return;
+  const chat = state.chats.find((item) => item.id === chatId);
+  if (!chat) return;
+  if (!confirm(`Delete "${chatTitle(chat)}"? This cannot be undone.`)) return;
+  try {
+    const data = await api(`/api/workspaces/${state.slug}/chats/${chatId}`, { method: "DELETE" });
+    state.chats = data.chats || [];
+    state.chatId = data.activeChat || null;
+    if (state.chatId) localStorage.setItem(`author-agent-chat-${state.slug}`, state.chatId);
+    await loadChats(state.chatId);
+    await loadConversation();
+    toast("Chat deleted");
+  } catch (error) { toast(error.message, true); }
 }
 
 async function newChat() {
@@ -1600,6 +1650,10 @@ function openSettings() {
   form.apiKey.value = "";
   form.temperature.value = settings.temperature ?? 0.2;
   form.maxToolRounds.value = settings.maxToolRounds ?? 24;
+  form.summaryTriggerTokens.value = settings.summaryTriggerTokens ?? 30000;
+  form.summaryKeepMessages.value = settings.summaryKeepMessages ?? 12;
+  form.inputPricePerMillion.value = settings.inputPricePerMillion ?? 0;
+  form.outputPricePerMillion.value = settings.outputPricePerMillion ?? 0;
   form.clearKey.checked = false;
   form.reviewWrites.checked = Boolean(settings.reviewWrites);
   $("key-status").textContent = settings.hasKey ? `A key ending in ${settings.keyHint} is saved.` : "No API key saved yet.";
@@ -1614,6 +1668,10 @@ async function saveSettings(event) {
     model: form.model.value.trim(),
     temperature: Number(form.temperature.value || 0.2),
     maxToolRounds: Number(form.maxToolRounds.value || 24),
+    summaryTriggerTokens: Number(form.summaryTriggerTokens.value || 30000),
+    summaryKeepMessages: Number(form.summaryKeepMessages.value || 12),
+    inputPricePerMillion: Number(form.inputPricePerMillion.value || 0),
+    outputPricePerMillion: Number(form.outputPricePerMillion.value || 0),
     reviewWrites: form.reviewWrites.checked,
     clearKey: form.clearKey.checked,
   };
@@ -1731,6 +1789,7 @@ function renderUsage(data) {
   if (data.input_tokens) values.push(`${data.input_tokens} in`);
   if (data.output_tokens) values.push(`${data.output_tokens} out`);
   if (data.total_tokens) values.push(`${data.total_tokens} total`);
+  if (data.costUsd) values.push(`$${Number(data.costUsd).toFixed(6)}`);
   card.textContent = `Tokens: ${values.join(" · ") || "provider did not report usage"}`;
   addEventCard(card);
 }
@@ -1891,6 +1950,10 @@ function wire() {
   });
   $("revert-unreviewed").addEventListener("click", revertAllUnreviewed);
   $("new-chat").addEventListener("click", newChat);
+  $("chat-search").addEventListener("input", (event) => {
+    state.chatQuery = event.target.value || "";
+    renderChatList();
+  });
   $("mode-select").addEventListener("change", (event) => {
     localStorage.setItem("author-agent-mode", event.target.value || "author");
   });

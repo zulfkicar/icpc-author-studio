@@ -23,6 +23,10 @@ DEFAULTS = {
     "temperature": 0.2,
     "maxToolRounds": 24,
     "reviewWrites": False,
+    "summaryTriggerTokens": 30000,
+    "summaryKeepMessages": 12,
+    "inputPricePerMillion": 0.0,
+    "outputPricePerMillion": 0.0,
 }
 
 _LOCK = threading.Lock()
@@ -59,13 +63,25 @@ def load() -> dict:
             data["maxToolRounds"] = max(1, min(64, int(max_rounds)))
         except ValueError:
             pass
+    summary_trigger = os.environ.get("AUTHOR_AGENT_SUMMARY_TRIGGER_TOKENS")
+    if summary_trigger:
+        try:
+            data["summaryTriggerTokens"] = max(50, int(summary_trigger))
+        except ValueError:
+            pass
+    summary_keep = os.environ.get("AUTHOR_AGENT_SUMMARY_KEEP_MESSAGES")
+    if summary_keep:
+        try:
+            data["summaryKeepMessages"] = max(1, int(summary_keep))
+        except ValueError:
+            pass
     return data
 
 
 def save(update: dict) -> dict:
     with _LOCK:
         data = load()
-        for key in ("baseUrl", "model", "apiKey", "temperature", "maxToolRounds", "reviewWrites"):
+        for key in ("baseUrl", "model", "apiKey", "temperature", "maxToolRounds", "reviewWrites", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion"):
             if key in update and update[key] is not None:
                 data[key] = update[key]
         data["temperature"] = max(0.0, min(2.0, float(data.get("temperature", 0.2))))
@@ -86,4 +102,8 @@ def public(data: dict | None = None) -> dict:
         "temperature": data.get("temperature", 0.2),
         "maxToolRounds": data.get("maxToolRounds", 24),
         "reviewWrites": bool(data.get("reviewWrites", False)),
+        "summaryTriggerTokens": int(data.get("summaryTriggerTokens", 30000)),
+        "summaryKeepMessages": int(data.get("summaryKeepMessages", 12)),
+        "inputPricePerMillion": float(data.get("inputPricePerMillion", 0.0)),
+        "outputPricePerMillion": float(data.get("outputPricePerMillion", 0.0)),
     }

@@ -177,8 +177,13 @@ deterministic verifier and an explicit user click can do that.
 - `export_package` always pauses for approval. Enable **Review every file
   write/delete** in Settings to gate risky edits too. Approve or reject in the
   chat; the pending approval is stored per chat and survives reload.
-- Token usage is shown per turn when the provider reports it. Missing usage is
-  labelled as unreported, never invented.
+- Chats can be searched, renamed (pencil or double-click) and deleted from the
+  sidebar. Deleting a chat also removes its checkpoint thread.
+- **Stop** cancels the running asyncio task, which aborts the provider HTTP
+  stream rather than waiting for it to finish.
+- Token usage is shown per turn when the provider reports it. Optional input/
+  output prices in Settings add an estimated cost; missing usage is labelled as
+  unreported, never invented.
 
 ## The workflow
 
@@ -256,6 +261,17 @@ green. That case is now covered by a system-prompt rule and the eval repair
 loop. Eval runs use your configured key and cost provider usage; results and
 generated workspaces are not committed.
 
+The deterministic stress suite runs without provider tokens:
+
+```
+python qa/stress_agent.py
+```
+
+It covers durable two-turn memory, usage/cost, todo mirroring, HITL export,
+review-mode writes, checkpoint repair, summarization, concurrent workspaces,
+same-workspace serialization, cancellation (graph and server job), chat
+rename/delete and the reviewer.
+
 ## Reduced from the full design
 
 This keeps the essential author-assistant loop from
@@ -285,7 +301,8 @@ production platform.
 - One local user; no accounts, RBAC, audit trail or multi-tenant isolation.
 - Summary compaction is provider-dependent; pinned brief/decisions/todos carry
   the facts that matter. The summary itself is not deterministic.
-- Token counts are shown when the provider reports them; there is no cost meter.
+- Token counts are shown when the provider reports them. Cost is an estimate
+  only when you provide input/output prices; there is no billing integration.
 - `review_package` is a nested read-only reviewer agent, not a separate graph
   subgraph. Its findings are proposals; it cannot approve or export.
 - The eval harness requires a real provider key and is intentionally excluded
@@ -319,6 +336,7 @@ web/                 chat timeline, chats/files/changes sidebar, inspector
 web/vendor/          locally bundled highlight.js
 docs/                research/decision docs + LangGraph diagram
 eval/                real-provider authoring eval harness + fixtures
+qa/                  deterministic fake-model stress/regression suite
 scripts/             reliable WSL Docker up/down wrappers
 workspaces/          one directory per problem (gitignored)
 ```
