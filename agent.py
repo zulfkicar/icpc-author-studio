@@ -263,39 +263,25 @@ def _dispatch(slug: str, name: str, args: dict, emit) -> dict:
         timeout = max(1.0, min(120.0, timeout))
         stdin = args.get("stdin")
         data = stdin.encode("utf-8") if isinstance(stdin, str) and stdin else b""
-        started = time.perf_counter()
-        try:
-            child_env = winutil.python_env()
-            child_env["TEXINPUTS"] = tex_env
-            proc = subprocess.run(argv, cwd=str(workdir), input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                  timeout=timeout, env=child_env, **winutil.hidden_kwargs())
-            elapsed = (time.perf_counter() - started) * 1000
-            saved = None
-            if isinstance(args.get("stdout_path"), str) and args["stdout_path"].strip():
-                saved = workspace.write_text(slug, args["stdout_path"], proc.stdout.decode("utf-8", "replace"), source="agent")
-                if saved.get("diff"):
-                    emit("change", {"path": saved["path"], "diff": saved["diff"][:12000], "changeId": saved["change"]["id"]})
-            return {
-                "command": argv,
-                "exitCode": proc.returncode,
-                "timedOut": False,
-                "ms": round(elapsed, 1),
-                "stdout": _tool_text(proc.stdout) if not saved else f"[stdout saved to {saved['path']}]",
-                "stderr": _tool_text(proc.stderr),
-                "savedTo": saved["path"] if saved else None,
-                "diagnostic": winutil.diagnostic(proc.returncode),
-            }
-        except subprocess.TimeoutExpired as exc:
-            return {
-                "command": argv,
-                "exitCode": None,
-                "timedOut": True,
-                "ms": round((time.perf_counter() - started) * 1000, 1),
-                "stdout": _tool_text(exc.stdout or b""),
-                "stderr": _tool_text(exc.stderr or b""),
-                "stdin": stdin or "",
-                "diagnostic": "The command exceeded its time limit and was stopped.",
-            }
+        child_env = winutil.python_env()
+        child_env["TEXINPUTS"] = tex_env
+        result = winutil.run_captured(argv, workdir, data=data, timeout=timeout, env=child_env)
+        saved = None
+        if isinstance(args.get("stdout_path"), str) and args["stdout_path"].strip():
+            saved = workspace.write_text(slug, args["stdout_path"], result["stdout"].decode("utf-8", "replace"), source="agent")
+            if saved.get("diff"):
+                emit("change", {"path": saved["path"], "diff": saved["diff"][:12000], "changeId": saved["change"]["id"]})
+        return {
+            "command": argv,
+            "exitCode": result["returncode"],
+            "timedOut": result["timedOut"],
+            "ms": round(result["ms"], 1),
+            "stdout": _tool_text(result["stdout"]) if not saved else f"[stdout saved to {saved['path']}]",
+            "stderr": _tool_text(result["stderr"]),
+            "savedTo": saved["path"] if saved else None,
+            "stdin": stdin or "",
+            "diagnostic": "The command exceeded its time limit and was stopped." if result["timedOut"] else winutil.diagnostic(result["returncode"]),
+        }
     if name == "build_answers":
         result = verify.build_answers(slug)
         emit("verification", {"stage": "answers", "result": result})

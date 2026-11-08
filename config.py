@@ -43,9 +43,15 @@ def load() -> dict:
         pass
     except (ValueError, OSError):
         pass
-    data["apiKey"] = os.environ.get("AUTHOR_AGENT_API_KEY", data.get("apiKey", ""))
-    data["baseUrl"] = os.environ.get("AUTHOR_AGENT_BASE_URL", data.get("baseUrl", DEFAULTS["baseUrl"]))
-    data["model"] = os.environ.get("AUTHOR_AGENT_MODEL", data.get("model", DEFAULTS["model"]))
+    api_key = os.environ.get("AUTHOR_AGENT_API_KEY")
+    base_url = os.environ.get("AUTHOR_AGENT_BASE_URL")
+    model = os.environ.get("AUTHOR_AGENT_MODEL")
+    if api_key:
+        data["apiKey"] = api_key
+    if base_url:
+        data["baseUrl"] = base_url
+    if model:
+        data["model"] = model
     return data
 
 

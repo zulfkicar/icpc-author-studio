@@ -13,9 +13,9 @@ import os
 import pathlib
 import re
 import shutil
-import subprocess
 import sys
 import time
+import uuid
 import zipfile
 
 from config import TEMPLATES
@@ -25,6 +25,7 @@ import workspace
 SOLUTION_EXT = {".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".c": "c", ".py": "py", ".java": "java"}
 NEGATIVE_DIRS = ("wrong_answer", "time_limit_exceeded", "wrong_solutions")
 OUTPUT_CAP = 8 * 1024 * 1024
+VERIFY_BUDGET_SECONDS = 15 * 60
 
 
 def _which(name: str) -> str | None:
@@ -32,50 +33,27 @@ def _which(name: str) -> str | None:
 
 
 def _run(argv: list[str], cwd: pathlib.Path, data: bytes = b"", timeout: float = 10.0, env: dict | None = None) -> dict:
-    started = time.perf_counter()
     run_env = winutil.python_env()
     if env:
         run_env.update(env)
+    result = winutil.run_captured(argv, cwd, data=data, timeout=timeout, env=run_env)
+    result["stdout"] = result["stdout"][:OUTPUT_CAP]
+    result["stderr"] = result["stderr"][:OUTPUT_CAP]
+    return result
+
+
+def _new_build_dir(slug: str) -> pathlib.Path:
+    root = workspace.ws_path(slug) / ".agent" / "build"
+    root.mkdir(parents=True, exist_ok=True)
+    run = root / f"run-{uuid.uuid4().hex[:8]}"
+    run.mkdir()
     try:
-        proc = subprocess.run(
-            argv, cwd=str(cwd), input=data, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, timeout=timeout, env=run_env,
-            **winutil.hidden_kwargs(),
-        )
-        elapsed = (time.perf_counter() - started) * 1000
-        return {
-            "ok": True,
-            "timedOut": False,
-            "returncode": proc.returncode,
-            "stdout": proc.stdout[:OUTPUT_CAP],
-            "stderr": proc.stderr[:OUTPUT_CAP],
-            "ms": elapsed,
-        }
-    except subprocess.TimeoutExpired as exc:
-        elapsed = (time.perf_counter() - started) * 1000
-        return {
-            "ok": False,
-            "timedOut": True,
-            "returncode": None,
-            "stdout": (exc.stdout or b"")[:OUTPUT_CAP],
-            "stderr": (exc.stderr or b"")[:OUTPUT_CAP],
-            "ms": elapsed,
-        }
-    except OSError as exc:
-        return {
-            "ok": False,
-            "timedOut": False,
-            "returncode": None,
-            "stdout": b"",
-            "stderr": str(exc).encode(),
-            "ms": (time.perf_counter() - started) * 1000,
-        }
-
-
-def _build_dir(slug: str) -> pathlib.Path:
-    path = workspace.ws_path(slug) / ".agent" / "build"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+        old_runs = sorted(root.glob("run-*"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for old in old_runs[5:]:
+            shutil.rmtree(old, ignore_errors=True)
+    except OSError:
+        pass
+    return run
 
 
 def _read_meta(slug: str) -> dict:
@@ -149,8 +127,7 @@ def _solutions(slug: str) -> list[dict]:
     return out
 
 
-def _compile(slug: str, solution: dict) -> dict:
-    build = _build_dir(slug)
+def _compile(slug: str, solution: dict, build: pathlib.Path) -> dict:
     key = hashlib.sha256(str(solution["absolute"]).encode()).hexdigest()[:10]
     stem = re.sub(r"[^A-Za-z0-9_]", "_", solution["absolute"].stem)
     language = solution["language"]
@@ -294,28 +271,32 @@ def _statement(slug: str) -> dict:
     return {"status": "pass", "detail": "problem.pdf compiled"}
 
 
-def _check_cancel(cancelled) -> None:
+def _check_cancel(cancelled, deadline: float | None = None) -> None:
     if cancelled is not None and cancelled():
         raise RuntimeError("Cancelled by user")
+    if deadline is not None and time.monotonic() > deadline:
+        raise RuntimeError("Verification exceeded its 15-minute budget")
 
 
 def build_answers(slug: str, cancelled=None) -> dict:
     winutil.prepare()
-    _check_cancel(cancelled)
+    deadline = time.monotonic() + VERIFY_BUDGET_SECONDS
+    _check_cancel(cancelled, deadline)
     tests = _tests(slug)
     accepted = _solutions(slug)
     accepted = [s for s in accepted if s["kind"] == "accepted"]
     if not accepted:
         raise ValueError("Add at least one reference solution in submissions/accepted")
     meta = _read_meta(slug)
-    compiled = {s["path"]: _compile(slug, s) for s in accepted}
+    build_root = _new_build_dir(slug)
+    compiled = {s["path"]: _compile(slug, s, build_root) for s in accepted}
     broken = [{"path": p, "error": c.get("error", "compile failed")} for p, c in compiled.items() if not c["ok"]]
     if broken:
         return {"ok": False, "errors": broken, "written": 0}
     written = 0
     reports = []
     for test in tests:
-        _check_cancel(cancelled)
+        _check_cancel(cancelled, deadline)
         data = test["input"].read_bytes()
         outputs = []
         for solution in accepted:
@@ -336,7 +317,8 @@ def build_answers(slug: str, cancelled=None) -> dict:
 
 def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
     winutil.prepare()
-    _check_cancel(cancelled)
+    deadline = time.monotonic() + VERIFY_BUDGET_SECONDS
+    _check_cancel(cancelled, deadline)
     root = workspace.ws_path(slug)
     meta = _read_meta(slug)
     tests = _tests(slug)
@@ -356,7 +338,7 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
 
     built = {"ok": False, "written": 0, "errors": [], "disagreements": []}
     if accepted and write_answers:
-        built = build_answers(slug)
+        built = build_answers(slug, cancelled=cancelled)
         tests = _tests(slug)
         if not built["ok"]:
             errors.append("Answer generation failed")
@@ -364,14 +346,15 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
             warnings.extend(f"Reference disagreement on {d['test']}" for d in built.get("disagreements", []))
 
     compiled = {}
+    build_root = _new_build_dir(slug)
     for solution in accepted + negative:
-        _check_cancel(cancelled)
-        compiled[solution["path"]] = _compile(slug, solution)
+        _check_cancel(cancelled, deadline)
+        compiled[solution["path"]] = _compile(slug, solution, build_root)
 
     validator_results = []
     if validator:
         for test in tests:
-            _check_cancel(cancelled)
+            _check_cancel(cancelled, deadline)
             result = _run([sys.executable, str(validator)], cwd=root, data=test["input"].read_bytes(), timeout=15)
             valid = result["ok"] and result["returncode"] in (0, 42)
             validator_results.append({
@@ -393,7 +376,7 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
     answer_mismatch = []
     missing_answer = []
     for test in tests:
-        _check_cancel(cancelled)
+        _check_cancel(cancelled, deadline)
         expected = test["answer"].read_bytes() if test["answer"].is_file() else None
         if expected is None:
             missing_answer.append(test["relative"])
@@ -430,7 +413,7 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
         kills = []
         counts = {"AC": 0, "WA": 0, "TLE": 0, "RE": 0, "NO_ANSWER": 0}
         for test in tests:
-            _check_cancel(cancelled)
+            _check_cancel(cancelled, deadline)
             expected = test["answer"].read_bytes() if test["answer"].is_file() else None
             result = _run(comp["argv"], cwd=root, data=test["input"].read_bytes(),
                           timeout=meta["timeLimitSeconds"] + 0.5)

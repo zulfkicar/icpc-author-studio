@@ -30,6 +30,51 @@ not empty on first launch. Delete that folder if you want to start clean.
 Python 3.13 plus `g++` (MinGW) and `pdflatex` (MiKTeX). The agent runtime uses
 LangGraph (`langgraph` + `langchain-openai`) with the OpenAI-compatible provider.
 
+## Docker
+
+The image includes Python, LangGraph, g++, the JDK and a TeX Live toolchain, so
+the same verification path works without host toolchains.
+
+```powershell
+docker compose up --build -d
+# open http://127.0.0.1:8787/
+docker compose logs -f author-agent
+docker compose down
+```
+
+After the first build, `docker compose up -d` and `docker compose down` are
+enough. Use `--build` again after changing source.
+
+By default the container bind-mounts `./workspaces` and `./.author-agent`, so it
+sees your existing problems, chats, reports and provider key. `docker compose
+down` leaves them untouched. On Linux hosts, make those directories writable by
+the container user (UID 1000):
+
+```bash
+mkdir -p workspaces .author-agent
+sudo chown -R 1000:1000 workspaces .author-agent
+```
+
+If you prefer a clean, isolated install, replace the two volumes with named
+volumes and declare them at the bottom of `docker-compose.yml`:
+
+```yaml
+    volumes:
+      - author-workspaces:/app/workspaces
+      - author-state:/app/.author-agent
+volumes:
+  author-workspaces:
+  author-state:
+```
+
+To pass a provider key without opening Settings, copy `.env.example` to `.env`
+and fill it in; the key is injected into the container but `.env` is never
+committed or baked into the image. The Settings UI works too and writes to
+`.author-agent/config.json` (or the `author-state` volume).
+
+The container binds the published port to host `127.0.0.1` only. Change the
+`ports` mapping in `docker-compose.yml` if you intentionally want LAN access.
+
 ## Configure a provider
 
 Open **Settings** in the app and set:

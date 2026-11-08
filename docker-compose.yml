@@ -1,0 +1,31 @@
+services:
+  author-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: icpc-author-agent:local
+    container_name: icpc-author-agent
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      AUTHOR_AGENT_HOST: "0.0.0.0"
+      AUTHOR_AGENT_API_KEY: "${AUTHOR_AGENT_API_KEY:-}"
+      AUTHOR_AGENT_BASE_URL: "${AUTHOR_AGENT_BASE_URL:-}"
+      AUTHOR_AGENT_MODEL: "${AUTHOR_AGENT_MODEL:-}"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      # Existing local problems, chats, plans and reports.
+      - ./workspaces:/app/workspaces
+      # Existing local provider settings and key.
+      - ./.author-agent:/app/.author-agent
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

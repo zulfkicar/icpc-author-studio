@@ -930,6 +930,12 @@ function processJobEvents(job) {
       node.textContent = "Stopped by user.";
       addEventCard(node);
       $("agent-state").textContent = "";
+    } else if (event.kind === "timeout") {
+      const node = document.createElement("div");
+      node.className = "event-verify bad";
+      node.textContent = data.message || "Job exceeded its time limit.";
+      addEventCard(node);
+      $("agent-state").textContent = "stopping…";
     } else if (event.kind === "report") {
       renderReport(data);
     } else if (event.kind === "export") {

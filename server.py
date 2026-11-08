@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
 import pathlib
 import shutil
 import sys
@@ -76,9 +77,27 @@ def start_job(title: str, slug: str | None, fn, chat_id: str | None = None) -> d
         JOBS[job_id] = job
         if len(JOBS) > 80:
             for key in list(JOBS)[:20]:
-                if JOBS[key]["state"] in ("done", "error"):
+                if JOBS[key]["state"] in ("done", "error", "cancelled"):
                     JOBS.pop(key, None)
+
+    def watchdog() -> None:
+        time.sleep(20 * 60)
+        with JOB_LOCK:
+            if job["state"] != "running":
+                return
+            job["cancelRequested"] = True
+            job["events"].append({
+                "at": now(), "kind": "timeout",
+                "data": {"message": "Job exceeded the 20-minute limit and was stopped."},
+            })
+        time.sleep(60)
+        with JOB_LOCK:
+            if job["state"] == "running":
+                job["state"] = "error"
+                job["error"] = "Job exceeded the 20-minute limit."
+
     threading.Thread(target=run, daemon=True).start()
+    threading.Thread(target=watchdog, daemon=True).start()
     return job
 
 
@@ -88,15 +107,23 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # keep the console quiet
         pass
 
+    def _allowed_hosts(self) -> set[str]:
+        port = self.server.server_port
+        hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        extra = os.environ.get("AUTHOR_AGENT_ALLOWED_HOSTS", "")
+        hosts.update(host.strip() for host in extra.split(",") if host.strip())
+        return hosts
+
     def _host_ok(self) -> bool:
-        host = self.headers.get("Host", "")
-        return host in (f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}")
+        return self.headers.get("Host", "") in self._allowed_hosts()
 
     def _same_origin(self) -> bool:
         origin = self.headers.get("Origin")
         if not origin:
             return True
-        return origin in (f"http://127.0.0.1:{self.server.server_port}", f"http://localhost:{self.server.server_port}")
+        allowed = {f"http://{host}" for host in self._allowed_hosts()}
+        allowed.update(f"https://{host}" for host in self._allowed_hosts())
+        return origin in allowed
 
     def end_headers(self):
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'")
@@ -334,13 +361,15 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="ICPC Author Agent (loopback only)")
+    parser = argparse.ArgumentParser(description="ICPC Author Agent")
+    parser.add_argument("--host", default=os.environ.get("AUTHOR_AGENT_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=8787)
     args = parser.parse_args()
     winutil.prepare()
     config.load()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"ICPC Author Agent http://127.0.0.1:{args.port}/", flush=True)
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    shown = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
+    print(f"ICPC Author Agent http://{shown}:{args.port}/", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

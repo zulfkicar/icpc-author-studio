@@ -268,7 +268,30 @@ workspace. Production hardening would add:
 The current app does bind loopback only, checks `Host`/`Origin`, uses a strict
 CSP, stores the provider key locally and never returns it to the browser.
 
-## 8. Provider layer
+## 8. Deployment
+
+The app is packaged as a single container:
+
+- `Dockerfile`: `python:3.13-slim-bookworm` plus g++, the JDK, latexmk and TeX
+  Live packages (`lmodern` included).
+- `docker-compose.yml`: one service, published to `127.0.0.1:8787`, healthcheck,
+  `init`, `restart: unless-stopped`, `no-new-privileges`.
+- Runs as UID 1000 (`app`), not root.
+- Bind-mounts `./workspaces` and `./.author-agent` so existing problems, chats
+  and the provider key carry over. Named volumes are an alternative for an
+  isolated install.
+- `.dockerignore` excludes `.author-agent`, `workspaces`, `.env`, keys, logs and
+  build artifacts, so the image never contains private problem data or the API
+  key.
+- `.env` is optional; the key can also be entered in Settings and stored in the
+  state directory.
+
+The container is the process boundary, not a per-submission sandbox. Model-written
+code runs as the app user inside the container and can see the mounted
+workspaces. For a multi-user service, run each submission in a separate
+container or microVM with a read-only checkout and no shared mounts.
+
+## 9. Provider layer
 
 - `ChatOpenAI` from `langchain-openai` is the adapter. It works with DeepSeek and
   any OpenAI-compatible chat-completions endpoint.
