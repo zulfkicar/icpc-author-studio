@@ -250,9 +250,11 @@ sum:   verified, 29 tests, 3 negatives, 1,325,603 input tokens
 - **Verifier performance:** the first Isolate-backed 2-turn eval exceeded its
   15-minute budget because each verifier run copied the full 23 MB workspace.
   The worker now copies `data/` only when argv references it (checkers and
-  interactors); the eval must be re-run to confirm the budget. The earlier
-  bwrap-backed eval passed; this is a performance regression, not a correctness
-  claim.
+  interactors). A re-run of the 86-test `eval-claim-or-concede-2` workspace
+  completed in **650.8 s**, under the budget. It reported `failed` solely
+  because that package never ran **Measure limits**; the verifier itself
+  completed all 86 tests. The earlier bwrap-backed eval passed; this is a
+  performance/packaging note, not a UI claim.
 - **Adversarial depth:** all 146 rows have automated owners, but some use
   deterministic contract tests rather than live third-party fault injection
   (for example an actual disk-full filesystem rather than `RLIMIT_FSIZE`, or a

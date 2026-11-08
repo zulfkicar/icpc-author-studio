@@ -1661,14 +1661,15 @@ function renderChatList() {
   $("stop-btn").hidden = !state.jobId;
   $("stop-btn").disabled = !state.jobId;
   const active = state.chats.find((c) => c.id === state.chatId);
-  const problemName = document.querySelector(".problem-name")?.textContent || "";
+  const summaryName = state.summary && state.summary.meta && state.summary.meta.name;
+  const problemName = summaryName || document.querySelector(".problem-name")?.textContent || "";
   const activeTitle = active ? chatTitle(active) : "No conversation";
   const displayTitle = active && activeTitle === "New chat" && problemName ? problemName : activeTitle;
   $("chat-title").textContent = displayTitle;
   $("chat-sub").textContent = active
     ? (activeTitle === "New chat" ? "Start a conversation" : `${formatTime(active.updatedAt)} · ${active.messageCount || 0} messages${state.jobId && state.jobChatId === active.id ? " · working" : ""}`)
     : "";
-  $("composer-chat").textContent = active ? chatTitle(active) : "no chat";
+  $("composer-chat").textContent = active ? (activeTitle === "New chat" && problemName ? problemName : chatTitle(active)) : "no chat";
   renderChatTabs();
 }
 
@@ -2590,8 +2591,11 @@ $("action-dialog").addEventListener("close", () => {
   resolve(confirmed ? (promptMode ? $("action-input").value.trim() : true) : (promptMode ? null : false));
   const invoker = actionDialogInvoker;
   actionDialogInvoker = null;
-  if (invoker && invoker.isConnected && typeof invoker.focus === "function") {
-    invoker.focus({ preventScroll: true });
+  const focusTarget = invoker && invoker.isConnected && invoker.offsetParent !== null
+    ? invoker
+    : document.getElementById("composer");
+  if (focusTarget && typeof focusTarget.focus === "function") {
+    focusTarget.focus({ preventScroll: true });
   }
 });
 
@@ -2890,6 +2894,8 @@ async function resumeClarification(answers) {
     state.jobId = job.id;
     state.jobChatId = state.chatId;
     state.jobEvents = 0;
+    machineSend("turn", "RESUME");
+    machineSend("approval", "RESOLVE");
     $("send-btn").disabled = true;
     $("agent-state").textContent = "resuming\u2026";
     pollJob(job.id);
@@ -2913,6 +2919,8 @@ async function resumeApproval(decision) {
     state.jobId = job.id;
     state.jobChatId = state.chatId;
     state.jobEvents = 0;
+    machineSend("turn", "RESUME");
+    machineSend("approval", "RESOLVE");
     $("send-btn").disabled = true;
     $("agent-state").textContent = "resuming…";
     pollJob(job.id);

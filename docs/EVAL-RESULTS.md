@@ -63,6 +63,27 @@ errors       : []
 The workspaces are removed by the eval after verification. The JSON files here
 are the evidence, not a claim that a live DOMjudge import was tested.
 
+## Isolate verifier revalidation
+
+After moving the deterministic verifier to the real Isolate worker, the
+`eval-claim-or-concede-2` workspace (86 tests) was verified directly:
+
+```text
+job          : 6004dc1eb8e6
+elapsed      : 650.8 s (under the 15-minute budget)
+status       : failed
+errors       : Limits measured: run Measure limits after the reference and tests are ready
+tests        : 86 (3 sample, 83 secret)
+accepted     : 2
+negative     : 4
+```
+
+The verifier completed the full test matrix; the package failed only because
+the eval fixture never ran the **Measure limits** step. The earlier
+15-minute-budget failure was the Isolate copy regression (23 MB per run), now
+fixed by demand-driven `data/` copying. This is a verifier performance result,
+not a claim that the package is export-ready.
+
 ## Context probe
 
 `qa/probe_long_context.py` (opt-in, real provider):
