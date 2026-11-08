@@ -38,7 +38,11 @@ The compose stack has two services:
 - `icpc-author-executor` ? isolated compiler/runner worker. It has g++, the JDK
   and TeX Live, **no provider key**, **no host port**, **no external network**,
   a read-only root, dropped capabilities and container CPU/memory/PID limits.
-  It sees only `./workspaces`; each command runs under a bwrap mount namespace with only the per-run workspace copy and read-only runtime paths.
+  It sees only `./workspaces`; each command runs under a bwrap mount namespace
+  with only the per-run workspace copy and read-only runtime paths.
+  `POST /isolate/run` exposes an Isolate-style contract (`time`, `wallTime`,
+  `memory`, `processes`, `stack`, `fsize`, `openFiles`) and Isolate-style
+  metadata (`status`, `exit`, `time`, `wallTime`, `maxRssKb`, `message`).
 
 The app routes every compile/run/verify command to the executor; it does not
 execute model-written code itself.
@@ -108,6 +112,16 @@ container has the compilers and sees only package files. A program that prints
 its hostname prints the executor container ID, not the app container ID. The
 full deterministic verifier (compiler, validator, reference, negative and
 statement PDF) runs through the executor.
+
+Each run is copied into a private temporary workspace and executed under bwrap
+with a read-only system root, only `/work` writable, `--unshare-all`,
+`--cap-drop ALL`, and CPU / wall / address-space / stack / file-size /
+open-file / process limits. `/app/workspaces` is hidden, so an absolute
+cross-workspace read fails. `qa/test_isolate_contract.py` exercises these
+properties, including a process cap applied inside the user namespace.
+
+Judge0 is **not** a second verification authority. `judge0_adapter.py` is an
+optional quick-run backend; see [`docs/JUDGE0-EVALUATION.md`](docs/JUDGE0-EVALUATION.md).
 
 For a literal separate VM, run the executor on that VM and point the app at it
 with `AUTHOR_AGENT_EXECUTOR_URL`; the app must be able to reach the executor over
@@ -232,9 +246,10 @@ deterministic verifier and an explicit user click can do that.
 
 ## What verification actually checks
 
-- Required DOMjudge structure and metadata.
-- Every sample/secret input is accepted by `input_validators/validate.py`
-  (exit 42 or 0).
+- Required DOMjudge structure and metadata, plus an ICPC Problem Package Format
+  audit (`icpc_spec.py`).
+- Every sample/secret input is accepted by `input_validators/` (exit code 42 per
+  the ICPC spec).
 - Every accepted reference compiles and matches the stored answer on every test.
 - At least one sample, one secret test, one reference and one negative solution.
 - Every negative solution compiles and is killed by at least one test. A
@@ -255,6 +270,13 @@ Output comparison is token-based by default. Custom output validators/checkers,
 interactive problems, test groups and explicit float tolerance are supported
 through the deterministic verification modes; checker/interactor self-tests are
 required before verification can pass.
+
+Output validators follow the ICPC contract: `<validator> input answer feedback_dir`
+with team output on stdin, exit 42 for AC and 43 for WA. C++ `testlib.h`
+checkers and interactors are detected and invoked with their native contract.
+`output_validator/` and `output_validators/` are both supported. An interactive
+problem can add a transcript checker that validates the captured interaction and
+rejects a forged one. Test groups support `points` and dependency chains.
 
 ## IDE and readable output
 
@@ -363,9 +385,13 @@ agent_state.py       typed AuthorState + bounded working-memory helpers
 agent_middleware.py  pinned context, context budget and tool-error middleware
 prompt_loader.py     composable prompt assembly
 skill_registry.py    progressive-disclosure SKILL.md registry
-package_model.py     Kattis/ICPC package discovery and groups
-verification_modes.py checker/interactor self-tests
+package_model.py     Kattis/ICPC package discovery, validators and groups
+verification_modes.py checker/interactor/transcript self-tests
+icpc_spec.py         ICPC Problem Package Format audit
+scoring.py           group points and dependency scoring
 mcp_server.py        scoped read-only MCP stdio server
+mcp_consent.py       host consent and roots for MCP
+judge0_adapter.py    optional Judge0 quick-run adapter (not the verifier)
 agent.py             bounded tool dispatch + system prompt
 verify.py            deterministic package checks and ZIP export
 workspace.py         path safety, scaffold, chats, plans, changes, diffs, revert
@@ -374,8 +400,8 @@ winutil.py           headless Windows process execution
 sandbox/             sitecustomize for headless child Python processes
 templates/           ICPC statement class and DOMjudge scaffold
 web/                 chat timeline, chats/files/changes sidebar, inspector
-web/vendor/          locally bundled highlight.js
-docs/                master plan, design, adversarial verification, status, decisions
+web/vendor/          locally bundled highlight.js and axe-core
+docs/                master plan, design, adversarial verification, status, eval, visual audit, decisions
 eval/                real-provider authoring eval harness + fixtures
 qa/                  deterministic fake-model stress/regression suite
 scripts/             reliable WSL Docker up/down wrappers

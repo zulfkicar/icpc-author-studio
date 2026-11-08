@@ -34,7 +34,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command, interrupt
 
-from agent_middleware import ContextBudgetMiddleware, PinnedContextMiddleware, ToolErrorMiddleware
+from agent_middleware import ContextBudgetMiddleware, PinnedContextMiddleware, ProviderRefusalMiddleware, StreamIntegrityMiddleware, ToolErrorMiddleware
 from agent_state import AuthorState, clean_brief, clean_decisions, clean_list
 import agent
 import config
@@ -360,6 +360,13 @@ def list_skills() -> dict:
     ]}
 
 
+def _active_skill_names(state) -> list[str]:
+    raw = (state or {}).get("active_skills") or {}
+    if isinstance(raw, dict):
+        return [name for name, active in raw.items() if active]
+    return [str(item) for item in raw]
+
+
 @tool
 def load_skill(
     name: str,
@@ -367,9 +374,10 @@ def load_skill(
     state: Annotated[dict, InjectedState] = None,
 ) -> Command:
     """Load a specialized skill's full checklist into pinned context. At most two may be active."""
-    active, skill = skill_registry.activate(state.get("active_skills") if state else [], name)
+    current = _active_skill_names(state)
+    active, skill = skill_registry.activate(current, name)
     return Command(update={
-        "active_skills": active,
+        "active_skills": {skill.name: True},
         "messages": [ToolMessage(
             content=f"Loaded skill {skill.name}. Its checklist is now pinned for the next model call.",
             tool_call_id=tool_call_id,
@@ -384,9 +392,9 @@ def unload_skill(
     state: Annotated[dict, InjectedState] = None,
 ) -> Command:
     """Unload a skill and remove its instructions from pinned context."""
-    active = skill_registry.deactivate(state.get("active_skills") if state else [], name)
+    skill_registry.deactivate(_active_skill_names(state), name)
     return Command(update={
-        "active_skills": active,
+        "active_skills": {name: False},
         "messages": [ToolMessage(content=f"Unloaded skill {name}.", tool_call_id=tool_call_id)],
     })
 
@@ -769,7 +777,7 @@ async def _run_turn_async(
             # Middleware nodes (pinned context, todo, HITL, summarization,
             # call limit) add graph steps; keep the step budget wider than the
             # model-call limit. ModelCallLimitMiddleware still caps real calls.
-            "recursion_limit": max(60, int(cfg.get("maxToolRounds", 24)) * 6 + 20),
+            "recursion_limit": max(120, int(cfg.get("maxToolRounds", 24)) * 12 + 40),
         }
         if resume is None:
             try:
@@ -913,6 +921,8 @@ def _graph(cfg: dict, saver):
             ),
             *([ModelFallbackMiddleware(*fallback_models)] if fallback_models else []),
             ModelRefusalMiddleware(),
+            ProviderRefusalMiddleware(),
+            StreamIntegrityMiddleware(),
             ToolRetryMiddleware(
                 max_retries=max(0, int(cfg.get("maxRetries", 2))),
                 tools=[

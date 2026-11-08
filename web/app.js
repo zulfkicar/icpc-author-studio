@@ -812,14 +812,26 @@ function renderTree() {
       const rowEl = document.createElement("div");
       rowEl.className = "tree-row" + (isDir ? " tree-dir-row" : "") + (state.file && state.file.path === node.path ? " active" : "");
       rowEl.style.paddingLeft = (8 + depth * 13) + "px";
+      rowEl.tabIndex = 0;
+      rowEl.setAttribute("role", "button");
+      if (isDir) rowEl.setAttribute("aria-expanded", expanded ? "true" : "false");
       const toggle = document.createElement("span");
       toggle.className = "tree-toggle";
-      toggle.textContent = isDir ? (expanded ? "?" : "?") : "";
-      const ext = node.path.split(".").pop();
-      const glyph = isDir ? "?" : node.path.endsWith(".tex") ? "T" : node.path.endsWith(".cpp") ? "C" : node.path.endsWith(".py") ? "P" : node.path.endsWith(".in") ? "i" : node.path.endsWith(".ans") ? "o" : "?";
+      toggle.textContent = isDir ? (expanded ? "\u25be" : "\u25b8") : "";
+      const glyph = isDir ? "\u25a3"
+        : node.path.endsWith(".tex") ? "T"
+        : node.path.endsWith(".cpp") || node.path.endsWith(".cc") ? "C"
+        : node.path.endsWith(".py") ? "P"
+        : node.path.endsWith(".java") ? "J"
+        : node.path.endsWith(".in") ? "i"
+        : node.path.endsWith(".ans") ? "o"
+        : node.path.endsWith(".md") ? "M"
+        : node.path.endsWith(".yaml") || node.path.endsWith(".yml") ? "Y"
+        : node.path.endsWith(".pdf") ? "D"
+        : "\u00b7";
       const icon = document.createElement("span");
       icon.className = "tree-icon";
-      icon.textContent = isDir ? "?" : glyph;
+      icon.textContent = glyph;
       const name = document.createElement("span");
       name.className = "tree-name";
       name.textContent = node.name;
@@ -830,11 +842,11 @@ function renderTree() {
       const actions = document.createElement("span");
       actions.className = "tree-actions";
       if (isDir) {
-        actions.appendChild(treeAction("?", "New file in this folder", () => newEntry("file", node.path)));
-        actions.appendChild(treeAction("?", "New folder in this folder", () => newEntry("dir", node.path)));
+        actions.appendChild(treeAction("+", "New file in this folder", () => newEntry("file", node.path)));
+        actions.appendChild(treeAction("\u25a1", "New folder in this folder", () => newEntry("dir", node.path)));
       }
-      actions.appendChild(treeAction("?", "Rename", () => renameEntry(node.path)));
-      actions.appendChild(treeAction("?", "Delete", () => deleteEntry(node.path, isDir)));
+      actions.appendChild(treeAction("\u270e", "Rename " + node.path, () => renameEntry(node.path)));
+      actions.appendChild(treeAction("\u00d7", "Delete " + node.path, () => deleteEntry(node.path, isDir)));
       rowEl.append(toggle, icon, name, size, actions);
       if (changed.has(node.path)) {
         const dot = document.createElement("span");
@@ -842,16 +854,23 @@ function renderTree() {
         dot.title = "Unreviewed change";
         rowEl.appendChild(dot);
       }
-      if (isDir) {
-        rowEl.addEventListener("click", () => {
+      const activate = () => {
+        if (isDir) {
           if (state.expanded.has(node.path)) state.expanded.delete(node.path);
           else state.expanded.add(node.path);
           saveTreeExpanded();
           renderTree();
-        });
-      } else {
-        rowEl.addEventListener("click", () => openFile(node.path));
-      }
+        } else {
+          openFile(node.path);
+        }
+      };
+      rowEl.addEventListener("click", activate);
+      rowEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          activate();
+        }
+      });
       host.appendChild(rowEl);
     }
     if (node.type === "dir" && (node.path === "" || state.expanded.has(node.path))) {
@@ -932,7 +951,7 @@ function sampleTests() {
 function updateEditorChrome() {
   const editor = $("file-editor");
   const gutter = $("line-numbers");
-  const language = state.file ? languageForPath(state.file.path) : "?";
+  const language = state.file ? languageForPath(state.file.path) : "text";
   $("editor-language").textContent = language;
   $("run-language").textContent = language;
   const text = editor.value || "";
@@ -962,7 +981,7 @@ function renderTestTabs() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "test-tab" + (result.name === state.activeSample ? " active" : "") + (result.pass ? " pass" : " fail");
-    button.textContent = `${result.pass ? "?" : "?"} ${result.name}`;
+    button.textContent = `${result.pass ? "PASS" : "FAIL"} ${result.name}`;
     button.title = result.pass ? `Passed in ${Math.round(result.ms)} ms` : "Wrong answer";
     button.addEventListener("click", () => selectTest(result));
     host.appendChild(button);
@@ -991,7 +1010,7 @@ function renderTestResults() {
     name.textContent = result.name;
     const status = document.createElement("span");
     status.className = "test-status";
-    status.textContent = result.pass ? `Passed ? ${Math.round(result.ms)} ms` : (result.stage === "compile" ? "Compile error" : "Wrong answer");
+    status.textContent = result.pass ? `Passed \u00b7 ${Math.round(result.ms)} ms` : (result.stage === "compile" ? "Compile error" : "Wrong answer");
     row.appendChild(name);
     row.appendChild(status);
     row.addEventListener("click", () => selectTest(result));
@@ -1188,7 +1207,7 @@ async function runFile() {
   const output = $("run-output");
   output.hidden = false;
   output.className = "run-output";
-  output.textContent = "Running?";
+  output.textContent = "Running\u2026";
   $("test-results").hidden = true;
   try {
     const result = await api(`/api/workspaces/${state.slug}/run`, {
@@ -1398,7 +1417,7 @@ function renderChatTabs() {
     tab.addEventListener("click", () => selectChat(id));
     const close = document.createElement("span");
     close.className = "chat-tab-close";
-    close.textContent = "?";
+    close.textContent = "\u00d7";
     close.title = "Close tab";
     close.addEventListener("click", (event) => closeChatTab(id, event));
     tab.appendChild(close);
@@ -2184,8 +2203,76 @@ async function restoreFiles(snapshotId) {
   } catch (error) { toast(error.message, true); }
 }
 
+async function loadMcp() {
+  const host = $("mcp-body");
+  if (!host) return;
+  if (!state.slug) { host.innerHTML = '<div class="pad muted">Open a workspace first.</div>'; return; }
+  host.innerHTML = '<div class="pad muted">Loading MCP consent…</div>';
+  try {
+    const data = await api(`/api/workspaces/${state.slug}/mcp`);
+    const consent = data.consent || {};
+    const tools = data.tools || [];
+    const rows = tools.map((tool) => {
+      const granted = Boolean((consent.tools || {})[tool.name]);
+      return `<tr>
+        <td class="mono">${escapeHtml(tool.name)}</td>
+        <td>${escapeHtml(tool.description)}</td>
+        <td><label class="check"><input type="checkbox" data-mcp-tool="${escapeHtml(tool.name)}" aria-label="Allow ${escapeHtml(tool.name)}" ${granted ? "checked" : ""}> allow</label></td>
+        <td><button class="quiet small" data-mcp-test="${escapeHtml(tool.name)}" aria-label="Probe ${escapeHtml(tool.name)}">Test</button></td>
+      </tr>`;
+    }).join("");
+    host.innerHTML = `
+      <div class="mcp-head">
+        <div>
+          <h3>MCP host consent</h3>
+          <p class="muted small">The scoped server is read-only. Nothing is callable until you explicitly grant it here. Roots restrict which workspace paths the server may read.</p>
+        </div>
+        <span class="chip ${consent.enabled ? "AC" : "WA"}">${consent.enabled ? "enabled" : "disabled"}</span>
+      </div>
+      <label class="check"><input id="mcp-enabled" type="checkbox" ${consent.enabled ? "checked" : ""}> Enable the MCP server for this workspace</label>
+      <label>Consented roots (comma separated, workspace-relative)
+        <input id="mcp-roots" value="${escapeHtml((consent.roots || ["."]).join(", "))}" placeholder="., data/sample">
+      </label>
+      <table class="table"><thead><tr><th>Tool</th><th>Purpose</th><th>Consent</th><th>Probe</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" class="muted">none</td></tr>'}</tbody></table>
+      <div class="approval-actions">
+        <button id="mcp-save" class="primary small">Save consent</button>
+        <span id="mcp-test-result" class="muted small"></span>
+      </div>
+      <p class="muted small">Protocol ${escapeHtml(data.protocol || "")} · ${escapeHtml(data.server || "")}. Secret test data is never exposed.</p>`;
+    $("mcp-save").addEventListener("click", saveMcp);
+    host.querySelectorAll("[data-mcp-test]").forEach((button) => button.addEventListener("click", () => testMcpTool(button.dataset.mcpTest)));
+  } catch (error) { host.innerHTML = `<div class="pad status-fail">${escapeHtml(error.message)}</div>`; }
+}
+
+async function saveMcp() {
+  if (!state.slug) return;
+  const tools = {};
+  document.querySelectorAll("[data-mcp-tool]").forEach((box) => { tools[box.dataset.mcpTool] = box.checked; });
+  const roots = ($("mcp-roots").value || ".").split(",").map((item) => item.trim()).filter(Boolean);
+  try {
+    await api(`/api/workspaces/${state.slug}/mcp`, { method: "POST", body: { enabled: $("mcp-enabled").checked, tools, roots } });
+    toast("MCP consent saved");
+    await loadMcp();
+  } catch (error) { toast(error.message, true); }
+}
+
+async function testMcpTool(tool) {
+  if (!state.slug) return;
+  const output = $("mcp-test-result");
+  if (output) output.textContent = "Testing…";
+  try {
+    const result = await api(`/api/workspaces/${state.slug}/mcp/test`, { method: "POST", body: { tool, arguments: {} } });
+    const text = JSON.stringify(result.response || result).slice(0, 400);
+    if (output) output.textContent = (result.ok ? "OK " : "DENIED ") + text;
+  } catch (error) {
+    if (output) output.textContent = error.message;
+  }
+}
+
 function switchTab(tab) {
   if (tab === "history") loadHistory();
+  if (tab === "mcp") loadMcp();
   state.activeTab = tab;
   document.querySelectorAll(".inspector-tabs button").forEach((button) => {
     button.classList.toggle("active", button.dataset.tab === tab);
@@ -2496,7 +2583,7 @@ async function resumeClarification(answers) {
     state.jobChatId = state.chatId;
     state.jobEvents = 0;
     $("send-btn").disabled = true;
-    $("agent-state").textContent = "resuming?";
+    $("agent-state").textContent = "resuming\u2026";
     pollJob(job.id);
   } catch (error) { toast(error.message, true); }
 }

@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest
+from langchain_core.exceptions import ModelRefusalError
 from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.errors import GraphBubbleUp
@@ -63,7 +64,12 @@ def _pinned_context(state: dict) -> str:
         lines.extend(["", f"CURRENT FOCUS: {focus}"])
     mode = state.get("mode") or "author"
     lines.extend(["", prompt_loader.mode_text(mode)])
-    skills = state.get("active_skills") or []
+    raw_skills = state.get("active_skills") or {}
+    if isinstance(raw_skills, dict):
+        skills = [name for name, active in raw_skills.items() if active]
+    else:
+        skills = list(raw_skills)
+    skills = skills[: skill_registry.MAX_ACTIVE]
     if skills:
         lines.extend(["", "ACTIVE SKILLS", skill_registry.pinned_text(skills)])
     todos = state.get("todos") or []
@@ -170,6 +176,62 @@ class ContextBudgetMiddleware(AgentMiddleware):
 
     async def awrap_model_call(self, request, handler):
         return await handler(self._override(request))
+
+
+class ProviderStreamError(RuntimeError):
+    """A streamed response ended without a terminal finish reason."""
+
+
+class StreamIntegrityMiddleware(AgentMiddleware):
+    """Reject truncated provider streams instead of committing partial text."""
+
+    def _check(self, response):
+        for message in response.result:
+            content = getattr(message, "content", None)
+            tool_calls = getattr(message, "tool_calls", None) or []
+            metadata = getattr(message, "response_metadata", None) or {}
+            # Test doubles and some local models return no metadata at all;
+            # only flag a provider response that has metadata but no terminal
+            # finish reason (the signature of a truncated stream).
+            if metadata and (content or tool_calls) and not metadata.get("finish_reason"):
+                raise ProviderStreamError("Provider stream ended before a finish reason")
+        return response
+
+    def wrap_model_call(self, request, handler):
+        return self._check(handler(request))
+
+    async def awrap_model_call(self, request, handler):
+        return self._check(await handler(request))
+
+
+class ProviderRefusalMiddleware(AgentMiddleware):
+    """Treat OpenAI-style ``refusal`` fields as errors, not success.
+
+    ``ModelRefusalMiddleware`` only inspects standard content blocks. OpenAI
+    compatible providers return refusals in ``message.refusal``, which
+    LangChain stores in ``additional_kwargs``. Without this guard a refusal
+    would be shown as a normal answer.
+    """
+
+    def _check(self, response):
+        for message in response.result:
+            blocks = getattr(message, "content_blocks", None) or []
+            for block in blocks:
+                if isinstance(block, dict) and block.get("type") == "refusal":
+                    raise ModelRefusalError.from_refusal(block, raw_message=message)
+            refusal = (getattr(message, "additional_kwargs", None) or {}).get("refusal")
+            if refusal:
+                raise ModelRefusalError.from_refusal(
+                    {"type": "refusal", "refusal": str(refusal)},
+                    raw_message=message,
+                )
+        return response
+
+    def wrap_model_call(self, request, handler):
+        return self._check(handler(request))
+
+    async def awrap_model_call(self, request, handler):
+        return self._check(await handler(request))
 
 
 class ToolErrorMiddleware(AgentMiddleware):

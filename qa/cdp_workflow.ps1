@@ -86,7 +86,17 @@ try {
   const approvalBefore = document.querySelectorAll('.approval-card').length;
   renderApproval(fake);
   const approvalAfter = document.querySelectorAll('.approval-card').length;
+  switchTab('mcp');
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const mcpRows = document.querySelectorAll('[data-mcp-tool]').length;
+  const mcpToggle = !!document.getElementById('mcp-enabled');
+  const mcpSave = !!document.getElementById('mcp-save');
+  const treeGlyphs = Array.from(document.querySelectorAll('.tree-icon')).map((node) => node.textContent);
   return {
+    mcpRows,
+    mcpToggle,
+    mcpSave,
+    treeGlyphsOk: treeGlyphs.length > 0 && treeGlyphs.every((glyph) => glyph !== '?'),
     busyGuard,
     errorShown,
     approvalBefore,

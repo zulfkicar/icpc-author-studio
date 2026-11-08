@@ -21,6 +21,9 @@ def main():
     check("status labels include text", "escapeHtml(check.status)" in JS and "escapeHtml(s.verdict)" in JS)
     check("busy guard exists", "state.fileBusy" in JS)
     check("xss escape used", "function escapeHtml" in JS)
+    check("test labels are textual", 'result.pass ? "PASS" : "FAIL"' in JS)
+    check("tab close glyph", 'close.textContent = "\\u00d7"' in JS)
+    check("no literal question-mark actions", 'treeAction("?"' not in JS)
     print("UI CONTRACT TESTS PASSED")
     return 0
 

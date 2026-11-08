@@ -142,6 +142,25 @@ def run_hitl() -> None:
         cleanup(slug)
 
 
+def run_parallel_skills() -> None:
+    print("parallel skill loads")
+    slug, chat_id = make_workspace("QA Parallel Skills")
+    try:
+        use_model(FakeChat(responses=[
+            AIMessage(content="", tool_calls=[
+                {"name": "load_skill", "args": {"name": "constraints"}, "id": "s1"},
+                {"name": "load_skill", "args": {"name": "test-design"}, "id": "s2"},
+            ]),
+            AIMessage(content="loaded"),
+        ]))
+        result = graph_agent.run_turn(slug, chat_id, "load both", lambda *_: None)
+        check("parallel skill loads complete", result.get("text") == "loaded", result)
+        messages = workspace.get_chat(slug, chat_id)["messages"]
+        check("skill result recorded", any("Loaded skill" in str(item.get("content")) for item in messages), messages)
+    finally:
+        cleanup(slug)
+
+
 def run_clarification() -> None:
     print("clarification")
     slug, chat_id = make_workspace("QA Clarification")
@@ -431,6 +450,7 @@ def main() -> int:
     tests = [
         run_durability,
         run_hitl,
+        run_parallel_skills,
         run_clarification,
         run_provider_failure,
         run_history_restore,

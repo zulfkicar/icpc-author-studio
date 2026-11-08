@@ -7,6 +7,14 @@ from typing import Annotated, NotRequired
 from langchain.agents import AgentState
 
 
+def merge_skills(left, right):
+    """Merge concurrent skill loads/unloads without losing either update."""
+    merged = dict(left or {}) if isinstance(left, dict) else {}
+    incoming = dict(right or {}) if isinstance(right, dict) else {}
+    merged.update(incoming)
+    return merged
+
+
 class AuthorState(AgentState):
     slug: NotRequired[str]
     chat_id: NotRequired[str]
@@ -14,7 +22,7 @@ class AuthorState(AgentState):
     requirements: NotRequired[list[str]]
     decisions: Annotated[list[dict], operator.add]
     open_questions: NotRequired[list[str]]
-    active_skills: NotRequired[list[str]]
+    active_skills: NotRequired[Annotated[dict[str, bool], merge_skills]]
     clarifications: Annotated[list[dict], operator.add]
     pending_clarification: NotRequired[dict]
     focus: NotRequired[str]

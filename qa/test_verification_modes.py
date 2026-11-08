@@ -22,13 +22,15 @@ def check(name, condition, detail=""):
 
 
 CHECKER = """import sys
-inp, out, ans = sys.argv[1], sys.argv[2], sys.argv[3]
+# ICPC spec contract: input, answer, feedback_dir; team output on stdin.
+inp, ans, feedback = sys.argv[1], sys.argv[2], sys.argv[3]
 expected = open(ans, "rb").read().split()
-actual = open(out, "rb").read().split()
+actual = sys.stdin.buffer.read().split()
 if actual != expected:
     print("wrong answer")
-    sys.exit(1)
+    sys.exit(43)
 print("ok")
+sys.exit(42)
 """
 
 

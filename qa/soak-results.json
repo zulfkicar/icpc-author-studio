@@ -1,0 +1,16 @@
+{
+  "runs": {
+    "count": 20,
+    "medianMs": 43.4,
+    "p95Ms": 48.2,
+    "maxMs": 48.9,
+    "budgetMs": 10000.0
+  },
+  "turns": {
+    "count": 8,
+    "medianMs": 69.8,
+    "p95Ms": 108.2,
+    "maxMs": 108.2,
+    "budgetMs": 5000.0
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "fixture": "sum",
+  "slug": "eval-sum",
+  "chatId": "5b9376731757",
+  "finishedAt": "2026-11-08T21:09:38",
+  "wallSeconds": 295.03,
+  "turnsUsed": 2,
+  "turnErrors": [],
+  "rounds": 47,
+  "usage": {
+    "input_tokens": 1325603,
+    "output_tokens": 31515,
+    "total_tokens": 1357118,
+    "reported": 2,
+    "costUsd": 0.544374
+  },
+  "pausedCount": 0,
+  "toolCalls": 94,
+  "toolResults": 94,
+  "text": "The package is now verified. Summary of what changed and the evidence:\n\n## Fixed blockers\n\n| Issue | Fix | Evidence |\n|---|---|---|\n| 0 negative sources | Added 3 wrong solutions | `wrong_subtract.cpp`, `wrong_first_only.cpp`, `wrong_unsigned.cpp` \u2014 all `status: killed`, `secretKill: true` |\n| 28 missing answers | `build_answers` | `ok: true, written: 29, disagreements: []` |\n| Limits not measured | `measure_limits` | max 66.4 ms (s20/sample), max RSS 9.1 MiB \u2192 recorded 1 s / 256 MiB |\n| PDF failed | Caused solely by missing `02.ans`/`03.ans` | Now `Statement PDF: pass \u2014 problem.pdf compiled` |\n\nNo stored answers existed to \"not match\" \u2014 those 28 reference mismatches were entirely the missing `.ans` files.\n\n## Negative-solution quality check\n\nI compiled and probed each before trusting it, and replaced one:\n- `wrong_unsigned.cpp` originally parsed into `unsigned long long`, which is undefined-ish behavior on negative input. I rewrote it to compute exactly in `long long` and then cast to `unsigned int`, so the defect is deterministic. Verified by hand: input `-1000000000 -1000000000` \u2192 prints `2294967296` instead of `-2000000000`.\n- Verdict spread is `16 AC / 13 WA` \u2014 it is genuinely correct on non-negative sums, so it is a real discriminator, not a trivially-broken stub.\n- No negative survived; none needed removal.\n\n## Two corrections I made rather than shipping false claims\n\n1. **The 32-bit overflow claim was wrong.** `\u00b12\u00b710^9` fits in `INT_MAX = 2147483647`. I had written \"does not fit in a signed 32-bit integer\" in the statement; that was false. The statement now correctly says the answer *fits*, and the real trap is sign handling.\n2. **No `test_group.yaml` exists.** My draft NOTES asserted four groups with dependencies; the workspace has only `data/testdata.yaml` with pass-fail grading. NOTES now says so.\n\nI also caught the statement saying \"2 seconds\" while `measure_limits` had written `timelimit = 1` \u2014 now consistently 1 second, ~15\u00d7 the measured worst case.\n\n## Final state\n\n`verify_package`: **status = verified**, 0 errors, 18/18 ICPC spec checks, 16/16 report checks pass. 29 tests (3 sample, 26 secret), 29/29 inputs valid at exit 42, validator self-test 35/35 fixtures.\n\nTwo residual warnings, both benign: token-based comparison (intended for a single integer) and the memory limit being recorded rather than executor-enforced.\n\n**Not exported** \u2014 awaiting your review.",
+  "reportStatus": "verified",
+  "reportErrors": [],
+  "reportWarnings": [
+    "Output comparison is token-based; no custom output validator is configured",
+    "Memory limit is recorded; the executor enforces it for isolated runs"
+  ],
+  "blocked": [
+    "Negative solutions: 0 negative source(s)",
+    "Limits measured: run Measure limits after the reference and tests are ready",
+    "Limits have not been measured from the reference solutions. Run Measure limits.",
+    "Missing answer files for: data/sample/02.in, data/sample/03.in, data/secret/s01.in, data/secret/s02.in, data/secret/s03.in, data/secret/s04.in, data/secret/s05.in, data/secret/s06.in, data/secret/s07.in, data/secret/s08.in, data/secret/s09.in, data/secret/s10.in, data/secret/s11.in, data/secret/s12.in, data/secret/s13.in, data/secret/s14.in, data/secret/s15.in, data/secret/s16.in, data/secret/s17.in, data/secret/s18.in, data/secret/s19.in, data/secret/s20.in, data/secret/s21.in, data/secret/s22.",
+    "28 reference check(s) did not match the stored answer",
+    "Statement PDF: pdflatex failed",
+    "ICPC spec: Answer files: missing answers for 28 test(s)",
+    "Output comparison is token-based; no custom output validator is configured"
+  ],
+  "counts": {
+    "tests": 29,
+    "sample": 3,
+    "secret": 26,
+    "accepted": 1,
+    "negative": 3
+  },
+  "limits": {
+    "timeSeconds": 1.0,
+    "memoryMb": 256
+  }
+}

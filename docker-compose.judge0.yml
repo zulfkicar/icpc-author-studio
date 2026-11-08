@@ -1,0 +1,58 @@
+# Optional Judge0 CE quick-run stack. NOT used by the deterministic verifier.
+# Start explicitly: docker compose -f docker-compose.judge0.yml up -d
+# Then set AUTHOR_AGENT_JUDGE0_URL=http://127.0.0.1:2358
+services:
+  judge0-server:
+    image: judge0/judge0:1.13.1
+    command: ["./scripts/server"]
+    ports:
+      - "127.0.0.1:2358:2358"
+    environment:
+      POSTGRES_HOST: judge0-db
+      POSTGRES_DB: judge0
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: judge0
+      REDIS_HOST: judge0-redis
+      REDIS_PORT: 6379
+      RAILS_ENV: production
+    depends_on:
+      - judge0-db
+      - judge0-redis
+    privileged: true
+    restart: unless-stopped
+
+  judge0-worker:
+    image: judge0/judge0:1.13.1
+    command: ["./scripts/workers"]
+    environment:
+      POSTGRES_HOST: judge0-db
+      POSTGRES_DB: judge0
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: judge0
+      REDIS_HOST: judge0-redis
+      REDIS_PORT: 6379
+      RAILS_ENV: production
+    depends_on:
+      - judge0-db
+      - judge0-redis
+    privileged: true
+    restart: unless-stopped
+
+  judge0-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: judge0
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: judge0
+    volumes:
+      - judge0-db:/var/lib/postgresql/data
+
+  judge0-redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - judge0-redis:/data
+
+volumes:
+  judge0-db:
+  judge0-redis:

@@ -20,7 +20,9 @@ import uuid
 import zipfile
 
 from config import TEMPLATES
+import icpc_spec
 import package_model
+import scoring
 import verification_modes
 import winutil
 import workspace
@@ -202,21 +204,11 @@ def _tests(slug: str) -> list[dict]:
     } for test in package.tests]
 
 
-def _validator(slug: str) -> pathlib.Path | None:
-    root = workspace.ws_path(slug)
-    for rel in ("input_validators/validate.py", "input_validators/validator.py"):
-        path = root / rel
-        if path.is_file():
-            return path
-    folder = root / "input_validators"
-    if folder.is_dir():
-        for path in sorted(folder.glob("*.py")):
-            if not path.name.startswith("."):
-                return path
-    return None
+def _validator(slug: str) -> package_model.Program | None:
+    return package_model.load(slug).input_validator_program
 
 
-def _structure(slug: str, tests: list[dict], accepted: list[dict], negative: list[dict], validator: pathlib.Path | None) -> list[dict]:
+def _structure(slug: str, tests: list[dict], accepted: list[dict], negative: list[dict], validator: object | None) -> list[dict]:
     root = workspace.ws_path(slug)
     checks = []
 
@@ -254,9 +246,14 @@ def _structure(slug: str, tests: list[dict], accepted: list[dict], negative: lis
 
 def _statement(slug: str) -> dict:
     root = workspace.ws_path(slug)
-    tex = root / "problem_statement" / "problem.en.tex"
-    if not tex.is_file():
-        return {"status": "fail", "detail": "problem_statement/problem.en.tex is missing"}
+    tex = None
+    for folder in ("problem_statement", "statement"):
+        candidate = root / folder / "problem.en.tex"
+        if candidate.is_file():
+            tex = candidate
+            break
+    if tex is None:
+        return {"status": "fail", "detail": "problem_statement/problem.en.tex or statement/problem.en.tex is missing"}
     pdflatex = _which("pdflatex")
     if not pdflatex:
         return {"status": "skip", "detail": "pdflatex was not found; statement compile was not checked"}
@@ -346,12 +343,13 @@ def _set_limits_in_files(slug: str, time_limit: float, memory_mb: int) -> None:
         else:
             text = text.rstrip() + f"\ntimelimit = {time_limit:g}\n"
         workspace.write_text(slug, "domjudge-problem.ini", text, source="verify")
-    tex_path = root / "problem_statement" / "problem.en.tex"
-    if tex_path.is_file():
-        text = tex_path.read_text("utf-8")
-        text = re.sub(r"\\timelimit\{[^}]*\}", rf"\\timelimit{{{time_limit:g} seconds}}", text)
-        text = re.sub(r"\\memlimit\{[^}]*\}", rf"\\memlimit{{{memory_mb} MiB}}", text)
-        workspace.write_text(slug, "problem_statement/problem.en.tex", text, source="verify")
+    for folder in ("problem_statement", "statement"):
+        tex_path = root / folder / "problem.en.tex"
+        if tex_path.is_file():
+            text = tex_path.read_text("utf-8")
+            text = re.sub(r"\\timelimit\{[^}]*\}", rf"\\timelimit{{{time_limit:g} seconds}}", text)
+            text = re.sub(r"\\memlimit\{[^}]*\}", rf"\\memlimit{{{memory_mb} MiB}}", text)
+            workspace.write_text(slug, f"{folder}/problem.en.tex", text, source="verify")
 
 
 def run_source(slug: str, path: str, stdin: str = "") -> dict:
@@ -488,8 +486,15 @@ def _verify_interactive(slug: str, package: package_model.Package, cancelled=Non
     })
     selftest = verification_modes.interactive_selftest(slug)
     checks.append({"name": "Interactive self-test", "status": selftest["status"], "detail": selftest["detail"]})
+    spec = icpc_spec.audit(slug)
+    checks.append({
+        "name": "ICPC package spec",
+        "status": spec["status"],
+        "detail": f"{spec['counts']['pass']}/{spec['counts']['checks']} checks pass; {spec['counts']['warn']} warning(s)",
+    })
     errors = [f"{item['name']}: {item['detail']}" for item in checks if item["status"] == "fail"]
     warnings = [f"{item['name']}: {item['detail']}" for item in checks if item["status"] in ("warn", "skipped")]
+    warnings.extend(f"ICPC spec: {item}" for item in spec["warnings"])
     if not accepted:
         errors.append("Interactive problems need an accepted reference")
     return {
@@ -502,6 +507,7 @@ def _verify_interactive(slug: str, package: package_model.Package, cancelled=Non
         "counts": {"tests": len(tests), "accepted": len(accepted), "negative": len(negative), "groups": len(package.groups())},
         "limits": workspace.state(slug).get("measuredLimits") or {},
         "interactiveSelftest": selftest,
+        "spec": spec,
         "at": workspace.now(),
     }
 
@@ -568,10 +574,11 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
 
     compiled = {}
     build_root = _new_build_dir(slug)
+    checker_program = package.output_validator_program
     checker_argv = None
-    if package.output_validator is not None:
+    if checker_program is not None:
         compiled_checker = verification_modes._build_program(
-            slug, package.output_validator.relative_to(package.root).as_posix(), build_root
+            slug, checker_program.path.relative_to(package.root).as_posix(), build_root, program=checker_program
         )
         if compiled_checker.get("ok"):
             checker_argv = compiled_checker["argv"]
@@ -580,10 +587,9 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
 
     def compare(actual: bytes, expected: bytes, test: dict) -> bool:
         if checker_argv is not None:
-            output_path = build_root / f"actual-{uuid.uuid4().hex[:8]}.out"
-            output_path.write_bytes(actual)
             result = verification_modes._run_checker(
-                checker_argv, test["input"], output_path, test["answer"], build_root
+                checker_argv, checker_program.contract, test["input"], test["answer"],
+                actual, build_root, flags=checker_program.flags,
             )
             return bool(result["ok"])
         return _compare(actual, expected, package.float_tolerance())
@@ -593,11 +599,21 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
         compiled[solution["path"]] = _compile(slug, solution, build_root)
 
     validator_results = []
+    validator_build = None
     if validator:
+        validator_build = verification_modes._build_program(
+            slug, validator.path.relative_to(root).as_posix(), build_root, program=validator
+        )
+        if not validator_build.get("ok"):
+            errors.append("Input validator failed to build: " + str(validator_build.get("error", ""))[-1000:])
         for test in tests:
             _check_cancel(cancelled, deadline)
-            result = _run([sys.executable, str(validator)], cwd=root, data=test["input"].read_bytes(), timeout=15)
-            valid = result["ok"] and result["returncode"] in (0, 42)
+            if not validator_build.get("ok"):
+                validator_results.append({"test": test["relative"], "valid": False, "exitCode": None, "stderr": "validator did not build"})
+                continue
+            result = winutil.run_captured(validator_build["argv"], cwd=root, data=test["input"].read_bytes(), timeout=15)
+            # ICPC spec: input validators must exit 42 on success.
+            valid = result["ok"] and result["returncode"] == 42
             validator_results.append({
                 "test": test["relative"],
                 "valid": valid,
@@ -684,6 +700,24 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
     if sample_only:
         warnings.append("Negative solution(s) were not killed by any secret test: " + ", ".join(sample_only))
 
+    verdicts = {}
+    if test_results and accepted:
+        first = accepted[0]["path"]
+        for row in test_results:
+            for solution in row["solutions"]:
+                if solution["path"] == first:
+                    verdicts[row["test"]] = solution["verdict"]
+    group_score = scoring.evaluate(package, verdicts)
+    if package.groups():
+        checks.append({
+            "name": "Group scoring",
+            "status": "pass" if group_score["groups"] else "fail",
+            "detail": (
+                f"{group_score['score']:g}/{group_score['maxScore']:g} points; "
+                + ", ".join(f"{item['name']}={'pass' if item['passed'] else 'blocked'}" for item in group_score["groups"])
+            ),
+        })
+
     statement = _statement(slug)
     checks.append({"name": "Statement PDF", "status": statement["status"], "detail": statement["detail"]})
     if statement["status"] == "fail":
@@ -696,8 +730,20 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
         if not comp["ok"]:
             errors.append(f"Reference solution failed to compile: {solution['path']}")
 
-    warnings.append("Output comparison is token-based; custom checkers and interactive problems are not checked by this verifier")
-    warnings.append("Memory limit is recorded but not enforced by this local verifier")
+    spec = icpc_spec.audit(slug)
+    checks.append({
+        "name": "ICPC package spec",
+        "status": spec["status"],
+        "detail": f"{spec['counts']['pass']}/{spec['counts']['checks']} checks pass; {spec['counts']['warn']} warning(s)",
+    })
+    errors.extend(f"ICPC spec: {item}" for item in spec["errors"])
+    warnings.extend(f"ICPC spec: {item}" for item in spec["warnings"])
+
+    if checker_program is None:
+        warnings.append("Output comparison is token-based; no custom output validator is configured")
+    else:
+        warnings.append(f"Output validator contract: {checker_program.contract}; see the checker self-test evidence")
+    warnings.append("Memory limit is recorded; the executor enforces it for isolated runs")
 
     status = "verified" if not errors else "failed"
     report = {
@@ -711,6 +757,8 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
         "validator": validator_results,
         "accepted": [{"path": s["path"], "compiled": compiled[s["path"]]["ok"]} for s in accepted],
         "negative": negative_results,
+        "groups": group_score,
+        "spec": spec,
         "answers": built,
         "counts": {
             "tests": len(tests),
@@ -748,7 +796,9 @@ def export_package(slug: str) -> dict:
     }
     include_roots = [
         "problem.yaml", "domjudge-problem.ini", "problem.pdf", "NOTES.md",
-        "problem_statement", "data", "submissions", "input_validators", "output_validators",
+        "problem_statement", "statement", "data", "submissions", "attachments",
+        "input_validators", "input_format_validators", "output_validators", "output_validator",
+        "test_group.yaml", "testdata.yaml", "include", "generators",
     ]
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
         for name in include_roots:
@@ -766,8 +816,9 @@ def export_package(slug: str) -> dict:
                     zf.write(item, rel)
                     manifest["files"][rel] = hashlib.sha256(item.read_bytes()).hexdigest()
         validate = _validator(slug)
-        if validate is not None and validate.suffix.lower() == ".py" and "input_validators/validate" not in manifest["files"]:
-            data = validate.read_bytes()
+        validate_path = validate.path if validate is not None else None
+        if validate_path is not None and validate_path.suffix.lower() == ".py" and "input_validators/validate" not in manifest["files"]:
+            data = validate_path.read_bytes()
             if not data.startswith(b"#!"):
                 data = b"#!/usr/bin/env python3\n" + data
             info = zipfile.ZipInfo("input_validators/validate", time.localtime()[:6])

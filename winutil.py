@@ -151,7 +151,67 @@ def _remote_run(argv: list[str], cwd, data: bytes, timeout: float, env: dict | N
     }
 
 
-def run_interactive(solution: list[str], validator: list[str], cwd, timeout: float = 20.0) -> dict:
+def isolate_run(
+    argv: list[str],
+    cwd,
+    data: bytes = b"",
+    *,
+    time_limit: float = 10.0,
+    wall_time: float | None = None,
+    memory_mb: int = 1024,
+    processes: int = 64,
+    stack_mb: int = 64,
+    fsize_mb: int = 64,
+    open_files: int = 256,
+    env: dict | None = None,
+) -> dict:
+    """Call the executor's Isolate-compatible endpoint."""
+    url = _executor_url()
+    if not url:
+        raise RuntimeError("Isolate execution requires the isolated executor")
+    body = json.dumps({
+        "argv": [str(item) for item in argv],
+        "cwd": str(cwd),
+        "stdin": base64.b64encode(data or b"").decode("ascii"),
+        "time": float(time_limit),
+        "wallTime": float(wall_time if wall_time is not None else max(float(time_limit) * 2, float(time_limit) + 5)),
+        "memory": int(memory_mb),
+        "processes": int(processes),
+        "stack": int(stack_mb),
+        "fsize": int(fsize_mb),
+        "openFiles": int(open_files),
+        "env": _safe_env(env),
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        url + "/isolate/run",
+        data=body,
+        headers={"Content-Type": "application/json", **_executor_headers()},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=float(wall_time or time_limit) + 30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise RuntimeError(f"Executor HTTP {exc.code}: {detail[:2000]}") from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"Executor request failed: {exc}") from exc
+    if not isinstance(payload, dict) or "stdout" not in payload:
+        raise RuntimeError("Executor returned an invalid response")
+    return {
+        **payload,
+        "stdout": base64.b64decode(payload.get("stdout") or ""),
+        "stderr": base64.b64decode(payload.get("stderr") or ""),
+    }
+
+
+def run_interactive(
+    solution: list[str],
+    validator: list[str],
+    cwd,
+    timeout: float = 20.0,
+    accepted_exit_codes: list[int] | None = None,
+) -> dict:
     """Run an interactive validator and solution through the isolated executor."""
     url = _executor_url()
     if not url:
@@ -161,6 +221,7 @@ def run_interactive(solution: list[str], validator: list[str], cwd, timeout: flo
         "validator": [str(item) for item in validator],
         "cwd": str(cwd),
         "timeout": float(timeout),
+        "acceptedExitCodes": list(accepted_exit_codes or [0]),
     }).encode("utf-8")
     request = urllib.request.Request(
         url + "/interact", data=body,
@@ -179,6 +240,7 @@ def run_interactive(solution: list[str], validator: list[str], cwd, timeout: flo
         "timedOut": bool(payload.get("timedOut")),
         "validatorReturncode": payload.get("validatorReturncode"),
         "solutionReturncode": payload.get("solutionReturncode"),
+        "acceptedExitCodes": payload.get("acceptedExitCodes") or [],
         "transcript": payload.get("transcript") or [],
         "validatorStderr": base64.b64decode(payload.get("validatorStderr") or ""),
         "solutionStderr": base64.b64decode(payload.get("solutionStderr") or ""),

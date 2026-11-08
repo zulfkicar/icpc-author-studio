@@ -293,6 +293,27 @@ A change cannot be called complete unless:
 
 Every row is mapped in `qa/adversarial_manifest.json`. Current mapping: **146 automated, 0 partial**. The manifest test fails if a row is unmapped or points at a missing test file.
 
+| Area | Automated owner |
+| --- | --- |
+| Agent, prompt injection, redaction | `qa/test_phase1.py`, `qa/test_security.py` |
+| 500k context and compaction | `qa/test_context_500k.py`, `qa/test_phase1.py` |
+| Clarification and approvals | `qa/stress_agent.py` |
+| Package format and validators | `qa/test_icpc_spec.py`, `qa/test_verification_modes.py` |
+| Checkers | `qa/test_testlib.py`, `qa/test_verification_modes.py` |
+| Interactive and transcript | `qa/test_testlib.py`, `qa/test_interactive.py` |
+| Groups, dependencies, float | `qa/test_group_scoring.py`, `qa/test_groups_float.py` |
+| Executor, sandbox, limits | `qa/test_isolate_contract.py`, `qa/test_executor_limits.py`, `qa/test_executor_security.py` |
+| Persistence, snapshots, hunks | `qa/stress_agent.py`, `qa/test_snapshots.py`, `qa/test_hunks.py` |
+| UI, accessibility, reflow | `qa/cdp_workflow.ps1`, `qa/accessibility_axe.ps1`, `qa/soak_cdp.ps1`, `qa/test_ui_contracts.py` |
+| Provider retry/refusal/disconnect | `qa/test_provider_faults.py`, `qa/test_phase1.py` |
+| Chaos, event loss, clock skew | `qa/test_chaos.py`, `qa/test_event_ledger.py`, `qa/test_disk_db_failure.py` |
+| MCP consent and roots | `qa/test_mcp.py` |
+
+Some rows are ownership-mapped to deterministic contract tests rather than a
+live third-party fault (for example `RLIMIT_FSIZE` instead of a physical full
+disk, or a local HTTP fault proxy instead of a provider outage). This is called
+out in `docs/IMPLEMENTATION-STATUS.md` rather than hidden.
+
 ## 7. Test implementation order
 
 1. Harness and fake model.

@@ -21,6 +21,7 @@ def compose_system() -> str:
         _read("base.md"),
         _read("workflow.md"),
         _read("tools.md"),
+        _read("spec.md"),
         skill_registry.index_text(),
     ]
     text = "\n\n".join(part for part in parts if part)

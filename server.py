@@ -11,6 +11,7 @@ import mimetypes
 import os
 import pathlib
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -22,6 +23,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import agent
 import config
 import graph_agent
+import mcp_consent
+import mcp_server
 import verify
 import winutil
 import workspace
@@ -36,6 +39,37 @@ WORKSPACE_LOCKS: dict[str, threading.Lock] = {}
 WORKSPACE_LOCKS_GUARD = threading.Lock()
 
 
+def mcp_probe(slug: str, tool: str, arguments: dict) -> dict:
+    """Act as an MCP host: spawn the scoped server and call one tool."""
+    if not tool:
+        raise ValueError("Choose a tool to test")
+    process = subprocess.Popen(
+        [sys.executable, str(ROOT / "mcp_server.py"), "--slug", slug, "--consent", mcp_consent.consent_path(slug)],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        def request(message: dict) -> dict:
+            process.stdin.write(json.dumps(message) + "\n")
+            process.stdin.flush()
+            line = process.stdout.readline()
+            if not line:
+                raise RuntimeError("MCP server closed the connection")
+            return json.loads(line)
+
+        request({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        response = request({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": {"name": tool, "arguments": arguments if isinstance(arguments, dict) else {}},
+        })
+        return {"ok": not response.get("result", {}).get("isError"), "response": response}
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
 def workspace_lock(slug: str) -> threading.Lock:
     with WORKSPACE_LOCKS_GUARD:
         return WORKSPACE_LOCKS.setdefault(slug, threading.Lock())
@@ -48,13 +82,18 @@ def now() -> str:
 def start_job(title: str, slug: str | None, fn, chat_id: str | None = None) -> dict:
     job_id = uuid.uuid4().hex[:12]
     job = {"id": job_id, "title": title, "slug": slug, "chatId": chat_id, "state": "running",
-           "cancelRequested": False, "createdAt": now(), "events": [], "result": None, "error": None}
+           "cancelRequested": False, "createdAt": now(), "events": [], "nextSeq": 1,
+           "result": None, "error": None}
+
+    def append_event(kind: str, data) -> None:
+        job["events"].append({"seq": job["nextSeq"], "at": now(), "kind": kind, "data": data})
+        job["nextSeq"] += 1
+        if len(job["events"]) > 600:
+            job["events"] = job["events"][-600:]
 
     def emit(kind: str, data) -> None:
         with JOB_LOCK:
-            job["events"].append({"at": now(), "kind": kind, "data": data})
-            if len(job["events"]) > 600:
-                job["events"] = job["events"][-600:]
+            append_event(kind, data)
 
     def cancelled() -> bool:
         return bool(job.get("cancelRequested"))
@@ -78,13 +117,13 @@ def start_job(title: str, slug: str | None, fn, chat_id: str | None = None) -> d
             if job.get("cancelRequested"):
                 with JOB_LOCK:
                     job["state"] = "cancelled"
-                    job["events"].append({"at": now(), "kind": "cancelled", "data": {}})
+                    append_event("cancelled", {})
                 return
             traceback.print_exc()
             with JOB_LOCK:
                 job["state"] = "error"
                 job["error"] = f"{type(exc).__name__}: {exc}"
-                job["events"].append({"at": now(), "kind": "error", "data": {"error": job["error"]}})
+                append_event("error", {"error": job["error"]})
         finally:
             if run_lock is not None:
                 run_lock.release()
@@ -102,10 +141,7 @@ def start_job(title: str, slug: str | None, fn, chat_id: str | None = None) -> d
             if job["state"] != "running":
                 return
             job["cancelRequested"] = True
-            job["events"].append({
-                "at": now(), "kind": "timeout",
-                "data": {"message": "Job exceeded the 20-minute limit and was stopped."},
-            })
+            append_event("timeout", {"message": "Job exceeded the 20-minute limit and was stopped."})
         time.sleep(60)
         with JOB_LOCK:
             if job["state"] == "running":
@@ -209,6 +245,21 @@ class Handler(BaseHTTPRequestHandler):
                 })
             if path == "/api/settings":
                 return self.send_json(config.public())
+            if path.startswith("/api/jobs/") and path.endswith("/events"):
+                parts = [p for p in path.split("/") if p]
+                job_id = parts[2] if len(parts) > 2 else ""
+                try:
+                    since = max(0, int((query.get("since") or ["0"])[0]))
+                except ValueError:
+                    since = 0
+                with JOB_LOCK:
+                    job = JOBS.get(job_id)
+                    events = [event for event in (job or {}).get("events", []) if int(event.get("seq") or 0) > since]
+                    next_seq = int((job or {}).get("nextSeq") or 1)
+                    state = (job or {}).get("state")
+                if job is None:
+                    return self.send_json({"error": "Job not found"}, 404)
+                return self.send_json({"jobId": job_id, "state": state, "events": events, "nextSeq": next_seq})
             if path.startswith("/api/jobs/"):
                 job_id = path.split("/")[-1]
                 with JOB_LOCK:
@@ -247,6 +298,13 @@ class Handler(BaseHTTPRequestHandler):
                 if len(parts) == 4 and parts[3] == "snapshots":
                     chat_id = (query.get("chatId") or [""])[0]
                     return self.send_json({"snapshots": workspace.list_snapshots(slug, chat_id)})
+                if len(parts) == 4 and parts[3] == "mcp":
+                    return self.send_json({
+                        "tools": mcp_server.TOOLS,
+                        "consent": mcp_consent.state(slug),
+                        "protocol": mcp_server.PROTOCOL,
+                        "server": "icpc-author-mcp",
+                    })
                 if len(parts) == 6 and parts[3] == "changes" and parts[5] == "hunks":
                     entry = next((c for c in workspace.changes(slug) if c["id"] == parts[4]), None)
                     if entry is None:
@@ -379,6 +437,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(result)
                 if len(parts) == 4 and parts[3] == "review":
                     return self.send_json(workspace.mark_reviewed(slug))
+                if len(parts) == 4 and parts[3] == "mcp":
+                    body = self.read_json()
+                    return self.send_json(mcp_consent.update(slug, body))
+                if len(parts) == 5 and parts[3] == "mcp" and parts[4] == "test":
+                    body = self.read_json()
+                    return self.send_json(mcp_probe(slug, str(body.get("tool") or ""), body.get("arguments") or {}))
                 if len(parts) == 6 and parts[3] == "changes" and parts[5] == "revert":
                     return self.send_json(workspace.revert(slug, parts[4]))
                 if len(parts) == 6 and parts[3] == "changes" and parts[5] == "apply-hunks":

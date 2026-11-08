@@ -92,7 +92,10 @@ def main() -> int:
                 aggregate_rounds += result.get("rounds") or 0
                 for key, value in (result.get("usage") or {}).items():
                     if isinstance(value, (int, float)):
-                        aggregate_usage[key] = aggregate_usage.get(key, 0) + int(value)
+                        if key == "costUsd":
+                            aggregate_usage[key] = round(aggregate_usage.get(key, 0.0) + float(value), 6)
+                        else:
+                            aggregate_usage[key] = aggregate_usage.get(key, 0) + int(value)
             except Exception as exc:
                 turn_errors.append({"turn": turn, "error": f"{type(exc).__name__}: {exc}"})
                 result = {}

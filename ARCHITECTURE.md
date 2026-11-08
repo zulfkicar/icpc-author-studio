@@ -143,9 +143,10 @@ contract.
 `verify.py` is the heart of the product. It checks:
 
 1. Required package structure and metadata (`problem.yaml`,
-   `domjudge-problem.ini`, statement, data, submissions, validators).
-2. Every sample and secret input against `input_validators/validate.py`
-   (exit 42 or 0 means valid).
+   `domjudge-problem.ini`, statement, data, submissions, validators) plus an
+   ICPC Problem Package Format audit (`icpc_spec.py`).
+2. Every sample and secret input against the `input_validators/` program
+   (exit 42 means valid, per the ICPC spec).
 3. Every accepted reference solution compiles and matches the stored `.ans` file
    on every test.
 4. Multiple accepted references must agree; disagreement fails.
@@ -283,9 +284,13 @@ in transient host terminal windows.
 The model can write Python and C++ and run it, so execution is separated from
 the app. The app container holds the provider key and checkpoints; the executor
 container holds the compilers and sees only `./workspaces`. The executor has no
-host port, no external network, a read-only root, dropped capabilities, no API
-key, and container CPU/memory/PID limits. The app reaches it only on an internal
-Docker network and fails closed when `AUTHOR_AGENT_REQUIRE_EXECUTOR=1`.
+host port, no external network, a read-only root, no API key, and container
+CPU/memory/PID limits. Each command runs in a private workspace copy under a
+bwrap mount namespace with only `/work` writable and `/app/workspaces` hidden.
+The child drops capabilities and applies CPU, wall, address-space, stack,
+file-size, open-file and process limits; `POST /isolate/run` exposes the same
+controls with Isolate-style names. The app reaches it only on an internal Docker
+network and fails closed when `AUTHOR_AGENT_REQUIRE_EXECUTOR=1`.
 
 This is the LeetCode-style execution-worker boundary, implemented as a separate
 container inside the Docker VM. It is not a hypervisor VM: a literal separate VM
@@ -302,8 +307,9 @@ The app is packaged as two services:
   Published to `127.0.0.1:8787`, healthcheck, `init`, `restart:
   unless-stopped`, UID 1000.
 - `executor` (`Dockerfile.executor`): Python plus g++, the JDK, latexmk and TeX
-  Live. Read-only root, dropped capabilities, no host port, no external network,
-  no `.author-agent` mount, only `./workspaces`.
+  Live. Read-only root, no host port, no external network, no `.author-agent`
+  mount, only `./workspaces`. The container needs `SYS_ADMIN` and
+  `seccomp=unconfined` for bwrap; the sandboxed child drops capabilities.
 - The app bind-mounts `./workspaces` and `./.author-agent`; the executor mounts
   only `./workspaces`.
 - `AUTHOR_AGENT_EXECUTOR_URL=http://executor:8787` and
@@ -469,33 +475,33 @@ patterns that fit ICPC authoring.
 - Headless Chrome DOM load: verifies mode/context/settings controls and the
   approval card render without JS console errors.
 
-Not yet tested: real DOMjudge import, Linux/macOS execution, or a hostile-code microVM. Local Kattis/ICPC checker and interactive fixtures pass.
+Additional evidence: real C++ testlib checker/interactor/transcript fixtures,
+ICPC spec audit, group scoring, Isolate contract (key/network/output/memory/PID/
+orphan/cross-workspace/read-only), provider fault proxy (429, disconnect,
+refusal, no tools), chaos (`RLIMIT_FSIZE`, clock skew, event replay), axe-core
+WCAG audit, CDP keyboard/reflow/soak, and real-provider `sum` and `claim`
+evals. See `docs/IMPLEMENTATION-STATUS.md`, `docs/EVAL-RESULTS.md` and
+`docs/VISUAL-AUDIT.md`.
+
+Not yet tested: real DOMjudge import, a hypervisor microVM, a live Judge0
+deployment, or a human screen-reader session. The local Kattis/ICPC checker and
+interactive fixtures pass.
 
 ## 12. What I would build next
 
-1. **Container execution.** Run all commands in a locked-down container or WSL
-   sandbox with no host mounts, memory/CPU limits and no network.
-2. **Restore to a turn.** Checkpoints are durable; add a UI picker to restore
-   conversation/workspace state to an earlier turn, not just per-file revert.
-3. **Approval modes.** Export and reviewed writes are gated; add "plan only" and
-   "auto-apply safe edits" policies.
-4. **Inline review.** Accept/reject hunks in a unified diff view.
-5. **Richer context.** @-mention files/evidence and pin specific verifier checks
-   beyond the current selected-context list.
-6. **Chat management.** Rename/delete/search is implemented; add recency groups,
-   unread indicators and tabs for open chats (the Linear pattern).
-7. **Cancellation.** Implemented by cancelling the asyncio task and aborting the
-   provider stream; add a provider-specific timeout policy if needed.
-8. **Cost meter.** Token usage and optional per-turn cost estimates are
-   implemented; add billing integrations or a shared price table.
-9. **MCP adapter.** Expose the same command services through a scoped MCP server;
-   no second permissive policy.
-10. **DOMjudge integration.** Import/export against a real contest, with native
-    verification evidence.
-11. **Custom judging.** Float tolerance, custom output validators, test groups,
-    interactive problems.
-12. **Command palette and keyboard model.** `Ctrl+K` actions, `Ctrl+Enter` send,
-    `Ctrl+S` save, focus management.
+1. **True hypervisor microVM.** The current bwrap worker is a hardened
+   container, not a VM. A Firecracker/Cloud Hypervisor worker would add a
+   hardware boundary.
+2. **Live DOMjudge import/export.** The package model and metadata adapter are
+   ready; validating against a real instance remains an environment task.
+3. **Live Judge0 deployment.** The optional adapter is tested against a fake
+   API; a real self-hosted stack is documented but not exercised here.
+4. **Human screen-reader pass.** Axe reports zero violations and keyboard/dialog
+   tests pass; a manual NVDA/VoiceOver session is still worthwhile.
+5. **Command palette and keyboard model.** `Ctrl+K` actions, `Ctrl+Enter` send,
+   `Ctrl+S` save, focus management.
+6. **Design refinements from the visual audit.** Folder glyph, actionable stage
+   evidence, report density, chat title state.
 
 ## 13. Likely interview questions
 
@@ -543,17 +549,21 @@ records rather than a single transcript.
 | `server.py` | Loopback HTTP server, static UI, jobs, cancellation, API routes. |
 | `graph_agent.py` | `create_agent` runtime, middleware, checkpoints, streaming, tools, message conversion. |
 | `agent_state.py` | Typed `AuthorState` and working-memory bounds. |
-| `agent_middleware.py` | Pinned context and tool-error middleware. |
-| `executor_server.py` | Isolated compiler/runner worker; no key or external network. |
+| `agent_middleware.py` | Pinned context, context budget, refusal/stream integrity, tool-error middleware. |
+| `executor_server.py` | Isolate-compatible sandbox worker; no key or external network. |
 | `Dockerfile.executor` | Executor image with g++, JDK and TeX toolchain. |
 | `agent.py` | Bounded tool dispatch, system prompt, workspace state note. |
-| `verify.py` | Deterministic verification and DOMjudge ZIP export. |
+| `verify.py` | Deterministic verification, spec audit, group scoring and DOMjudge ZIP export. |
 | `workspace.py` | Path safety, scaffold, chats, plans, changes, diffs, snapshots. |
 | `config.py` | Local provider settings and secret handling. |
+| `icpc_spec.py` | ICPC Problem Package Format audit. |
+| `scoring.py` | Group points and dependencies. |
+| `mcp_consent.py` | MCP host consent and roots. |
+| `judge0_adapter.py` | Optional Judge0 quick-run adapter. |
 | `winutil.py` | Headless subprocess launch, Python environment, NTSTATUS diagnostics. |
 | `sandbox/sitecustomize.py` | Headless child processes for generated Python scripts. |
 | `web/` | Chat timeline, chats/files/changes sidebar, Plan/File/Report/Diff inspector, highlighted code viewer and Run panel. |
-| `web/vendor/` | Locally bundled highlight.js and theme. |
+| `web/vendor/` | Locally bundled highlight.js, theme and axe-core. |
 | `eval/` | Real-provider eval harness, fixtures and generated results. |
 | `qa/` | Deterministic fake-model stress/regression suite. |
 | `docs/` | Research/decision docs and LangGraph diagram. |

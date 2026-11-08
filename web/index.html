@@ -94,7 +94,7 @@
     <div id="stage-rail" class="stage-rail" role="status" aria-live="polite"></div>
     <div id="plan-strip" class="plan-strip" hidden></div>
 
-    <div id="messages" class="messages">
+    <div id="messages" class="messages" tabindex="0" role="log" aria-label="Conversation">
       <div class="empty">
         <h2>Author a problem end to end</h2>
         <p>Describe the idea. The agent writes the statement, validator, reference solution, tests and negative solutions, then verifies the package before export.</p>
@@ -127,6 +127,7 @@
       <button data-tab="report">Report</button>
       <button data-tab="diff">Diff</button>
       <button data-tab="history">History</button>
+      <button data-tab="mcp">MCP</button>
     </div>
 
     <div id="panel-plan" class="panel active">
@@ -181,6 +182,10 @@
 
     <div id="panel-history" class="panel">
       <div id="history-body" class="report"><div class="pad muted">Open a chat to inspect checkpoints.</div></div>
+    </div>
+
+    <div id="panel-mcp" class="panel">
+      <div id="mcp-body" class="report"><div class="pad muted">Open a workspace to inspect MCP consent.</div></div>
     </div>
   </section>
 </main>

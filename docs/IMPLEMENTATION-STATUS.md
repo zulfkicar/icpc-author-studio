@@ -1,10 +1,12 @@
 # Implementation Status
 
-Updated: 2026-11-08  
-Latest implementation commit: see `git log`  
-Specification: [`MASTER-PLAN.md`](MASTER-PLAN.md)  
-Verification: [`ADVERSARIAL-VERIFICATION.md`](ADVERSARIAL-VERIFICATION.md)  
+Updated: 2026-11-08
+Specification: [`MASTER-PLAN.md`](MASTER-PLAN.md)
+Verification: [`ADVERSARIAL-VERIFICATION.md`](ADVERSARIAL-VERIFICATION.md)
 Design: [`DESIGN.md`](DESIGN.md)
+Eval evidence: [`EVAL-RESULTS.md`](EVAL-RESULTS.md)
+Visual audit: [`VISUAL-AUDIT.md`](VISUAL-AUDIT.md)
+Judge0 decision: [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md)
 
 ## Completed
 
@@ -14,102 +16,191 @@ Design: [`DESIGN.md`](DESIGN.md)
 - `ContextBudgetMiddleware` clamps `max_tokens` against a 1,048,576 model window.
 - Removed the 8,000-token output cap.
 - Explabs `configured-model` defaults and per-model price table.
-- Model retry, model fallback, tool retry, timeout and fallback key/base URL settings.
+- Model retry, model fallback, tool retry, timeout and fallback settings.
 - `stream_usage=True` with real-provider usage and cost evidence.
+- `ProviderRefusalMiddleware` treats OpenAI-style `refusal` fields as errors.
+- `StreamIntegrityMiddleware` rejects a truncated stream with no finish reason
+  instead of committing partial text.
+- Concurrent `load_skill` calls use a merge reducer, so parallel skill loads
+  cannot corrupt graph state.
 
 ### Prompting, skills and clarification
 
-- Prompt split into `prompts/base.md`, `workflow.md`, `tools.md`, and mode files.
-- `SkillRegistry` with progressive disclosure, `list_skills`, `load_skill`, `unload_skill`.
-- 13 curated CP skills: constraints, domain taxonomy, difficulty calibration, coverage, test design, negatives, validator, checker, interactive, statement, limits, verifier audit, delivery.
-- Active skills pinned into context and capped at two.
+- Prompt split into `prompts/base.md`, `workflow.md`, `tools.md`, `spec.md` and
+  mode files.
+- `SkillRegistry` with progressive disclosure, `list_skills`, `load_skill`,
+  `unload_skill`.
+- 13 curated CP skills, pinned into context and capped at two.
 - Durable clarification via `ask_user` + `interrupt`; separate from approvals.
-- Clarification answers persisted in `.agent/chats/<id>.clarifications.json`.
-- Reviewer, test-designer and verifier-auditor read-only subagents; reviewer wrapped in a real `StateGraph`.
+- Reviewer, test-designer and verifier-auditor read-only subgraphs.
 
-### Verification
+### Isolate-style execution worker
 
-- Kattis/ICPC package discovery: `statement/`, `data/sample`, recursive `data/secret`, groups, valid/invalid output, output validator.
-- Standard, checker/output-validator and interactive modes.
-- Checker self-test matrix: reference, wrong, malformed, empty, extra, valid/invalid fixtures, crash/timeout handling.
-- Interactive executor harness with connected validator/solution pipes, transcript capture, wall-clock timeout and negative/reference checks.
-- Test groups and cycle validation.
+- `POST /isolate/run` mirrors Isolate's contract: `time`, `wallTime`, `memory`,
+  `processes`, `stack`, `fsize`, `openFiles` and returns `status`, `exit`,
+  `time`, `wallTime`, `maxRssKb`, `message`.
+- Every run is copied into a private temporary workspace.
+- The child runs under **bwrap** with a read-only system root, only `/work`
+  writable, `--unshare-all`, `--cap-drop ALL` and an `RLIMIT_NPROC` wrapper
+  applied inside the user namespace.
+- `/app/workspaces` is hidden from the child; absolute cross-workspace reads
+  return `BLOCKED`.
+- CPU, wall, address space, process count, stack, file size and open-file limits
+  are enforced.
+- Process-group cleanup kills orphaned children.
+- The executor has no provider key and no external network.
+
+### ICPC Problem Package Format
+
+- `icpc_spec.py` audits the ICPC subset:
+  - required files and directories,
+  - `problem_format_version`, name, license, rights owner,
+  - `limits` keys and memory,
+  - `validation: default|custom [interactive]`,
+  - required validators,
+  - `.interaction` line format,
+  - UTF-8, BOM, CRLF and filename rules,
+  - groups and cycles.
+- Input validators must exit **42**; output validators are invoked as
+  `<validator> input answer feedback_dir [flags]` with team output on stdin and
+  must exit **42** (AC) or **43** (WA).
+- `output_validators/` (ICPC subset) and `output_validator/` (2025-09 draft) are
+  both discovered; `problem_statement/` and `statement/` are both accepted.
+- `templates/testlib.h` is the official testlib header and is copied into the
+  build directory automatically.
+
+### Checkers, interactors and groups
+
+- Real C++ testlib fixtures: `qa/fixtures/testlib/checker.cpp`,
+  `interactor.cpp`, `transcript_checker.cpp`.
+- Checker self-test matrix: reference, wrong, malformed, empty, extra,
+  valid/invalid fixtures, crash and accept-all rejection.
+- Interactive harness with connected validator/solution pipes, transcript
+  capture, wall-clock timeout, reference/negative checks and exit-code contract
+  handling.
+- Interactive checker-on-transcript: a transcript checker validates the captured
+  protocol and rejects a forged transcript.
+- Group scoring (`scoring.py`): `points` and `depends`/`dependencies`; a group
+  earns points only when its own tests and all dependencies pass.
 - Explicit float comparison with NaN rejection.
-- Checker/interactive evidence included in the verification report and UI.
-- Standard `sum-test` regression still verifies; checker and interactive fixtures verify.
 
-### Persistence and review
+### Persistence, MCP and UX
 
-- Conversation checkpoint history listing and conversation-only restore.
-- Per-turn workspace snapshots; snapshot list and restore.
-- Unified diff hunk parsing and selective hunk application.
-- Scoped MCP stdio server with read/list/search/report tools, secret-test rejection and no shell/write/export.
-- @-mentions, chat tabs, stage rail, history panel, clarification card, follow/pause scrolling, hunk selector, settings for context/fallback, and WCAG-minded focus/reduced-motion/target styles.
+- Conversation checkpoints, conversation-only restore, per-turn snapshots,
+  snapshot retention and restore.
+- Unified diff hunk parsing and selective application.
+- Scoped MCP stdio server with explicit host consent (`mcp_consent.py`),
+  consent-gated tools, roots enforcement, secret-test rejection and no
+  shell/write/export.
+- MCP inspector tab: enable toggle, roots, per-tool consent, save and probe.
+- @-mentions, chat tabs, stage rail, history panel, clarification card,
+  follow/pause, hunk selector, settings for context/fallback.
+- Axe-core WCAG audit, keyboard/dialog check, live regions, focus-visible,
+  reduced-motion, target sizing, reflow at 320px.
+- Visual audit and fixes: tree glyphs, checkbox layout, contrast, focusable
+  conversation log.
 
-### Tests
+### Fault injection, chaos, soak and eval
 
-Run locally:
+- Real HTTP fault proxy: 429, stream disconnect, refusal, no tool calling,
+  text-only response.
+- Chaos: real `RLIMIT_FSIZE` exhaustion through the Isolate endpoint, clock-skew
+  ordering, event replay and duplicate suppression.
+- Performance soak: executor run and fake-turn latency budgets; browser tab/DOM
+  soak.
+- `eval/run_eval.py` real-provider `sum` and `claim` fixtures verified; see
+  [`EVAL-RESULTS.md`](EVAL-RESULTS.md).
+- `judge0_adapter.py` optional quick-run backend; Judge0 is not a verification
+  authority. See [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md).
+
+## Evidence
+
+All of the following passed in the app container / on the host:
 
 ```text
-python qa/test_phase1.py
-python qa/test_skills.py
-python qa/test_verification_modes.py
-python qa/test_hunks.py
-python qa/test_snapshots.py
-python qa/test_mcp.py
-python qa/test_groups_float.py
-python qa/test_security.py
-python qa/test_stale_export.py
-python qa/test_context_500k.py
-python qa/test_adversarial_manifest.py
-python qa/test_accessibility.py
-python qa/stress_agent.py
+PHASE 1 TESTS PASSED
+SKILL TESTS PASSED
+VERIFICATION MODE TESTS PASSED
+HUNK TESTS PASSED
+SNAPSHOT TESTS PASSED
+MCP TESTS PASSED
+GROUP/FLOAT TESTS PASSED
+SECURITY TESTS PASSED
+STALE EXPORT TESTS PASSED
+500K CONTEXT TEST PASSED
+ADVERSARIAL MANIFEST PASSED (146 rows, 146 automated, 0 partial)
+ACCESSIBILITY AUDIT PASSED
+EVENT LEDGER TESTS PASSED
+UI CONTRACT TESTS PASSED
+DISK/DB FAILURE TESTS PASSED
+ICPC SPEC TESTS PASSED
+GROUP SCORING TESTS PASSED
+TESTLIB FIXTURE TESTS PASSED
+INTERACTIVE TESTS PASSED
+EXECUTOR SECURITY TESTS PASSED
+EXECUTOR LIMIT TESTS PASSED
+ISOLATE CONTRACT TESTS PASSED
+CHAOS TESTS PASSED
+PROVIDER FAULT TESTS PASSED
+JUDGE0 ADAPTER TESTS PASSED
+ALL STRESS TESTS PASSED
+SOAK TESTS PASSED
 ```
 
-Interactive (inside app container):
-
 ```text
-docker exec icpc-author-agent python qa/test_interactive.py
+qa/accessibility_axe.ps1
+  {"violations":[],"passes":20,"incomplete":1}
+  keyboard: openInside=true, closed=true, focusReturned=true
+  AXE ACCESSIBILITY AUDIT PASSED
+
+qa/cdp_workflow.ps1
+  mcpRows=5, mcpToggle=true, mcpSave=true, treeGlyphsOk=true,
+  approvalDedupe=true, clarificationVisible=true, xssEscaped=true,
+  composerFocusable=true, followPaused=true, hunkRows=1, historyRows=9,
+  mentionVisible=true, reflow320=true, keyboard focus moves
+
+qa/soak_cdp.ps1
+  {"iterations":30,"elapsedMs":213,"growth":82,"errors":[]}
+
+container soak
+  runs: 20, median 371.6 ms, p95 479.2 ms
+  turns: 8, median 411.6 ms, p95 652.3 ms
+
+standard package through bwrap
+  status=verified, spec 18/18, tests 6 (1 sample, 5 secret)
 ```
 
-All listed suites pass. Chrome CDP verified:
-- open `submissions/accepted/ref.cpp`
-- enter edit mode with line numbers
-- run sample tests 1/1 through the executor
-- chat tab creation
-- @-mention popup
-- stage rail rendering
-- no console errors
-
-Real provider smoke after the changes:
+Real 500k probe:
 
 ```text
-text: xplabs-final
-usage: input 3882 / output 5 / total 3887
-estimated cost: $0.001463
+input_tokens: 500045
+output_tokens: 19
+text: long-ok
 ```
 
-## Latest evidence
+Real eval:
 
 ```text
-python qa/test_context_500k.py    -> 500K CONTEXT TEST PASSED
-python qa/test_adversarial_manifest.py -> 146 rows mapped; 146 automated, 0 partial
-python qa/test_accessibility.py   -> ACCESSIBILITY AUDIT PASSED
-qa/cdp_workflow.ps1               -> clarificationVisible=true, xssEscaped=true, composerFocusable=true, followPaused=true, hunkRows=1, historyRows=9, reflow320=true, keyboardFocus moves
-python qa/probe_long_context.py   -> input_tokens=500045, output_tokens=19, text=long-ok
-docker exec ... qa/test_executor_security.py -> EXECUTOR SECURITY TESTS PASSED
-docker exec ... qa/test_executor_limits.py   -> EXECUTOR LIMIT TESTS PASSED (key/network/output/memory/PID/orphan)
+claim: verified, 38 tests, 4 negatives, 18/18 spec, 3,119,413 input tokens
+sum:   verified, 29 tests, 3 negatives, 1,325,603 input tokens
 ```
 
 ## Remaining gaps
 
-- A true hypervisor VM is still unavailable; the executor is a hardened container.
-- Live DOMjudge import/export is intentionally not tested; no instance exists.
-- All 146 adversarial rows are automated in `qa/adversarial_manifest.json`. The executor runs in a per-run workspace copy under bwrap with no provider key, no external network, no `/app/workspaces` path, output caps, memory/PID limits and orphan-process cleanup. UI race/recovery, provider failure modes, event ordering, disk/write failure and corrupt-checkpoint behavior have automated contracts.
-- Real 500k long-context provider testing passed: 500,045 input tokens and `long-ok`; the opt-in probe is `qa/probe_long_context.py`. Synthetic 500k compaction passes in `qa/test_context_500k.py`.
-- Follow/pause scrolling is implemented and the CDP workflow reports `followPaused=true`. Static WCAG audit passes and CDP keyboard traversal reports focus movement.
-- Hunk UI and history/snapshot panel APIs are wired; the CDP workflow reports `hunkRows=1`, `historyRows=9`, `followPaused=true`, and the @-mention menu visible.
-- Checker/interactor tests require the executor; CI skips the interactive suite when no executor is present.
+- **True hypervisor VM:** unavailable in this environment. The executor is a
+  hardened container plus a bwrap mount namespace, not a separate VM. This is a
+  documented platform limitation, not a claim otherwise.
+- **Live DOMjudge:** intentionally not tested; no instance exists. Package
+  compatibility and a DOMjudge metadata adapter are implemented.
+- **Judge0 compose:** the optional stack is documented but was not started in
+  this environment. The adapter is tested against a local fake Judge0 API; it is
+  not used for verification.
+- **Manual screen-reader traversal:** axe (0 violations) and keyboard/dialog
+  checks pass; a human screen-reader session is still a manual step.
+- **Adversarial depth:** all 146 rows have automated owners, but some use
+  deterministic contract tests rather than live third-party fault injection
+  (for example an actual disk-full filesystem rather than `RLIMIT_FSIZE`, or a
+  real provider outage rather than the local HTTP proxy).
 
 ## Evidence commands
 
@@ -117,8 +208,10 @@ docker exec ... qa/test_executor_limits.py   -> EXECUTOR LIMIT TESTS PASSED (key
 python -m py_compile server.py agent.py agent_state.py agent_middleware.py graph_agent.py `
   workspace.py verify.py package_model.py verification_modes.py executor_server.py `
   config.py winutil.py schemas.py skill_registry.py prompt_loader.py mcp_server.py `
+  mcp_consent.py icpc_spec.py scoring.py judge0_adapter.py `
   qa/stress_agent.py qa/test_phase1.py qa/test_skills.py qa/test_verification_modes.py `
   qa/test_interactive.py qa/test_hunks.py qa/test_snapshots.py qa/test_mcp.py `
-  qa/test_groups_float.py qa/test_security.py
+  qa/test_groups_float.py qa/test_security.py qa/test_testlib.py qa/test_group_scoring.py `
+  qa/test_provider_faults.py qa/test_chaos.py qa/test_isolate_contract.py
 node --check web/app.js
 ```

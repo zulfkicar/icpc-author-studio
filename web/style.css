@@ -8,9 +8,9 @@
   --line-2: #333b47;
   --text: #e7eaf0;
   --muted: #9aa3b2;
-  --faint: #6d7686;
+  --faint: #8792a3;
   --accent: #7f9cff;
-  --accent-2: #5f7ff0;
+  --accent-2: #3d55c8;
   --accent-soft: #1a2340;
   --green: #5cc98f;
   --green-soft: #10251a;
@@ -54,7 +54,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 button:disabled { opacity: .42; cursor: not-allowed; }
 button.primary { background: var(--accent-2); border-color: var(--accent-2); color: #fff; font-weight: 600; }
-button.primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
+button.primary:hover:not(:disabled) { background: #4d66d8; border-color: #4d66d8; }
 button.quiet { background: transparent; border-color: var(--line); color: var(--muted); }
 button.quiet:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
 button.icon-btn {
@@ -75,8 +75,11 @@ input, textarea, select {
   outline: none;
   width: 100%;
 }
+input[type="checkbox"], input[type="radio"] { width: auto; padding: 0; accent-color: var(--accent); }
 input:hover, textarea:hover, select:hover { border-color: var(--line-2); }
 textarea { resize: none; }
+label.check { display: flex; align-items: center; gap: 8px; color: var(--text); }
+label.check input[type="checkbox"] { flex: 0 0 auto; }
 
 .topbar {
   height: 50px;
@@ -206,7 +209,7 @@ body.resizing * { cursor: col-resize !important; }
 .change-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); flex: 0 0 6px; }
 .tree-dir { padding: 5px 12px 2px 10px; color: var(--faint); font-size: 10.5px; font-weight: 600; }
 .tree-toggle { width: 11px; flex: 0 0 11px; color: var(--faint); font-size: 10px; text-align: center; }
-.tree-icon { width: 13px; flex: 0 0 13px; text-align: center; color: var(--faint); font-size: 10px; }
+.tree-icon { width: 13px; flex: 0 0 13px; text-align: center; color: var(--faint); font-size: 10px; font-family: var(--mono); }
 .tree-dir-row .tree-icon { color: var(--accent); }
 .tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-actions { display: none; margin-left: auto; gap: 2px; align-items: center; }
@@ -409,7 +412,8 @@ body.resizing * { cursor: col-resize !important; }
 .plan-empty { color: var(--faint); font-size: 12px; padding: 6px 9px; }
 
 .file-head { height: 44px; flex: 0 0 44px; display: flex; align-items: center; gap: 9px; padding: 0 12px; border-bottom: 1px solid var(--line); }
-#file-name { font-family: var(--mono); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#file-name { min-width: 0; flex: 0 1 auto; font-family: var(--mono); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#file-meta { flex: 0 0 auto; white-space: nowrap; }
 .editor-shell { flex: 1; min-height: 0; display: flex; background: #090b0e; overflow: hidden; }
 .line-numbers {
   flex: 0 0 44px; padding: 13px 8px 13px 0; text-align: right;
@@ -523,7 +527,6 @@ dialog h2 { margin: 0 0 4px; font-size: 18px; letter-spacing: -.02em; }
 .dialog-sub { margin: 0 0 8px; font-size: 12px; }
 dialog label { display: block; margin: 13px 0; color: var(--muted); font-size: 12px; }
 dialog label input, dialog label textarea { margin-top: 5px; color: var(--text); }
-dialog label.check { display: flex; align-items: center; gap: 8px; color: var(--text); }
 dialog label.check input { width: auto; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
@@ -556,3 +559,14 @@ dialog label.check input { width: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 .icon-btn, .tree-action, .chat-actions button { min-width: 24px; min-height: 24px; }
+
+.mcp-head { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
+.mcp-head h3 { margin: 0 0 2px; }
+.mcp-head p { margin: 0; }
+#mcp-body .table { margin-top: 8px; table-layout: fixed; }
+#mcp-body .table th:nth-child(1), #mcp-body .table td:nth-child(1) { width: 118px; }
+#mcp-body .table th:nth-child(3), #mcp-body .table td:nth-child(3) { width: 86px; }
+#mcp-body .table th:nth-child(4), #mcp-body .table td:nth-child(4) { width: 62px; }
+#mcp-body .table td:nth-child(3) label.check { justify-content: flex-start; }
+#mcp-body label:not(.check) { display: block; margin: 8px 0; }
+#mcp-body input:not([type="checkbox"]) { width: 100%; }
