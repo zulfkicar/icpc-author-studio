@@ -4,10 +4,38 @@ Question: should Judge0 be self-hosted and embedded as the execution/IDE backend
 
 ## Verdict
 
-**Not as the verification authority.** Judge0 is a good fit for *quick-run* only,
-and it is now available as an optional adapter (`judge0_adapter.py`) behind
-`AUTHOR_AGENT_JUDGE0_URL`. The deterministic verifier continues to use the
-Isolate-style bwrap worker.
+**Live and embedded as a quick-run/IDE backend — not as the verification
+authority.** A real Judge0 CE 1.13.1 stack is running in this Docker project
+(server, worker, PostgreSQL, Redis), and the app can call it. The deterministic
+verifier continues to use the Isolate worker / bwrap executor because Judge0
+does not orchestrate the ICPC package contracts.
+
+## Live stack
+
+```bash
+docker compose -f docker-compose.judge0.yml up -d
+curl http://127.0.0.1:2358/about
+```
+
+Services:
+
+- `judge0-server` — `judge0/judge0:1.13.1`, port `127.0.0.1:2358`.
+- `judge0-worker` — privileged worker with Isolate 1.8.1 and the compiler set.
+- `judge0-db` — PostgreSQL 13.
+- `judge0-redis` — Redis 6.
+
+The server and worker share `/box` and `/var/local/lib/isolate`. The server is
+privileged because this Judge0 release also processes jobs in the web process;
+the worker remains privileged. Judge0 CE 1.13.1 targets cgroup v1, so the
+adapter sets `enable_per_process_and_thread_time_limit` and
+`enable_per_process_and_thread_memory_limit`, which makes Isolate use its
+rlimit path and works on the cgroup v2 host here.
+
+A live C++ submission returns:
+
+```text
+status=Accepted, stdout=judge0-live, time=0.004, memory=3192
+```
 
 ## Why Judge0 is not the verifier
 
@@ -27,60 +55,35 @@ interactors, output-validator feedback directories, or package validator flags.
 Putting Judge0 behind the verifier would require a second orchestration layer and
 would make two execution authorities disagree.
 
-Judge0 also adds PostgreSQL, Redis, a server and one or more workers. That is a
-large operational surface for a local authoring tool whose current worker already
-enforces:
-
-- read-only system root,
-- no network namespace,
-- hidden `/app/workspaces`,
-- CPU / wall-time / address-space / stack / file-size / open-file / process caps,
-- no provider key.
-
 ## Where Judge0 fits
 
-Use it as an optional IDE quick-run service. Add the URL in **Settings ? Judge0
-URL** and a **Judge0** button appears in the Run panel for runnable files. It
-posts to `/api/workspaces/<slug>/judge0/run`, which reads the workspace source
-and calls the adapter. It never writes a verifier report or export gate.
+Use it as an IDE quick-run service. Add the URL in **Settings → Judge0 URL** and
+a **Judge0** button appears in the Run panel for runnable files. It posts to
+`/api/workspaces/<slug>/judge0/run`, which reads the workspace source and calls
+the adapter. It never writes a verifier report or export gate.
 
 Programmatically:
 
 ```python
 from judge0_adapter import quick_run
-result = quick_run(source, "cpp", stdin="2 3", base_url="http://127.0.0.1:2358")
+result = quick_run(source, "cpp", stdin="2 3", base_url="http://judge0-server:2358")
 ```
 
 The adapter normalises `status`, `stdout`, `stderr`, `compileOutput`, `time`,
 `memory`, and marks every result `verificationAuthority: False`.
 
-## Optional self-hosting
-
-The official Judge0 deployment uses PostgreSQL, Redis, `judge0/judge0` server
-and workers. A minimal compose file is provided in
-`docker-compose.judge0.yml`; it is **not** part of the default `docker compose up`
-and is not used by verification. Start it explicitly:
-
-```bash
-docker compose -f docker-compose.judge0.yml up -d
-```
-
-Then set `AUTHOR_AGENT_JUDGE0_URL=http://127.0.0.1:2358` for the app.
-
 ## Evidence
 
-`qa/test_judge0_adapter.py` runs the adapter and `run_file` against a local fake
-Judge0 server and checks accepted output, compilation errors, metadata
-normalisation, the workspace file path and the `verificationAuthority: False`
-contract. `qa/test_ui_contracts.py` checks that the Run-panel button and
-`runJudge0` wiring are present. The UI button is only shown when a Judge0 URL is
-configured.
+- `qa/test_judge0_adapter.py` — fake-server adapter contract.
+- `qa/test_live_judge0.py` — live stack: C++ accepted and workspace file run.
+- `qa/test_ui_contracts.py` — Run-panel button and `runJudge0` wiring.
+- CDP: `judge0Visible=true`.
 
-End-to-end route evidence (fake Judge0 on the executor network):
+Live app route:
 
 ```text
-POST /api/settings {judge0Url: http://executor:2358}
-POST /api/workspaces/sum-test/judge0/run {path: submissions/accepted/ref.cpp}
-  ok=true, stdout=judge0-route-ok, status=Accepted,
-  verificationAuthority=false
+POST /api/settings {judge0Url: http://judge0-server:2358}
+POST /api/workspaces/sum-test/judge0/run
+  {path: submissions/accepted/ref.cpp, stdin: "2 3"}
+  -> ok=true, stdout=5, status=Accepted, verificationAuthority=false
 ```

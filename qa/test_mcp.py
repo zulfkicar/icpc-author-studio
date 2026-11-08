@@ -62,6 +62,26 @@ def main():
     finally:
         process.terminate()
 
+    # Default consent: a fresh workspace is enabled with every tool and "." root.
+    fresh = workspace.create("QA MCP Default", "mcp default")["slug"]
+    workspace.write_text(fresh, "data/sample/01.in", "1 2\n", source="test")
+    workspace.write_text(fresh, "problem.yaml", "name: QA MCP Default\n", source="test")
+    default_state = mcp_consent.state(fresh)
+    check("mcp default enabled", default_state["enabled"] and all(default_state["tools"].values()), default_state)
+    check("mcp default root", default_state["roots"] == ["."], default_state)
+    default_process = subprocess.Popen(
+        [sys.executable, str(ROOT / "mcp_server.py"), "--slug", fresh, "--consent", mcp_consent.consent_path(fresh)],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+    )
+    try:
+        response = request(default_process, {"jsonrpc": "2.0", "id": 20, "method": "tools/call", "params": {"name": "read_file", "arguments": {"path": "problem.yaml"}}})
+        check("mcp default relative path", response["result"].get("isError") is not True and "QA MCP Default" in response["result"]["content"][0]["text"], response)
+        response = request(default_process, {"jsonrpc": "2.0", "id": 21, "method": "tools/call", "params": {"name": "search_workspace", "arguments": {"query": "QA MCP"}}})
+        check("mcp default search", response["result"].get("isError") is not True, response)
+    finally:
+        default_process.terminate()
+        shutil.rmtree(workspace.ws_path(fresh), ignore_errors=True)
+
     # Deny-by-default: a fresh consent file with the server disabled.
     mcp_consent.update(slug, {"enabled": False})
     denied = subprocess.Popen(

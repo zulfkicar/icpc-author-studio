@@ -11,39 +11,46 @@
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="brand-mark"></span><span>Author Agent</span><span class="ver">local</span><span id="connection-dot" class="conn-dot" title="Checking server…"></span></div>
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"><span></span></span>
+    <span class="brand-copy"><b>Author Agent</b><small>ICPC workbench</small></span>
+  </div>
   <div class="workspace-switch">
+    <span class="switch-label">Problem</span>
     <select id="workspace-select" aria-label="Problem workspace"></select>
-    <button id="new-problem" class="icon-btn" title="New problem">+</button>
+    <button id="new-problem" class="icon-btn" title="New problem" aria-label="New problem">+</button>
   </div>
   <span class="spacer"></span>
   <span id="status-pill" class="pill unverified">unverified</span>
-  <button id="answers-btn" class="quiet">Build answers</button>
-  <button id="limits-btn" class="quiet" title="Measure time and memory from the reference solutions">Limits</button>
-  <button id="verify-btn" class="primary">Verify</button>
-  <button id="export-btn" class="quiet" disabled>Export</button>
-  <button id="settings-btn" class="icon-btn" title="Provider settings" aria-label="Provider settings">&#9881;</button>
+  <div class="top-actions">
+    <button id="answers-btn" class="quiet">Build answers</button>
+    <button id="limits-btn" class="quiet" title="Measure time and memory from the reference solutions">Limits</button>
+    <button id="verify-btn" class="primary">Verify</button>
+    <button id="export-btn" class="quiet" disabled>Export</button>
+    <button id="settings-btn" class="icon-btn" title="Provider settings" aria-label="Provider settings">&#9881;</button>
+  </div>
 </header>
 
 <main class="layout">
   <aside class="left">
     <div id="problem-card" class="problem-card">
+      <div class="problem-kicker">Workspace</div>
       <div class="problem-name">No problem</div>
       <div class="problem-sub muted">Create a workspace to begin</div>
     </div>
 
-    <div class="side-tabs" role="tablist">
-      <button data-side="chats" class="active">Chats</button>
-      <button data-side="files">Files</button>
-      <button data-side="changes">Changes</button>
+    <div class="side-tabs" role="tablist" aria-label="Workspace sections">
+      <button data-side="chats" class="active" role="tab" aria-selected="true"><span class="nav-icon" aria-hidden="true">&#9673;</span><span>Chats</span></button>
+      <button data-side="files" role="tab" aria-selected="false"><span class="nav-icon" aria-hidden="true">&#9639;</span><span>Files</span></button>
+      <button data-side="changes" role="tab" aria-selected="false"><span class="nav-icon" aria-hidden="true">&#8644;</span><span>Changes</span></button>
     </div>
 
     <div id="side-chats" class="side-panel active">
       <div class="side-head">
         <span>Conversations</span>
-        <button id="new-chat" class="icon-btn" title="New chat">+</button>
+        <button id="new-chat" class="icon-btn" title="New chat" aria-label="New chat">+</button>
       </div>
-      <input id="chat-search" class="chat-search" placeholder="Search chats" autocomplete="off">
+      <input id="chat-search" class="chat-search" placeholder="Search chats" autocomplete="off" aria-label="Search chats">
       <div id="chat-tabs" class="chat-tabs"></div>
       <div id="chat-list" class="chat-list"></div>
     </div>
@@ -51,9 +58,9 @@
     <div id="side-files" class="side-panel">
       <div class="side-head">
         <span>Workspace</span>
-        <button id="new-file" class="icon-btn" title="New file">&#43;</button>
-        <button id="new-folder" class="icon-btn" title="New folder">&#9633;</button>
-        <button id="refresh-tree" class="icon-btn" title="Refresh files">&#8635;</button>
+        <button id="new-file" class="icon-btn" title="New file" aria-label="New file">&#43;</button>
+        <button id="new-folder" class="icon-btn" title="New folder" aria-label="New folder">&#9633;</button>
+        <button id="refresh-tree" class="icon-btn" title="Refresh files" aria-label="Refresh files">&#8635;</button>
       </div>
       <div id="file-tree" class="tree"></div>
     </div>
@@ -76,19 +83,20 @@
   <section class="chat-pane">
     <div class="chat-head">
       <div class="chat-heading">
+        <div class="chat-kicker">Conversation</div>
         <div id="chat-title" class="chat-title">No conversation</div>
         <div id="chat-sub" class="chat-sub muted"></div>
       </div>
       <span id="agent-state" class="agent-state"></span>
       <span class="spacer"></span>
-      <select id="mode-select" class="mode-select" title="Agent mode">
+      <select id="mode-select" class="mode-select" title="Agent mode" aria-label="Agent mode">
         <option value="author">Author</option>
         <option value="debug">Debug</option>
         <option value="review">Review</option>
       </select>
       <button id="follow-btn" class="quiet small" hidden>Follow live</button>
       <button id="stop-btn" class="quiet small" hidden>Stop</button>
-      <button id="reload-chat" class="icon-btn" title="Reload conversation">&#8635;</button>
+      <button id="reload-chat" class="icon-btn" title="Reload conversation" aria-label="Reload conversation">&#8635;</button>
     </div>
 
     <div id="stage-rail" class="stage-rail" role="status" aria-live="polite"></div>
@@ -96,6 +104,7 @@
 
     <div id="messages" class="messages" tabindex="0" role="log" aria-label="Conversation">
       <div class="empty">
+        <div class="empty-mark" aria-hidden="true">&#10022;</div>
         <h2>Author a problem end to end</h2>
         <p>Describe the idea. The agent writes the statement, validator, reference solution, tests and negative solutions, then verifies the package before export.</p>
         <p class="muted">Every write is tracked under Changes. Conversations are kept per problem.</p>
@@ -121,6 +130,13 @@
   <div class="splitter" data-split="right" title="Drag to resize the inspector"></div>
 
   <section class="right">
+    <div class="inspector-head">
+      <div>
+        <div class="inspector-kicker">Evidence</div>
+        <div class="inspector-title">Inspector</div>
+      </div>
+      <span class="inspector-hint">review · verify · export</span>
+    </div>
     <div class="inspector-tabs" role="tablist">
       <button data-tab="plan" class="active">Plan</button>
       <button data-tab="file">File</button>
@@ -164,6 +180,7 @@
           <button id="load-sample" class="quiet small">Load sample</button>
           <button id="run-tests" class="quiet small">Run tests</button>
           <button id="judge0-run" class="quiet small" hidden>Judge0</button>
+          <button id="isolate-run" class="quiet small" hidden>Isolate</button>
           <button id="run-file" class="primary small">Run</button>
         </div>
         <div id="test-tabs" class="test-tabs"></div>
@@ -193,6 +210,7 @@
 
 <dialog id="new-dialog" aria-label="New problem">
   <form method="dialog" id="new-form">
+    <div class="dialog-kicker">Start here</div>
     <h2>New problem</h2>
     <p class="dialog-sub muted">Start from an idea. The agent will turn it into a verified DOMjudge package. Limits are measured from the reference after the tests are built.</p>
     <label>Problem name <input name="name" required placeholder="e.g. Claim or Concede"></label>
@@ -211,6 +229,7 @@
 
 <dialog id="settings-dialog" aria-label="Provider settings">
   <form method="dialog" id="settings-form">
+    <div class="dialog-kicker">Runtime</div>
     <h2>Provider settings</h2>
     <p class="dialog-sub muted">DeepSeek or any OpenAI-compatible chat endpoint with tool calling. The key is stored only in <code>.author-agent/config.json</code> on this machine.</p>
     <label>Base URL <input name="baseUrl" placeholder="https://api.deepseek.com/v1"></label>
@@ -240,9 +259,10 @@
     <label>Fallback base URL <input name="fallbackBaseUrl" placeholder="optional"></label>
     <label>Fallback API key <input name="fallbackApiKey" type="password" placeholder="Leave blank to keep the saved fallback key" autocomplete="off"></label>
     <div class="grid2">
-      <label>Judge0 URL (optional quick-run) <input name="judge0Url" placeholder="http://127.0.0.1:2358"></label>
+      <label>Judge0 URL (optional quick-run) <input name="judge0Url" placeholder="http://judge0-server:2358"></label>
       <label>Judge0 token <input name="judge0Token" type="password" placeholder="Leave blank to keep the saved token" autocomplete="off"></label>
     </div>
+    <label>Isolate URL (optional real Isolate worker) <input name="isolateUrl" placeholder="http://isolate-worker:8790"></label>
     <div class="grid2">
       <label>Input $ / 1M tokens <input name="inputPricePerMillion" type="number" min="0" step="0.0001" value="0"></label>
       <label>Output $ / 1M tokens <input name="outputPricePerMillion" type="number" min="0" step="0.0001" value="0"></label>
@@ -258,6 +278,7 @@
 
 <dialog id="context-dialog" aria-label="Selected context">
   <form method="dialog" id="context-form">
+    <div class="dialog-kicker">Focus</div>
     <h2>Selected context</h2>
     <p class="dialog-sub muted">Explicitly include these files in the agent's pinned context. Hidden test data is not listed here.</p>
     <div id="context-list" class="context-list"></div>

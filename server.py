@@ -23,6 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import agent
 import config
 import graph_agent
+import isolate_client
 import judge0_adapter
 import mcp_consent
 import mcp_server
@@ -542,6 +543,12 @@ class Handler(BaseHTTPRequestHandler):
                 if len(parts) == 4 and parts[3] == "run":
                     body = self.read_json()
                     return self.send_json(verify.run_source(slug, str(body.get("path") or ""), str(body.get("stdin") or "")))
+                if len(parts) == 5 and parts[3] == "isolate" and parts[4] == "run":
+                    body = self.read_json()
+                    return self.send_json(isolate_client.run_file(
+                        slug, str(body.get("path") or ""), str(body.get("stdin") or ""),
+                        time_limit=2.0, memory_mb=256, fsize_mb=8,
+                    ))
                 if len(parts) == 5 and parts[3] == "judge0" and parts[4] == "run":
                     body = self.read_json()
                     cfg = config.load()

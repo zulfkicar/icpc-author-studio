@@ -7,6 +7,7 @@ Design: [`DESIGN.md`](DESIGN.md)
 Eval evidence: [`EVAL-RESULTS.md`](EVAL-RESULTS.md)
 Visual audit: [`VISUAL-AUDIT.md`](VISUAL-AUDIT.md)
 Judge0 decision: [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md)
+Isolate backend: [`ISOLATE-BACKEND.md`](ISOLATE-BACKEND.md)
 
 ## Completed
 
@@ -34,11 +35,20 @@ Judge0 decision: [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md)
 - Durable clarification via `ask_user` + `interrupt`; separate from approvals.
 - Reviewer, test-designer and verifier-auditor read-only subgraphs.
 
-### Isolate-style execution worker
+### Live execution workers
 
-- `POST /isolate/run` mirrors Isolate's contract: `time`, `wallTime`, `memory`,
-  `processes`, `stack`, `fsize`, `openFiles` and returns `status`, `exit`,
-  `time`, `wallTime`, `maxRssKb`, `message`.
+- **Real Isolate 1.8.1 worker** (`isolate-worker`) runs in the default compose
+  stack. It compiles/runs C++/C/Python/Java inside Isolate per request, with
+  CPU, wall, memory, file-size, stack and process limits, read-only root and no
+  network. The app calls it at `/api/workspaces/<slug>/isolate/run`; the Run
+  panel has an **Isolate** button. See [`ISOLATE-BACKEND.md`](ISOLATE-BACKEND.md).
+- **Live Judge0 CE 1.13.1 stack** (server, worker, PostgreSQL, Redis) runs from
+  `docker-compose.judge0.yml`. The app calls it at
+  `/api/workspaces/<slug>/judge0/run`; the Run panel has a **Judge0** button.
+  See [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md).
+- The bwrap worker still exposes an Isolate-style `POST /isolate/run` contract:
+  `time`, `wallTime`, `memory`, `processes`, `stack`, `fsize`, `openFiles` and
+  returns `status`, `exit`, `time`, `wallTime`, `maxRssKb`, `message`.
 - Every run is copied into a private temporary workspace.
 - The child runs under **bwrap** with a read-only system root, only `/work`
   writable, `--unshare-all`, `--cap-drop ALL` and an `RLIMIT_NPROC` wrapper
@@ -91,16 +101,20 @@ Judge0 decision: [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md)
 - Conversation checkpoints, conversation-only restore, per-turn snapshots,
   snapshot retention and restore.
 - Unified diff hunk parsing and selective application.
-- Scoped MCP stdio server with explicit host consent (`mcp_consent.py`),
-  consent-gated tools, roots enforcement, secret-test rejection and no
-  shell/write/export.
-- MCP inspector tab: enable toggle, roots, per-tool consent, save and probe.
+- Scoped MCP stdio server with host consent (`mcp_consent.py`). A fresh
+  workspace is enabled by default with every read-only tool and `.` root, so
+  relative paths (`problem.yaml`, `data/sample/01.in`, `search_workspace`)
+  work immediately. Roots and per-tool consent are editable; secret tests and
+  `.ans` files remain blocked.
+- MCP inspector tab: enable toggle, roots, per-tool consent, per-tool arguments, save and probe.
 - @-mentions, chat tabs, stage rail, history panel, clarification card,
   follow/pause, hunk selector, settings for context/fallback.
 - Axe-core WCAG audit, keyboard/dialog check, live regions, focus-visible,
   reduced-motion, target sizing, reflow at 320px.
-- Visual audit and fixes: tree glyphs, checkbox layout, contrast, focusable
-  conversation log.
+- **Full workbench redesign** from scratch: new top bar, vertical section rail,
+  stage stepper, elevated composer, evidence inspector, MCP tool cards, new
+  tokens/surfaces/spacing, responsive layout. Screenshots in
+  `qa/screenshots/`; notes in [`VISUAL-AUDIT.md`](VISUAL-AUDIT.md).
 
 ### Fault injection, chaos, soak and eval
 
@@ -112,12 +126,13 @@ Judge0 decision: [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md)
   soak.
 - `eval/run_eval.py` real-provider `sum` and `claim` fixtures verified; see
   [`EVAL-RESULTS.md`](EVAL-RESULTS.md).
-- `judge0_adapter.py` optional quick-run backend; Judge0 is not a verification
-  authority. Settings expose a Judge0 URL/token, the Run panel shows a Judge0
-  button when configured, and `/api/workspaces/<slug>/judge0/run` calls the
-  adapter. A fake Judge0 route test returned `ok=true`, `stdout=judge0-route-ok`,
-  `status=Accepted`, `verificationAuthority=false`. See
-  [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md).
+- `judge0_adapter.py` and `isolate_client.py` are live quick-run backends;
+  neither is the verification authority. Live route evidence:
+  Judge0 `ok=true, stdout=5, status=Accepted`; Isolate `ok=true, stdout=5,
+  status=OK, isolate=1.8.1`.
+- MCP is enabled by default with `.` root; live probes:
+  `read_file problem.yaml`, `search_workspace timelimit` and `list_tests` all
+  returned `ok=true`.
 
 ## Evidence
 
@@ -146,6 +161,8 @@ INTERACTIVE TESTS PASSED
 EXECUTOR SECURITY TESTS PASSED
 EXECUTOR LIMIT TESTS PASSED
 ISOLATE CONTRACT TESTS PASSED
+ISOLATE WORKER TESTS PASSED
+LIVE JUDGE0 TESTS PASSED
 CHAOS TESTS PASSED
 PROVIDER FAULT TESTS PASSED
 JUDGE0 ADAPTER TESTS PASSED
@@ -160,7 +177,8 @@ qa/accessibility_axe.ps1
   AXE ACCESSIBILITY AUDIT PASSED
 
 qa/cdp_workflow.ps1
-  judge0Visible=true, mcpRows=5, mcpToggle=true, mcpSave=true, treeGlyphsOk=true,
+  judge0Visible=true, isolateVisible=true, mcpRows=5, mcpToggle=true,
+  mcpSave=true, treeGlyphsOk=true,
   approvalDedupe=true, clarificationVisible=true, xssEscaped=true,
   composerFocusable=true, followPaused=true, hunkRows=1, historyRows=9,
   mentionVisible=true, reflow320=true, keyboard focus moves
@@ -198,9 +216,9 @@ sum:   verified, 29 tests, 3 negatives, 1,325,603 input tokens
   documented platform limitation, not a claim otherwise.
 - **Live DOMjudge:** intentionally not tested; no instance exists. Package
   compatibility and a DOMjudge metadata adapter are implemented.
-- **Judge0 compose:** the optional stack is documented but was not started in
-  this environment. The adapter is tested against a local fake Judge0 API; it is
-  not used for verification.
+- **Judge0 cgroup version:** Judge0 CE 1.13.1 targets cgroup v1. The adapter
+  enables Isolate's rlimit path so it works on this cgroup v2 host; a future
+  Judge0 release with cgroup v2 support would remove that workaround.
 - **Manual screen-reader traversal:** axe (0 violations) and keyboard/dialog
   checks pass; a human screen-reader session is still a manual step.
 - **Adversarial depth:** all 146 rows have automated owners, but some use
@@ -218,6 +236,6 @@ python -m py_compile server.py agent.py agent_state.py agent_middleware.py graph
   qa/stress_agent.py qa/test_phase1.py qa/test_skills.py qa/test_verification_modes.py `
   qa/test_interactive.py qa/test_hunks.py qa/test_snapshots.py qa/test_mcp.py `
   qa/test_groups_float.py qa/test_security.py qa/test_testlib.py qa/test_group_scoring.py `
-  qa/test_provider_faults.py qa/test_chaos.py qa/test_isolate_contract.py
+  qa/test_provider_faults.py qa/test_chaos.py qa/test_isolate_contract.py qa/test_isolate_worker.py qa/test_live_judge0.py
 node --check web/app.js
 ```

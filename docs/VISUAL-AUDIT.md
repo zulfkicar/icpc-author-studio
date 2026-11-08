@@ -1,66 +1,82 @@
-# Visual audit
+# Visual audit and redesign
 
-Screenshots: `qa/screenshots/01-overview.png` … `06-history.png`.
-Captured with headless Chrome at 1440×900 through `qa/screenshots.ps1`.
+Screenshots: `qa/screenshots/01-overview.png` … `06-history.png`, captured at
+1440×900 with headless Chrome through `qa/screenshots.ps1`.
 
-## What works
+## Design direction
 
-- The dark workbench has a clear three-column hierarchy: problems/chats/files on
-  the left, the conversation in the middle, evidence and review on the right.
-- The stage rail makes progress legible at a glance and marks completed stages.
-- The Plan panel reads as a real verification checklist, not decorative chrome.
-- The composer carries the one rule that matters: deterministic verification
-  gates export.
-- The Report panel exposes checks, warnings, tests and the snapshot hash.
-- MCP consent is visible as a first-class inspector tab, not hidden in settings.
+The workbench was rebuilt around one question: *what is the evidence right now?*
+The new shell separates four jobs:
 
-## Problems found and fixed
+1. **Problem** — workspace name, verification state and the section rail.
+2. **Conversation** — the agent's work, with a stage stepper and an elevated
+   composer.
+3. **Evidence** — plan, file, report, diff, history and MCP in one inspector.
+4. **Action** — Build answers, Limits, Verify, Export and backend quick-runs.
 
-| Problem | Fix |
-| --- | --- |
-| File-tree toggles, folder icons and row actions rendered as literal `?` | Replaced with `▾/▸`, `▣`, extension letters, `+`, `□`, `✎`, `×`; rows are now keyboard-activatable with `role="button"`, `aria-expanded` and Enter/Space. |
-| MCP checkboxes were full-width, so “allow” wrapped under each checkbox | Added global checkbox sizing and flex `label.check`; MCP table columns now have fixed widths. |
-| `--faint` text was 3.99:1 and primary buttons were 3.63:1 on dark surfaces | `--faint` raised to `#8792a3`, primary background to `#3d55c8`, hover to `#4d66d8`. Axe now reports **0 violations**. |
-| Conversation log was scrollable but not focusable | Added `tabindex="0"`, `role="log"` and `aria-label="Conversation"`. |
-| MCP tool rows had identical accessible names (“allow”, “Test”) | Added `aria-label="Allow <tool>"` and `aria-label="Probe <tool>"`. |
-| Stage separators rendered as `?` | Replaced with escaped `>` text. |
-| Sample-test tabs used `?` for both pass and fail | Now `PASS name` / `FAIL name`; text labels satisfy the color-only requirement. |
-| Chat-tab close, “Running…”, “resuming…” rendered as `?` | Replaced with `×` and the ellipsis character. |
-| Long file path wrapped the file header | `#file-name` shrinks with ellipsis; `#file-meta` stays on one line. |
-| The report still showed stale pre-change warnings | Re-verified the package; the report now shows the new checker/memory wording and the spec audit. |
+The visual language is a deep, slightly blue-black workbench with a single
+indigo accent, emerald success, amber warning and rose failure. Surfaces use
+one-pixel borders and very low-contrast gradients instead of heavy shadows, so
+long evidence tables stay readable.
+
+## What changed
+
+- **New shell.** A 58px top bar with a brand block, labeled workspace switcher,
+  status pill and action group. The left sidebar has a vertical section rail and
+  a dedicated problem card. The right inspector has its own header and tab bar.
+- **Stage stepper.** Compact numbered chips with connectors replace the old
+  pill strip; completed stages are emerald, future stages are neutral.
+- **Conversation.** The empty state is a deliberate landing panel, not a blank
+  box. Messages have a clear user/assistant hierarchy; the composer is an
+  elevated card with context chips, a focus ring and a prominent Send.
+- **Inspector.** Plan, File, Report, Diff, History and MCP are first-class tabs.
+  The report uses chips, tables and a warnings block. MCP tools are cards with
+  name, purpose, per-tool argument input, consent and probe.
+- **File/editor.** The file header ellipsizes long paths, the editor keeps its
+  gutter and status bar, and the Run panel has Load sample, Run tests, Judge0,
+  Isolate and Run.
+- **Dialogs.** New/Provider/Context dialogs share a kicker, heading and action
+  row; the provider dialog now includes Judge0 and Isolate URLs.
+- **Accessibility.** Axe-core reports **0 violations**; 24px targets, focus
+  rings, `aria-live` status, `role="log"` conversation, dialog labels and
+  reduced-motion support are in place.
+- **MCP default.** A fresh workspace is enabled with every read-only tool and
+  `.` root, so relative paths work immediately. Secret tests and `.ans` files
+  remain blocked.
 
 ## Remaining suggestions
 
-1. **Folder glyph.** `▣` is legible but reads as a checkbox at 10px. A small
-   CSS folder shape (tab + body) would be more immediate than a glyph.
-2. **Chat header.** “New chat · 0 messages” is generic. Use the problem name
-   plus a state word (“Sum Test · ready”, “Sum Test · 3 unreviewed”).
-3. **Report density.** The report table wraps long file paths. A two-line cell
-   with the path in monospace and the status as a chip would scan faster.
-4. **Stage rail.** Add a tooltip per stage with the exact evidence (test count,
-   checker contract, measured limit). The rail currently says “done” without
-   saying what proved it.
-5. **MCP purpose column.** The purpose text wraps to four lines at 1440px.
-   Truncate to two lines with a title attribute, or move the description to a
-   tooltip.
-6. **Plan panel.** Completed items are green checks but the evidence link is a
-   bare filename on the far right. Make it a button that opens the file/report.
-7. **Top bar.** “Build answers” and “Limits” are equally weighted with
-   “Verify”; a step-number or disabled-until-ready state would clarify order.
-8. **Empty state.** The middle pane is mostly blank before the first turn. The
-   two sample prompts are good; add a third “load an existing package” action.
+1. **Folder glyph.** The folder icon is a small square; a CSS folder shape
+   (tab + body) would read faster than a glyph.
+2. **Chat header state.** Show the problem name plus a state word (“ready”,
+   “3 unreviewed”) instead of “New chat · 0 messages” when empty.
+3. **Report density.** Long file paths wrap; a two-line cell with a monospace
+   path and a status chip would scan faster.
+4. **Stage tooltips.** Add per-stage evidence on hover (test count, checker
+   contract, measured limit).
+5. **MCP purpose text.** Keep two lines maximum and move the rest to a title or
+   expandable detail.
+6. **Plan evidence links.** The filename on the right should open the file or
+   report directly.
+7. **Top bar order.** Build answers and Limits are peers of Verify; a numbered
+   pipeline or disabled-until-ready state would clarify the order.
+8. **Empty state.** Add a third action: “open an existing package”.
 
 ## Evidence
 
 ```text
 qa/accessibility_axe.ps1
   {"violations":[],"passes":20,"incomplete":1}
-  {"openInside":true,"label":"Provider settings","liveRegions":2,"closed":true,"focusReturned":true}
+  {"openInside":true,"label":"Provider settings","liveRegions":2,
+   "closed":true,"focusReturned":true}
   AXE ACCESSIBILITY AUDIT PASSED
 
 qa/cdp_workflow.ps1
-  judge0Visible=true, mcpRows=5, mcpToggle=true, mcpSave=true,
-  treeGlyphsOk=true, keyboardFocus moves, reflow320=true, console errors none
+  judge0Visible=true, isolateVisible=true, mcpRows=5, mcpToggle=true,
+  mcpSave=true, treeGlyphsOk=true, busyGuard=true, errorShown=true,
+  approvalDedupe=true, clarificationVisible=true, xssEscaped=true,
+  composerFocusable=true, followPaused=true, hunkRows=1, historyRows=9,
+  mentionVisible=true, reflow320=true, keyboard focus moves
 
 qa/soak_cdp.ps1
   {"iterations":30,"elapsedMs":213,"growth":82,"errors":[]}

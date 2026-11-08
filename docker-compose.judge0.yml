@@ -1,58 +1,85 @@
-# Optional Judge0 CE quick-run stack. NOT used by the deterministic verifier.
-# Start explicitly: docker compose -f docker-compose.judge0.yml up -d
-# Then set AUTHOR_AGENT_JUDGE0_URL=http://127.0.0.1:2358
+# Live Judge0 CE stack. Start with:
+#   docker compose -f docker-compose.judge0.yml up -d
+# The app can then use AUTHOR_AGENT_JUDGE0_URL=http://judge0-server:2358
+# (or the Settings field http://judge0-server:2358).
 services:
   judge0-server:
     image: judge0/judge0:1.13.1
     command: ["./scripts/server"]
     ports:
       - "127.0.0.1:2358:2358"
-    environment:
+    environment: &judge0-env
       POSTGRES_HOST: judge0-db
+      POSTGRES_PORT: 5432
       POSTGRES_DB: judge0
       POSTGRES_USER: judge0
       POSTGRES_PASSWORD: judge0
       REDIS_HOST: judge0-redis
       REDIS_PORT: 6379
       RAILS_ENV: production
+      SECRET_KEY_BASE: local-author-agent-judge0-secret-key-base-000000000000000000000000
+      DISABLE_DATABASE_ENVIRONMENT_CHECK: 1
+    volumes:
+      - judge0-box:/box
+      - judge0-isolate:/var/local/lib/isolate
     depends_on:
-      - judge0-db
-      - judge0-redis
+      judge0-db:
+        condition: service_healthy
+      judge0-redis:
+        condition: service_healthy
     privileged: true
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:2358/about"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
     restart: unless-stopped
 
   judge0-worker:
     image: judge0/judge0:1.13.1
     command: ["./scripts/workers"]
-    environment:
-      POSTGRES_HOST: judge0-db
-      POSTGRES_DB: judge0
-      POSTGRES_USER: judge0
-      POSTGRES_PASSWORD: judge0
-      REDIS_HOST: judge0-redis
-      REDIS_PORT: 6379
-      RAILS_ENV: production
+    environment: *judge0-env
+    volumes:
+      - judge0-box:/box
+      - judge0-isolate:/var/local/lib/isolate
     depends_on:
-      - judge0-db
-      - judge0-redis
+      judge0-db:
+        condition: service_healthy
+      judge0-redis:
+        condition: service_healthy
     privileged: true
     restart: unless-stopped
 
   judge0-db:
-    image: postgres:16
+    image: postgres:13
     environment:
       POSTGRES_DB: judge0
       POSTGRES_USER: judge0
       POSTGRES_PASSWORD: judge0
     volumes:
       - judge0-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U judge0 -d judge0"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
 
   judge0-redis:
-    image: redis:7
+    image: redis:6
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - judge0-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
 
 volumes:
   judge0-db:
   judge0-redis:
+  judge0-isolate:
+  judge0-box:

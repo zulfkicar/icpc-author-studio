@@ -32,10 +32,12 @@ LangGraph (`langgraph` + `langchain-openai`) with the OpenAI-compatible provider
 
 ## Docker
 
-The compose stack has two services:
+The default compose stack has three services:
 
 - `author-agent` ? UI, agent, checkpoints and provider key.
-- `icpc-author-executor` ? isolated compiler/runner worker. It has g++, the JDK
+- `icpc-author-executor` ? bwrap-isolated compiler/runner worker (the
+  deterministic verifier authority).
+- `icpc-author-isolate` ? real Isolate 1.8.1 worker for quick runs. It has g++, the JDK
   and TeX Live, **no provider key**, **no host port**, **no external network**,
   a read-only root, dropped capabilities and container CPU/memory/PID limits.
   It sees only `./workspaces`; each command runs under a bwrap mount namespace
@@ -120,8 +122,24 @@ open-file / process limits. `/app/workspaces` is hidden, so an absolute
 cross-workspace read fails. `qa/test_isolate_contract.py` exercises these
 properties, including a process cap applied inside the user namespace.
 
-Judge0 is **not** a second verification authority. `judge0_adapter.py` is an
-optional quick-run backend; see [`docs/JUDGE0-EVALUATION.md`](docs/JUDGE0-EVALUATION.md).
+### Live Judge0 and Isolate backends
+
+The default compose starts the **real Isolate** worker (`isolate-worker`). Its
+Run-panel **Isolate** button calls `/api/workspaces/<slug>/isolate/run`; the
+service compiles and runs C++/C/Python/Java inside Isolate 1.8.1 with CPU,
+wall, memory, file-size, stack and process limits, a read-only root and no
+network. See [`docs/ISOLATE-BACKEND.md`](docs/ISOLATE-BACKEND.md).
+
+Judge0 CE is a separate live stack (server, worker, PostgreSQL, Redis):
+
+```bash
+docker compose -f docker-compose.judge0.yml up -d
+curl http://127.0.0.1:2358/about
+```
+
+The app then exposes a **Judge0** button in the Run panel. Judge0 is **not** a
+second verification authority; see
+[`docs/JUDGE0-EVALUATION.md`](docs/JUDGE0-EVALUATION.md).
 
 For a literal separate VM, run the executor on that VM and point the app at it
 with `AUTHOR_AGENT_EXECUTOR_URL`; the app must be able to reach the executor over
@@ -129,6 +147,17 @@ a private network and both must share the workspace volume. This machine has no
 Hyper-V, Multipass or Docker Desktop installed, so the current implementation
 uses a dedicated Docker sandbox worker inside the WSL VM. `AUTHOR_AGENT_REQUIRE_EXECUTOR=1`
 makes local execution fail closed if the executor is unavailable.
+
+## MCP and the workbench
+
+MCP is enabled by default for a fresh workspace with every read-only tool and
+the `.` root, so relative paths such as `problem.yaml` and
+`data/sample/01.in` work immediately. Adjust tools and roots in the **MCP**
+inspector tab; secret tests and `.ans` files remain blocked.
+
+The UI was rebuilt from scratch: top bar, section rail, stage stepper, elevated
+composer, evidence inspector and per-tool MCP cards. Screenshots and the audit
+are in [`docs/VISUAL-AUDIT.md`](docs/VISUAL-AUDIT.md).
 
 ## Configure a provider
 
@@ -392,6 +421,8 @@ scoring.py           group points and dependency scoring
 mcp_server.py        scoped read-only MCP stdio server
 mcp_consent.py       host consent and roots for MCP
 judge0_adapter.py    optional Judge0 quick-run adapter (not the verifier)
+isolate_worker.py    real Isolate worker service
+isolate_client.py    app client for the Isolate worker
 agent.py             bounded tool dispatch + system prompt
 verify.py            deterministic package checks and ZIP export
 workspace.py         path safety, scaffold, chats, plans, changes, diffs, revert

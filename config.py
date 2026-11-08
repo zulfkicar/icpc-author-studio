@@ -39,6 +39,8 @@ DEFAULTS = {
     "requestTimeoutSeconds": 300,
     "judge0Url": "",
     "judge0Token": "",
+    "isolateUrl": "",
+    "isolateToken": "",
 }
 
 MODEL_PRICING = {
@@ -77,6 +79,9 @@ def load() -> dict:
         data["baseUrl"] = base_url
     if model:
         data["model"] = model
+    isolate_url = os.environ.get("AUTHOR_AGENT_ISOLATE_URL")
+    if isolate_url:
+        data["isolateUrl"] = isolate_url
     pricing = MODEL_PRICING.get(str(data.get("model") or ""))
     if pricing:
         if "inputPricePerMillion" not in raw:
@@ -150,6 +155,8 @@ def public(data: dict | None = None) -> dict:
         "hasFallbackKey": bool(data.get("fallbackApiKey")),
         "judge0Url": data.get("judge0Url", ""),
         "hasJudge0Token": bool(data.get("judge0Token")),
+        "isolateUrl": data.get("isolateUrl", ""),
+        "hasIsolateToken": bool(data.get("isolateToken")),
         "fallbackModelWindowTokens": int(data.get("fallbackModelWindowTokens", 0) or 0),
         "maxRetries": int(data.get("maxRetries", 2)),
         "requestTimeoutSeconds": int(data.get("requestTimeoutSeconds", 300)),

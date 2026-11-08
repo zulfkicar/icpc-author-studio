@@ -1096,6 +1096,7 @@ function renderFileView() {
   $("save-file").hidden = true;
   $("run-panel").hidden = !(file.text && isRunnablePath(file.path));
   $("judge0-run").hidden = !(state.settings && state.settings.judge0Url && file.text && isRunnablePath(file.path));
+  $("isolate-run").hidden = !(state.settings && state.settings.isolateUrl && file.text && isRunnablePath(file.path));
   state.samples = file.text ? sampleTests() : [];
   renderTestTabs();
   renderTestResults();
@@ -1194,6 +1195,26 @@ async function loadSampleInput(samplePath = null) {
     renderTestTabs();
     toast(`Loaded sample ${sample.name}`);
   } catch (error) { toast(error.message, true); }
+}
+
+async function runIsolate() {
+  if (!state.slug || !state.file || !state.settings || !state.settings.isolateUrl) return;
+  const output = $("run-output");
+  output.hidden = false;
+  output.className = "run-output";
+  output.textContent = "Isolate\u2026";
+  try {
+    const result = await api(`/api/workspaces/${state.slug}/isolate/run`, {
+      method: "POST",
+      body: { path: state.file.path, stdin: $("run-stdin").value },
+    });
+    const parts = [result.stdout, result.stderr, result.compileOutput, result.message].filter(Boolean);
+    output.className = "run-output" + (result.ok ? "" : " err");
+    output.textContent = parts.join("\n") || result.status || "No output";
+  } catch (error) {
+    output.className = "run-output err";
+    output.textContent = error.message;
+  }
 }
 
 async function runJudge0() {
@@ -2212,7 +2233,7 @@ async function loadHistory() {
     ]);
     const rows = (history.history || []).map((item) => `<tr><td class="mono">${escapeHtml(String(item.checkpointId || "").slice(0, 18))}</td><td>${escapeHtml(item.createdAt || "")}</td><td>${item.messages}</td><td>${escapeHtml(item.lastUser || "")}</td><td><button class="quiet small" data-restore="${escapeHtml(item.checkpointId)}">Restore chat</button></td></tr>`).join("");
     const snaps = (snapshots.snapshots || []).map((item) => `<tr><td class="mono">${escapeHtml(item.id)}</td><td>${escapeHtml(item.at || "")}</td><td>${Math.round((item.size || 0) / 1024)} KiB</td><td><button class="quiet small" data-snapshot="${escapeHtml(item.id)}">Restore files</button></td></tr>`).join("");
-    host.innerHTML = `<h3>Conversation checkpoints</h3><table class="table"><thead><tr><th>Checkpoint</th><th>Created</th><th>Messages</th><th>Last user</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">none</td></tr>'}</tbody></table><h3>Workspace snapshots</h3><table class="table"><thead><tr><th>Snapshot</th><th>Created</th><th>Size</th><th></th></tr></thead><tbody>${snaps || '<tr><td colspan="4" class="muted">none</td></tr>'}</tbody></table>`;
+    host.innerHTML = `<h3>Conversation checkpoints</h3><table class="table"><thead><tr><th>Checkpoint</th><th>Created</th><th>Messages</th><th>Last user</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">none</td></tr>'}</tbody></table><h3>Workspace snapshots</h3><table class="table"><thead><tr><th>Snapshot</th><th>Created</th><th>Size</th><th></th></tr></thead><tbody>${snaps || '<tr><td colspan="5" class="muted">none</td></tr>'}</tbody></table>`;
     host.querySelectorAll("[data-restore]").forEach((button) => button.addEventListener("click", () => restoreCheckpoint(button.dataset.restore)));
     host.querySelectorAll("[data-snapshot]").forEach((button) => button.addEventListener("click", () => restoreFiles(button.dataset.snapshot)));
   } catch (error) { host.innerHTML = `<div class="pad status-fail">${escapeHtml(error.message)}</div>`; }
@@ -2249,12 +2270,19 @@ async function loadMcp() {
     const tools = data.tools || [];
     const rows = tools.map((tool) => {
       const granted = Boolean((consent.tools || {})[tool.name]);
-      return `<tr>
-        <td class="mono">${escapeHtml(tool.name)}</td>
-        <td>${escapeHtml(tool.description)}</td>
-        <td><label class="check"><input type="checkbox" data-mcp-tool="${escapeHtml(tool.name)}" aria-label="Allow ${escapeHtml(tool.name)}" ${granted ? "checked" : ""}> allow</label></td>
-        <td><button class="quiet small" data-mcp-test="${escapeHtml(tool.name)}" aria-label="Probe ${escapeHtml(tool.name)}">Test</button></td>
-      </tr>`;
+      const defaultArg = tool.name === "read_file" ? "problem.yaml" : tool.name === "search_workspace" ? "problem" : "";
+      const wantsArg = tool.name === "read_file" || tool.name === "search_workspace";
+      const arg = wantsArg
+        ? `<input class="mcp-arg" data-mcp-arg="${escapeHtml(tool.name)}" value="${escapeHtml(defaultArg)}" placeholder="relative path" aria-label="${escapeHtml(tool.name)} argument">`
+        : `<span class="mcp-noarg">no argument</span>`;
+      return `<div class="mcp-tool">
+        <div class="mcp-tool-head">
+          <span class="mcp-tool-name">${escapeHtml(tool.name)}</span>
+          <label class="check"><input type="checkbox" data-mcp-tool="${escapeHtml(tool.name)}" aria-label="Allow ${escapeHtml(tool.name)}" ${granted ? "checked" : ""}> allow</label>
+        </div>
+        <div class="mcp-tool-desc">${escapeHtml(tool.description)}</div>
+        <div class="mcp-tool-actions">${arg}<button class="quiet small" data-mcp-test="${escapeHtml(tool.name)}" aria-label="Probe ${escapeHtml(tool.name)}">Test</button></div>
+      </div>`;
     }).join("");
     host.innerHTML = `
       <div class="mcp-head">
@@ -2268,13 +2296,12 @@ async function loadMcp() {
       <label>Consented roots (comma separated, workspace-relative)
         <input id="mcp-roots" value="${escapeHtml((consent.roots || ["."]).join(", "))}" placeholder="., data/sample">
       </label>
-      <table class="table"><thead><tr><th>Tool</th><th>Purpose</th><th>Consent</th><th>Probe</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4" class="muted">none</td></tr>'}</tbody></table>
-      <div class="approval-actions">
+      <div class="mcp-tools">${rows || '<div class="muted small">none</div>'}</div>
+      <div class="mcp-footer">
         <button id="mcp-save" class="primary small">Save consent</button>
         <span id="mcp-test-result" class="muted small"></span>
       </div>
-      <p class="muted small">Protocol ${escapeHtml(data.protocol || "")} · ${escapeHtml(data.server || "")}. Secret test data is never exposed.</p>`;
+      <p class="muted small">Protocol ${escapeHtml(data.protocol || "")} \u00b7 ${escapeHtml(data.server || "")}. Secret test data is never exposed.</p>`;
     $("mcp-save").addEventListener("click", saveMcp);
     host.querySelectorAll("[data-mcp-test]").forEach((button) => button.addEventListener("click", () => testMcpTool(button.dataset.mcpTest)));
   } catch (error) { host.innerHTML = `<div class="pad status-fail">${escapeHtml(error.message)}</div>`; }
@@ -2348,6 +2375,7 @@ function openSettings() {
   form.fallbackBaseUrl.value = settings.fallbackBaseUrl || "";
   form.fallbackApiKey.value = "";
   form.judge0Url.value = settings.judge0Url || "";
+  form.isolateUrl.value = settings.isolateUrl || "";
   form.judge0Token.value = "";
   form.inputPricePerMillion.value = settings.inputPricePerMillion ?? 0;
   form.outputPricePerMillion.value = settings.outputPricePerMillion ?? 0;
@@ -2375,6 +2403,7 @@ async function saveSettings(event) {
     fallbackModel: form.fallbackModel.value.trim(),
     fallbackBaseUrl: form.fallbackBaseUrl.value.trim(),
     judge0Url: form.judge0Url.value.trim(),
+    isolateUrl: form.isolateUrl.value.trim(),
     inputPricePerMillion: Number(form.inputPricePerMillion.value || 0),
     outputPricePerMillion: Number(form.outputPricePerMillion.value || 0),
     reviewWrites: form.reviewWrites.checked,
@@ -2779,6 +2808,7 @@ function wire() {
   $("view-file").addEventListener("click", enterViewMode);
   $("run-file").addEventListener("click", runFile);
   $("judge0-run").addEventListener("click", runJudge0);
+  $("isolate-run").addEventListener("click", runIsolate);
   $("run-tests").addEventListener("click", runSamples);
   $("load-sample").addEventListener("click", () => loadSampleInput());
   document.querySelectorAll(".tabs button, .inspector-tabs button").forEach((button) => {

@@ -57,7 +57,7 @@ def main():
     assert 'input[type="checkbox"]' in CSS, "checkbox sizing missing"
     axe = (ROOT / "web" / "vendor" / "axe.min.js")
     assert axe.is_file() and axe.stat().st_size > 100_000, "axe-core vendor bundle missing"
-    assert '--faint: #8792a3' in CSS and '--accent-2: #3d55c8' in CSS, "contrast tokens regressed"
+    assert '--faint: #8290a5' in CSS and '--accent-2: #465ccc' in CSS, "contrast tokens regressed"
     js = (ROOT / "web" / "app.js").read_text("utf-8")
     assert 'treeAction("?"' not in js, "tree action glyphs regressed to ?"
     assert 'textContent = isDir ? (expanded ? "?"' not in js, "tree toggle glyph regressed to ?"

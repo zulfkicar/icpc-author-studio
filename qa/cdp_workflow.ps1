@@ -93,13 +93,16 @@ try {
   const mcpToggle = !!document.getElementById('mcp-enabled');
   const mcpSave = !!document.getElementById('mcp-save');
   const treeGlyphs = Array.from(document.querySelectorAll('.tree-icon')).map((node) => node.textContent);
-  await api('/api/settings', { method: 'POST', body: { judge0Url: 'http://127.0.0.1:2358' } });
+  const previousJudge0 = state.settings.judge0Url || '';
+  await api('/api/settings', { method: 'POST', body: { judge0Url: 'http://judge0-server:2358' } });
   state.settings = (await api('/api/state')).settings;
   await openFile('hello.cpp');
   const judge0Visible = !document.getElementById('judge0-run').hidden;
-  await api('/api/settings', { method: 'POST', body: { judge0Url: '' } });
+  const isolateVisible = !document.getElementById('isolate-run').hidden;
+  await api('/api/settings', { method: 'POST', body: { judge0Url: previousJudge0 } });
   return {
     judge0Visible,
+    isolateVisible,
     mcpRows,
     mcpToggle,
     mcpSave,

@@ -1,7 +1,7 @@
 # Agent Architecture Decisions — research memo
 
-Status: **research complete; implementation not started**  
-Date: 2026-11-08  
+Status: **historical decision log; implementation continues in the workbench**
+Date: 2026-11-08
 Pinned versions used for inspection and spikes: `langgraph 1.2.20`,
 `langchain 1.4.9`, `langchain-core 1.7.6`, `langchain-openai 1.7.4`,
 `langgraph-checkpoint-sqlite 3.1.3`.

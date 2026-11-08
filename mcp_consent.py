@@ -28,11 +28,15 @@ def _path(slug: str) -> pathlib.Path:
 
 
 def _default() -> dict:
-    return {"enabled": False, "tools": dict(DEFAULT_TOOLS), "roots": ["."], "updatedAt": ""}
+    return {"enabled": True, "tools": {name: True for name in DEFAULT_TOOLS}, "roots": ["."], "updatedAt": ""}
 
 
 def state(slug: str) -> dict:
     path = _path(slug)
+    if not path.is_file():
+        default = _default()
+        path.write_text(json.dumps(default, indent=2) + "\n", "utf-8")
+        return default
     try:
         data = json.loads(path.read_text("utf-8"))
     except (OSError, ValueError):
@@ -87,4 +91,5 @@ def allowed(slug: str, tool: str) -> bool:
 
 
 def consent_path(slug: str) -> str:
+    state(slug)
     return str(_path(slug))

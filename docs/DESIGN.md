@@ -362,3 +362,25 @@ Test with keyboard-only navigation and a screen reader; do not rely only on auto
 - [ ] Reconnect/replay does not duplicate events.
 - [ ] Secrets never appear in UI/logs.
 - [ ] Agent cannot claim verified without evidence.
+
+## 15. 2026 workbench redesign
+
+The shell was rebuilt from scratch after the execution, verification, MCP and
+evidence features landed.
+
+- **Top bar:** brand block, labeled problem switcher, verification pill and a
+  single action group (Build answers, Limits, Verify, Export, Settings).
+- **Left rail:** vertical Chats / Files / Changes navigation plus a dedicated
+  problem card and a conversation search.
+- **Center:** conversation header with mode and live controls, a numbered stage
+  stepper, the message timeline and an elevated composer.
+- **Right inspector:** Plan, File, Report, Diff, History and MCP tabs with
+  evidence-first tables, chips and cards.
+- **Tokens:** one indigo accent, emerald success, amber warning, rose failure,
+  deep blue-black surfaces, 12/8/6px radii, low-contrast borders.
+- **Backends:** Run panel exposes Judge0 and Isolate quick runs when configured;
+  the deterministic verifier remains the authority.
+- **Accessibility:** axe-core 0 violations, keyboard/dialog checks, live regions,
+  24px targets, reduced motion and 320px reflow.
+
+See [`VISUAL-AUDIT.md`](VISUAL-AUDIT.md) for screenshots and remaining ideas.

@@ -45,6 +45,11 @@ def _request(base_url: str, source: str, language: str, stdin: str, token: str,
         "cpu_time_limit": max(0.1, float(time_limit)),
         "memory_limit": max(16, int(memory_mb)) * 1024,
         "wall_time_limit": max(1.0, float(time_limit) * 2 + 5),
+        "max_file_size": 4096,
+        # Judge0 CE 1.13.1 targets cgroup v1. These flags make it use Isolate's
+        # rlimit path, which works on the cgroup v2 host used here.
+        "enable_per_process_and_thread_time_limit": True,
+        "enable_per_process_and_thread_memory_limit": True,
     }
     query = urllib.parse.urlencode({"base64_encoded": "false", "wait": "true"})
     request = urllib.request.Request(

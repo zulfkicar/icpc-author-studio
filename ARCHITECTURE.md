@@ -289,7 +289,15 @@ CPU/memory/PID limits. Each command runs in a private workspace copy under a
 bwrap mount namespace with only `/work` writable and `/app/workspaces` hidden.
 The child drops capabilities and applies CPU, wall, address-space, stack,
 file-size, open-file and process limits; `POST /isolate/run` exposes the same
-controls with Isolate-style names. The app reaches it only on an internal Docker
+controls with Isolate-style names.
+
+A separate **real Isolate** worker (`isolate-worker`, `isolate_worker.py`) runs
+in the default compose stack on the internal sandbox network. It uses Isolate
+1.8.1 from the Judge0 CE image, creates one box per request, applies CPU, wall,
+memory, file-size, stack and process limits, and exposes
+`POST /isolate/run` for quick runs. It runs privileged/UID 1000 with
+`seccomp=unconfined` because Isolate needs mount namespaces and `pivot_root`.
+The app calls it with `isolate_client.py` and the Run-panel **Isolate** button. The app reaches it only on an internal Docker
 network and fails closed when `AUTHOR_AGENT_REQUIRE_EXECUTOR=1`.
 
 This is the LeetCode-style execution-worker boundary, implemented as a separate
@@ -301,7 +309,7 @@ provider key locally and never returns it to the browser.
 
 ## 8. Deployment
 
-The app is packaged as two services:
+The app is packaged as a service stack:
 
 - `author-agent` (`Dockerfile`): UI, agent runtime, checkpoints and provider key.
   Published to `127.0.0.1:8787`, healthcheck, `init`, `restart:
@@ -310,6 +318,12 @@ The app is packaged as two services:
   Live. Read-only root, no host port, no external network, no `.author-agent`
   mount, only `./workspaces`. The container needs `SYS_ADMIN` and
   `seccomp=unconfined` for bwrap; the sandboxed child drops capabilities.
+- `isolate-worker`: Judge0 CE image used as a real Isolate 1.8.1 worker. It is
+  privileged, runs as UID 1000, mounts only the `isolate-box` volume and the
+  worker script, and sits on the internal `sandbox` network.
+- `docker-compose.judge0.yml`: live Judge0 CE 1.13.1 server/worker plus
+  PostgreSQL 13 and Redis 6. The app uses it only for quick runs; the
+  deterministic verifier remains the bwrap executor.
 - The app bind-mounts `./workspaces` and `./.author-agent`; the executor mounts
   only `./workspaces`.
 - `AUTHOR_AGENT_EXECUTOR_URL=http://executor:8787` and
@@ -495,7 +509,7 @@ interactive fixtures pass.
 2. **Live DOMjudge import/export.** The package model and metadata adapter are
    ready; validating against a real instance remains an environment task.
 3. **Live Judge0 deployment.** The optional adapter is tested against a fake
-   API; a real self-hosted stack is documented but not exercised here.
+   API; a real self-hosted Judge0 stack is running and tested live.
 4. **Human screen-reader pass.** Axe reports zero violations and keyboard/dialog
    tests pass; a manual NVDA/VoiceOver session is still worthwhile.
 5. **Command palette and keyboard model.** `Ctrl+K` actions, `Ctrl+Enter` send,
@@ -550,7 +564,10 @@ records rather than a single transcript.
 | `graph_agent.py` | `create_agent` runtime, middleware, checkpoints, streaming, tools, message conversion. |
 | `agent_state.py` | Typed `AuthorState` and working-memory bounds. |
 | `agent_middleware.py` | Pinned context, context budget, refusal/stream integrity, tool-error middleware. |
-| `executor_server.py` | Isolate-compatible sandbox worker; no key or external network. |
+| `executor_server.py` | Isolate-compatible bwrap sandbox worker; no key or external network. |
+| `isolate_worker.py` | Real Isolate 1.8.1 HTTP worker. |
+| `isolate_client.py` | App client for the Isolate worker. |
+| `judge0_adapter.py` | Optional live Judge0 quick-run adapter. |
 | `Dockerfile.executor` | Executor image with g++, JDK and TeX toolchain. |
 | `agent.py` | Bounded tool dispatch, system prompt, workspace state note. |
 | `verify.py` | Deterministic verification, spec audit, group scoring and DOMjudge ZIP export. |
@@ -562,7 +579,7 @@ records rather than a single transcript.
 | `judge0_adapter.py` | Optional Judge0 quick-run adapter. |
 | `winutil.py` | Headless subprocess launch, Python environment, NTSTATUS diagnostics. |
 | `sandbox/sitecustomize.py` | Headless child processes for generated Python scripts. |
-| `web/` | Chat timeline, chats/files/changes sidebar, Plan/File/Report/Diff inspector, highlighted code viewer and Run panel. |
+| `web/` | Redesigned workbench: top bar, section rail, stage stepper, chat timeline, evidence inspector, highlighted editor and Run panel. |
 | `web/vendor/` | Locally bundled highlight.js, theme and axe-core. |
 | `eval/` | Real-provider eval harness, fixtures and generated results. |
 | `qa/` | Deterministic fake-model stress/regression suite. |
