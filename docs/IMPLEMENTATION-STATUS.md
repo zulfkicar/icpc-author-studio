@@ -81,7 +81,9 @@ Judge0 decision: [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md)
 - Interactive checker-on-transcript: a transcript checker validates the captured
   protocol and rejects a forged transcript.
 - Group scoring (`scoring.py`): `points` and `depends`/`dependencies`; a group
-  earns points only when its own tests and all dependencies pass.
+  earns points only when its own tests and all dependencies pass. The Report
+  panel renders a group table with points, tests, dependencies and blocked-by
+  evidence.
 - Explicit float comparison with NaN rejection.
 
 ### Persistence, MCP and UX

@@ -1795,6 +1795,19 @@ function renderInteractiveMatrix(selftest) {
   return `<h3>Interactive self-test <span class="chip ${selftest.status === "pass" ? "AC" : "WA"}">${escapeHtml(selftest.status)}</span></h3><table class="table"><thead><tr><th>Case</th><th>Expected</th><th>Actual</th><th>Transcript</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+function renderGroupMatrix(groups) {
+  if (!groups || !groups.groups || !groups.groups.length) return "";
+  const rows = groups.groups.map((item) => `<tr>
+    <td>${escapeHtml(item.name)}</td>
+    <td>${item.points}</td>
+    <td class="${item.passed ? "status-pass" : "status-fail"}">${item.passed ? "pass" : "blocked"}</td>
+    <td>${item.passedTests}/${item.tests}</td>
+    <td>${escapeHtml((item.depends || []).join(", ") || "\u2014")}</td>
+    <td>${escapeHtml((item.blockedBy || []).join(", ") || "\u2014")}</td>
+  </tr>`).join("");
+  return `<h3>Group scoring <span class="chip ${groups.allPassed ? "AC" : "WA"}">${groups.score}/${groups.maxScore}</span></h3><table class="table"><thead><tr><th>Group</th><th>Points</th><th>Status</th><th>Tests</th><th>Depends</th><th>Blocked by</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 function renderReport(report) {
   const host = $("report-body");
   if (!report || report.status === "none") {
@@ -1847,6 +1860,7 @@ function renderReport(report) {
     <table class="table"><thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead><tbody>${checkRows || '<tr><td colspan="3" class="muted">none</td></tr>'}</tbody></table>
     ${renderCheckerMatrix(report.checkerSelftest)}
     ${renderInteractiveMatrix(report.interactiveSelftest)}
+    ${renderGroupMatrix(report.groups)}
     <h3>Reference vs answers</h3>
     <table class="table"><thead><tr><th>Test</th><th>Kind</th><th>Reference verdict</th></tr></thead><tbody>${testRows || '<tr><td colspan="3" class="muted">none</td></tr>'}</tbody></table>
     <h3>Negative solutions</h3>

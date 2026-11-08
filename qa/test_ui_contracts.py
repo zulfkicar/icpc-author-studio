@@ -26,6 +26,7 @@ def main():
     check("tab close glyph", 'close.textContent = "\\u00d7"' in JS)
     check("no literal question-mark actions", 'treeAction("?"' not in JS)
     check("judge0 quick run wired", 'judge0-run' in HTML and 'runJudge0' in JS and 'judge0Url' in JS)
+    check("group scoring rendered", 'renderGroupMatrix' in JS and 'report.groups' in JS)
     print("UI CONTRACT TESTS PASSED")
     return 0
 
