@@ -23,7 +23,7 @@ jobs:
             workspace.py verify.py config.py winutil.py executor_server.py schemas.py skill_registry.py prompt_loader.py package_model.py verification_modes.py mcp_server.py \
             eval/run_eval.py qa/stress_agent.py qa/test_phase1.py qa/test_skills.py \
             qa/test_verification_modes.py qa/test_interactive.py qa/test_hunks.py qa/test_snapshots.py qa/test_mcp.py \
-            qa/test_groups_float.py qa/test_security.py qa/test_stale_export.py
+            qa/test_groups_float.py qa/test_security.py qa/test_stale_export.py qa/test_stale_export.py
       - name: Check UI JavaScript
         run: node --check web/app.js
       - name: Run Phase 1 tests

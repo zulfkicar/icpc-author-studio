@@ -1,6 +1,7 @@
 # Implementation Status
 
 Updated: 2026-11-08  
+Latest commit: `ffa9f7d`  
 Specification: [`MASTER-PLAN.md`](MASTER-PLAN.md)  
 Verification: [`ADVERSARIAL-VERIFICATION.md`](ADVERSARIAL-VERIFICATION.md)  
 Design: [`DESIGN.md`](DESIGN.md)
@@ -43,7 +44,7 @@ Design: [`DESIGN.md`](DESIGN.md)
 - Per-turn workspace snapshots; snapshot list and restore.
 - Unified diff hunk parsing and selective hunk application.
 - Scoped MCP stdio server with read/list/search/report tools, secret-test rejection and no shell/write/export.
-- @-mentions, chat tabs, stage rail, history panel, clarification card and settings for context/fallback.
+- @-mentions, chat tabs, stage rail, history panel, clarification card, follow/pause scrolling, hunk selector and settings for context/fallback.
 
 ### Tests
 
@@ -58,6 +59,7 @@ python qa/test_snapshots.py
 python qa/test_mcp.py
 python qa/test_groups_float.py
 python qa/test_security.py
+python qa/test_stale_export.py
 python qa/stress_agent.py
 ```
 
@@ -90,8 +92,8 @@ estimated cost: $0.001463
 - Live DOMjudge import/export is intentionally not tested; no instance exists.
 - The full adversarial matrix is not yet automated row-for-row; current automated coverage includes checker, interactive, path/zip traversal, secret exposure, hunk, snapshot, group/float, MCP and context/clarification tests.
 - Real 500k long-context provider testing was not performed; a synthetic 500k budget test is in place.
-- Follow/pause scroll behavior and a full WCAG audit remain to be completed.
-- Hunk UI is implemented but not yet exercised by the CDP test.
+- Follow/pause scrolling is implemented; a full WCAG audit and keyboard-only test pass remain to be completed.
+- Hunk UI is implemented; backend hunk tests pass. A CDP hunk/history assertion was attempted but the temporary harness was unreliable, so it remains a manual UI check.
 - Checker/interactor tests require the executor; CI skips the interactive suite when no executor is present.
 
 ## Evidence commands
