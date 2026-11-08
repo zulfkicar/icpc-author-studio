@@ -1,11 +1,13 @@
 # Implementation Status
 
-Updated: 2026-11-08
+Updated: 2026-11-09
 Specification: [`MASTER-PLAN.md`](MASTER-PLAN.md)
 Verification: [`ADVERSARIAL-VERIFICATION.md`](ADVERSARIAL-VERIFICATION.md)
 Design: [`DESIGN.md`](DESIGN.md)
 Eval evidence: [`EVAL-RESULTS.md`](EVAL-RESULTS.md)
 Visual audit: [`VISUAL-AUDIT.md`](VISUAL-AUDIT.md)
+UI/UX/AX redesign plan: [`UI-UX-REDESIGN.md`](UI-UX-REDESIGN.md)
+UI state machines: [`STATE-MACHINES.md`](STATE-MACHINES.md)
 Judge0 decision: [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md)
 Isolate backend: [`ISOLATE-BACKEND.md`](ISOLATE-BACKEND.md)
 
@@ -119,6 +121,18 @@ fallback:
   stage stepper, elevated composer, evidence inspector, MCP tool cards, new
   tokens/surfaces/spacing, responsive layout. Screenshots in
   `qa/screenshots/`; notes in [`VISUAL-AUDIT.md`](VISUAL-AUDIT.md).
+- **Reported UI defects fixed:** the grid row is constrained, so long chats now
+  scroll with a visible scrollbar and the composer stays in view; runnable files
+  keep the run panel and stdin in view; all native `prompt`/`confirm` flows use
+  one accessible action dialog with labels, inline validation, danger styling
+  and focus return. Chat actions and titles are keyboard reachable with
+  object-specific names. Covered by `qa/layout_regression.ps1`.
+- **Explicit state machines:** `web/machines.js` defines and mirrors connection,
+  session, turn, approval, editor, run and modal states to `data-state-*` and
+  `window.__AUTHOR_AGENT__`; see [`STATE-MACHINES.md`](STATE-MACHINES.md).
+- **IDE redesign plan:** Cline/VS Code/Judge0-informed five-region layout,
+  native Judge0 quick-run embedding, AX keyboard/landmark contract, phased
+  delivery and acceptance gates; see [`UI-UX-REDESIGN.md`](UI-UX-REDESIGN.md).
 
 ### Fault injection, chaos, soak and eval
 
@@ -180,6 +194,8 @@ qa/accessibility_axe.ps1
   keyboard: openInside=true, closed=true, focusReturned=true
   AXE ACCESSIBILITY AUDIT PASSED
 
+qa/accessibility_tree.ps1 -> ACCESSIBILITY TREE AUDIT PASSED (no unnamed buttons/textboxes)
+qa/layout_regression.ps1 -> LAYOUT REGRESSION PASSED (scrollbar=10px, composer/run panel/stdin visible, dialog focus+rename+delete)
 qa/cdp_workflow.ps1
   judge0Visible=true, isolateVisible=true, mcpRows=5, mcpToggle=true,
   mcpSave=true, treeGlyphsOk=true,
@@ -223,11 +239,19 @@ sum:   verified, 29 tests, 3 negatives, 1,325,603 input tokens
 - **Judge0 cgroup version:** Judge0 CE 1.13.1 targets cgroup v1. The adapter
   enables Isolate's rlimit path so it works on this cgroup v2 host; a future
   Judge0 release with cgroup v2 support would remove that workaround.
-- **Manual screen-reader traversal:** axe (0 violations) and keyboard/dialog
-  checks pass; a human screen-reader session is still a manual step.
+- **Manual screen-reader traversal:** axe (0 violations), an accessibility-tree
+  audit (no unnamed buttons/textboxes, named log/combobox/textbox), and
+  keyboard/dialog checks pass; a human screen-reader session is still a manual
+  step.
 - **Verifier backend:** the deterministic verifier, checkers and interactors
   run through Isolate; only the LaTeX statement PDF uses the bwrap executor,
   because that image carries TeX Live.
+- **Verifier performance:** the first Isolate-backed 2-turn eval exceeded its
+  15-minute budget because each verifier run copied the full 23 MB workspace.
+  The worker now copies `data/` only when argv references it (checkers and
+  interactors); the eval must be re-run to confirm the budget. The earlier
+  bwrap-backed eval passed; this is a performance regression, not a correctness
+  claim.
 - **Adversarial depth:** all 146 rows have automated owners, but some use
   deterministic contract tests rather than live third-party fault injection
   (for example an actual disk-full filesystem rather than `RLIMIT_FSIZE`, or a

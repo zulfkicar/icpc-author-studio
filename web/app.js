@@ -1,5 +1,16 @@
 const $ = (id) => document.getElementById(id);
 
+function machineSend(id, event, detail) {
+  const machine = window.AuthorMachines && window.AuthorMachines.machines[id];
+  if (!machine) return false;
+  return machine.can(event) ? machine.send(event, detail) : false;
+}
+
+function machineSet(id, next, reason) {
+  const machine = window.AuthorMachines && window.AuthorMachines.machines[id];
+  return machine ? machine.set(next, reason) : false;
+}
+
 const state = {
   slug: null,
   summary: null,
@@ -48,6 +59,7 @@ function toast(message, isError = false) {
 }
 
 function setConnection(online) {
+  machineSend("connection", online ? "ONLINE" : "OFFLINE");
   const dot = $("connection-dot");
   if (!dot) return;
   dot.className = "conn-dot " + (online ? "online" : "offline");
@@ -887,10 +899,19 @@ function treeParent(path) {
 
 async function newEntry(kind, baseDir = "") {
   if (!state.slug || state.jobId) return;
-  const label = kind === "dir" ? "New folder path" : "New file path";
+  const label = kind === "dir" ? "New folder" : "New file";
   const suggestion = baseDir ? baseDir + "/" : "";
-  const path = prompt(label, suggestion);
-  if (!path || !path.trim()) return;
+  const path = await actionDialog({
+    kicker: "Workspace",
+    title: label,
+    description: "Enter a path relative to the problem workspace.",
+    inputLabel: "Path",
+    value: suggestion,
+    placeholder: kind === "dir" ? "data/sample" : "submissions/accepted/ref.cpp",
+    confirmLabel: "Create",
+    validate: (value) => (!value ? "Enter a path." : value.includes("..") ? "Path cannot contain '..'." : ""),
+  });
+  if (!path) return;
   try {
     await api(`/api/workspaces/${state.slug}/files`, {
       method: "POST",
@@ -905,8 +926,16 @@ async function newEntry(kind, baseDir = "") {
 
 async function renameEntry(path) {
   if (!state.slug || state.jobId) return;
-  const next = prompt("Rename to", path);
-  if (!next || next.trim() === path) return;
+  const next = await actionDialog({
+    kicker: "Files",
+    title: "Rename",
+    description: `Rename "${path}".`,
+    inputLabel: "New path",
+    value: path,
+    confirmLabel: "Rename",
+    validate: (value) => (!value ? "Enter a path." : value.includes("..") ? "Path cannot contain '..'." : value === path ? "Enter a different path." : ""),
+  });
+  if (!next || next === path) return;
   try {
     await api(`/api/workspaces/${state.slug}/files`, {
       method: "PATCH",
@@ -926,7 +955,14 @@ async function renameEntry(path) {
 
 async function deleteEntry(path, isDir) {
   if (!state.slug || state.jobId) return;
-  if (!confirm(`Delete ${isDir ? "folder" : "file"} "${path}"?${isDir ? " Its contents will be deleted too." : ""}`)) return;
+  const ok = await actionDialog({
+    kicker: "Files",
+    title: `Delete ${isDir ? "folder" : "file"}?`,
+    description: `"${path}" will be removed.${isDir ? " Its contents will be deleted too." : ""} This cannot be undone.`,
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await api(`/api/workspaces/${state.slug}/files?path=${encodeURIComponent(path)}`, { method: "DELETE" });
     if (state.file && (state.file.path === path || state.file.path.startsWith(path + "/"))) {
@@ -1036,12 +1072,14 @@ async function selectTest(result) {
 async function runSamples() {
   if (!state.slug || !state.file || !isRunnablePath(state.file.path)) return;
   if (state.fileBusy) return;
-  state.fileBusy = true;
-  $("run-file").disabled = true;
-  $("run-tests").disabled = true;
+  setRunBusy(true);
   if (state.dirty) await saveFile();
   const samples = sampleTests();
-  if (!samples.length) { toast("Add data/sample/*.in and *.ans first", true); return; }
+  if (!samples.length) {
+    setRunBusy(false);
+    toast("Add data/sample/*.in and *.ans first", true);
+    return;
+  }
   state.samples = samples;
   state.testResults = [];
   $("run-output").hidden = true;
@@ -1079,9 +1117,7 @@ async function runSamples() {
     $("test-results").hidden = true;
     toast(error.message, true);
   } finally {
-    state.fileBusy = false;
-    $("run-file").disabled = false;
-    $("run-tests").disabled = false;
+    setRunBusy(false);
   }
 }
 
@@ -1096,6 +1132,7 @@ function renderFileView() {
   $("view-file").hidden = true;
   $("save-file").hidden = true;
   $("run-panel").hidden = !(file.text && isRunnablePath(file.path));
+  machineSet("run", $("run-panel").hidden ? "hidden" : "ready", "render file");
   $("judge0-run").hidden = !(state.settings && state.settings.judge0Url && file.text && isRunnablePath(file.path));
   $("isolate-run").hidden = !(state.settings && state.settings.isolateUrl && file.text && isRunnablePath(file.path));
   state.samples = file.text ? sampleTests() : [];
@@ -1112,6 +1149,7 @@ function renderFileView() {
 
 function enterEditMode() {
   if (!state.file || !state.file.text) return;
+  machineSend("editor", "EDIT");
   state.fileMode = "edit";
   $("file-view").hidden = true;
   $("file-editor").hidden = false;
@@ -1122,25 +1160,45 @@ function enterEditMode() {
   $("file-editor").focus();
 }
 
-function enterViewMode() {
+async function enterViewMode() {
   if (!state.file || !state.file.text) return;
-  if (state.dirty && !confirm("Discard the unsaved editor changes?")) return;
+  if (state.dirty) {
+    const discard = await actionDialog({
+      kicker: "Editor",
+      title: "Discard unsaved changes?",
+      description: `The edits to "${state.file.path}" have not been saved.`,
+      confirmLabel: "Discard changes",
+      danger: true,
+    });
+    if (!discard) return;
+  }
   if (state.dirty) {
     $("file-editor").value = state.file.content;
     state.dirty = false;
   }
   state.fileMode = "view";
+  machineSend("editor", "CANCEL");
   renderFileView();
 }
 
 async function openFile(path) {
   if (!state.slug) return;
-  if (state.dirty && state.file && state.file.path !== path && !confirm("Discard the unsaved editor changes?")) return;
+  if (state.dirty && state.file && state.file.path !== path) {
+    const discard = await actionDialog({
+      kicker: "Editor",
+      title: "Discard unsaved changes?",
+      description: `The edits to "${state.file.path}" have not been saved.`,
+      confirmLabel: "Discard and open",
+      danger: true,
+    });
+    if (!discard) return;
+  }
   try {
     const file = await api(`/api/workspaces/${state.slug}/file?path=${encodeURIComponent(path)}`);
     state.file = file;
     state.dirty = false;
     state.fileMode = "view";
+    machineSet("editor", file.text ? "view" : "binary", "open file");
     state.testResults = [];
     state.activeSample = null;
     state.samples = file.text ? sampleTests() : [];
@@ -1165,6 +1223,7 @@ async function openFile(path) {
 
 async function saveFile() {
   if (!state.slug || !state.file) return;
+  machineSend("editor", "SAVE");
   try {
     const content = $("file-editor").value;
     await api(`/api/workspaces/${state.slug}/file`, {
@@ -1175,11 +1234,15 @@ async function saveFile() {
     state.file.size = new Blob([content]).size;
     state.dirty = false;
     $("save-file").hidden = true;
+    machineSend("editor", "SAVED");
     toast("Saved");
     await refreshWorkspace();
     renderFileView();
     $("file-meta").textContent = `${state.file.size} bytes · ${languageForPath(state.file.path)}`;
-  } catch (error) { toast(error.message, true); }
+  } catch (error) {
+    machineSend("editor", "FAIL");
+    toast(error.message, true);
+  }
 }
 
 async function loadSampleInput(samplePath = null) {
@@ -1198,12 +1261,23 @@ async function loadSampleInput(samplePath = null) {
   } catch (error) { toast(error.message, true); }
 }
 
+function setRunBusy(busy) {
+  state.fileBusy = busy;
+  for (const id of ["run-file", "run-tests", "judge0-run", "isolate-run"]) {
+    const button = $(id);
+    if (button) button.disabled = busy;
+  }
+}
+
 async function runIsolate() {
   if (!state.slug || !state.file || !state.settings || !state.settings.isolateUrl) return;
+  if (state.fileBusy) return;
+  setRunBusy(true);
   const output = $("run-output");
   output.hidden = false;
   output.className = "run-output";
   output.textContent = "Isolate\u2026";
+  machineSend("run", "RUN");
   try {
     const result = await api(`/api/workspaces/${state.slug}/isolate/run`, {
       method: "POST",
@@ -1212,18 +1286,25 @@ async function runIsolate() {
     const parts = [result.stdout, result.stderr, result.compileOutput, result.message].filter(Boolean);
     output.className = "run-output" + (result.ok ? "" : " err");
     output.textContent = parts.join("\n") || result.status || "No output";
+    machineSend("run", result.ok ? "PASS" : "FAIL");
   } catch (error) {
     output.className = "run-output err";
     output.textContent = error.message;
+    machineSend("run", "FAIL");
+  } finally {
+    setRunBusy(false);
   }
 }
 
 async function runJudge0() {
   if (!state.slug || !state.file || !state.settings || !state.settings.judge0Url) return;
+  if (state.fileBusy) return;
+  setRunBusy(true);
   const output = $("run-output");
   output.hidden = false;
   output.className = "run-output";
   output.textContent = "Judge0\u2026";
+  machineSend("run", "RUN");
   try {
     const result = await api(`/api/workspaces/${state.slug}/judge0/run`, {
       method: "POST",
@@ -1232,18 +1313,21 @@ async function runJudge0() {
     const parts = [result.stdout, result.stderr, result.compileOutput, result.message].filter(Boolean);
     output.className = "run-output" + (result.ok ? "" : " err");
     output.textContent = parts.join("\n") || result.status || "No output";
+    machineSend("run", result.ok ? "PASS" : "FAIL");
   } catch (error) {
     output.className = "run-output err";
     output.textContent = error.message;
+    machineSend("run", "FAIL");
+  } finally {
+    setRunBusy(false);
   }
 }
 
 async function runFile() {
   if (!state.slug || !state.file || !isRunnablePath(state.file.path)) return;
   if (state.fileBusy) return;
-  state.fileBusy = true;
-  $("run-file").disabled = true;
-  $("run-tests").disabled = true;
+  setRunBusy(true);
+  machineSend("run", "RUN");
   if (state.dirty) await saveFile();
   state.samples = sampleTests();
   renderTestTabs();
@@ -1270,13 +1354,13 @@ async function runFile() {
     }
     output.textContent = parts.join("\n");
     output.scrollTop = 0;
+    machineSend("run", ok ? "PASS" : "FAIL");
   } catch (error) {
     output.className = "run-output err";
     output.textContent = error.message;
+    machineSend("run", "FAIL");
   } finally {
-    state.fileBusy = false;
-    $("run-file").disabled = false;
-    $("run-tests").disabled = false;
+    setRunBusy(false);
   }
 }
 
@@ -1395,7 +1479,14 @@ async function openChangeDiff(changeId) {
 async function revertAllUnreviewed() {
   const targets = state.changes.filter((c) => !c.reverted && !c.reviewed);
   if (!targets.length) return;
-  if (!confirm(`Revert ${targets.length} unreviewed change(s)?`)) return;
+  const ok = await actionDialog({
+    kicker: "Changes",
+    title: `Revert ${targets.length} change${targets.length === 1 ? "" : "s"}?`,
+    description: "Only unreviewed changes are reverted. Reviewed changes are kept.",
+    confirmLabel: "Revert changes",
+    danger: true,
+  });
+  if (!ok) return;
   let failed = 0;
   for (const change of [...state.changes].reverse()) {
     if (change.reverted || change.reviewed) continue;
@@ -1529,10 +1620,16 @@ function renderChatList() {
     const item = document.createElement("div");
     const running = Boolean(state.jobId && state.jobChatId === chat.id);
     item.className = "chat-item" + (chat.id === state.chatId ? " active" : "") + (running ? " running" : "") + (state.jobId ? " disabled" : "");
-    const title = document.createElement("div");
+    const title = document.createElement("button");
+    title.type = "button";
     title.className = "chat-item-title";
     title.textContent = chatTitle(chat);
-    title.title = "Double-click to rename";
+    title.title = "Open conversation. Double-click to rename.";
+    title.setAttribute("aria-current", chat.id === state.chatId ? "true" : "false");
+    title.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectChat(chat.id);
+    });
     const meta = document.createElement("div");
     meta.className = "chat-item-meta";
     meta.innerHTML = `<span class="chat-dot"></span><span>${escapeHtml(formatTime(chat.updatedAt))}</span><span>·</span><span>${chat.messageCount || 0} msgs</span>`;
@@ -1541,11 +1638,13 @@ function renderChatList() {
     const rename = document.createElement("button");
     rename.type = "button";
     rename.title = "Rename chat";
+    rename.setAttribute("aria-label", `Rename ${chatTitle(chat)}`);
     rename.textContent = "✎";
     rename.addEventListener("click", (event) => { event.stopPropagation(); renameChat(chat.id); });
     const remove = document.createElement("button");
     remove.type = "button";
     remove.title = "Delete chat";
+    remove.setAttribute("aria-label", `Delete ${chatTitle(chat)}`);
     remove.textContent = "×";
     remove.addEventListener("click", (event) => { event.stopPropagation(); deleteChat(chat.id); });
     actions.appendChild(rename);
@@ -1604,9 +1703,17 @@ async function renameChat(chatId) {
   if (!state.slug || state.jobId) return;
   const chat = state.chats.find((item) => item.id === chatId);
   if (!chat) return;
-  const title = prompt("Rename conversation", chatTitle(chat));
+  const title = await actionDialog({
+    kicker: "Conversation",
+    title: "Rename chat",
+    description: `Rename "${chatTitle(chat)}".`,
+    inputLabel: "Chat title",
+    value: chatTitle(chat),
+    confirmLabel: "Rename",
+    validate: (value) => (!value ? "Enter a title." : value === chatTitle(chat) ? "Enter a different title." : ""),
+  });
   if (title === null) return;
-  if (!title.trim() || title.trim() === chatTitle(chat)) return;
+  if (!title || title === chatTitle(chat)) return;
   try {
     await api(`/api/workspaces/${state.slug}/chats/${chatId}`, { method: "PATCH", body: { title: title.trim() } });
     await loadChats(chatId);
@@ -1618,7 +1725,14 @@ async function deleteChat(chatId) {
   if (!state.slug || state.jobId) return;
   const chat = state.chats.find((item) => item.id === chatId);
   if (!chat) return;
-  if (!confirm(`Delete "${chatTitle(chat)}"? This cannot be undone.`)) return;
+  const ok = await actionDialog({
+    kicker: "Conversation",
+    title: "Delete chat?",
+    description: `"${chatTitle(chat)}" and its transcript will be removed. This cannot be undone.`,
+    confirmLabel: "Delete chat",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     const data = await api(`/api/workspaces/${state.slug}/chats/${chatId}`, { method: "DELETE" });
     state.chats = data.chats || [];
@@ -1938,6 +2052,10 @@ async function refreshWorkspace() {
 
 async function selectWorkspace(slug) {
   state.slug = slug || null;
+  machineSet("editor", "empty", "workspace switch");
+  machineSet("run", "hidden", "workspace switch");
+  machineSet("turn", "idle", "workspace switch");
+  machineSet("approval", "none", "workspace switch");
   state.summary = null;
   state.tree = [];
   state.changes = [];
@@ -1992,6 +2110,7 @@ async function selectWorkspace(slug) {
 }
 
 async function loadState(selectSlug) {
+  machineSend("session", "LOAD");
   try {
     const data = await api("/api/state");
     state.settings = data.settings;
@@ -2011,7 +2130,11 @@ async function loadState(selectSlug) {
     const slug = data.workspaces.some((w) => w.slug === remembered) ? remembered : (data.workspaces[0] && data.workspaces[0].slug);
     select.value = slug || "";
     await selectWorkspace(slug || null);
-  } catch (error) { toast(error.message, true); }
+    machineSend("session", "READY");
+  } catch (error) {
+    machineSend("session", "ERROR");
+    toast(error.message, true);
+  }
 }
 
 // ---------- jobs ----------
@@ -2104,6 +2227,12 @@ function pollJob(jobId, onDone) {
         state.jobId = null;
         state.jobChatId = null;
         state.pendingApproval = (job.result && job.result.interrupts) || [];
+        if (state.pendingApproval.length) {
+          machineSend("approval", "ASK");
+          machineSend("turn", "WAIT");
+        } else {
+          machineSend("turn", "DONE");
+        }
         $("agent-state").textContent = "";
         $("send-btn").disabled = true;
         await refreshWorkspace();
@@ -2116,6 +2245,8 @@ function pollJob(jobId, onDone) {
       const wasCancelled = job.state === "cancelled";
       state.jobId = null;
       state.jobChatId = null;
+      machineSend("turn", "DONE");
+      machineSend("approval", "CLEAR");
       await refreshWorkspace();
       await loadReport();
       await loadChats(state.chatId);
@@ -2131,6 +2262,8 @@ function pollJob(jobId, onDone) {
       $("send-btn").disabled = false;
       state.jobId = null;
       state.jobChatId = null;
+      machineSend("turn", "FAIL");
+      machineSend("approval", "CLEAR");
       toast(error.message, true);
     }
   };
@@ -2179,6 +2312,8 @@ async function sendMessage(override) {
     state.jobId = job.id;
     state.jobChatId = job.chatId || state.chatId;
     state.jobEvents = 0;
+    machineSend("turn", "START");
+    machineSend("approval", "CLEAR");
     resetStreaming();
     $("send-btn").disabled = true;
     $("agent-state").textContent = "starting…";
@@ -2189,6 +2324,7 @@ async function sendMessage(override) {
     if (!override) composer.value = message;
     $("agent-state").textContent = "";
     $("send-btn").disabled = false;
+    machineSend("turn", "FAIL");
     toast(error.message, true);
     renderErrorEvent({ error: "Could not send message: " + error.message });
   }
@@ -2202,6 +2338,7 @@ async function runToolJob(kind, body) {
     state.jobId = job.id;
     state.jobChatId = null;
     state.jobEvents = 0;
+    machineSend("turn", "START");
     $("send-btn").disabled = true;
     $("agent-state").textContent = kind === "verify" ? "verifying…"
       : kind === "answers" ? "building answers…"
@@ -2244,7 +2381,13 @@ async function loadHistory() {
 }
 
 async function restoreCheckpoint(checkpointId) {
-  if (!confirm("Restore the conversation to this checkpoint? The current checkpoint thread will be replaced.")) return;
+  const ok = await actionDialog({
+    kicker: "History",
+    title: "Restore conversation?",
+    description: "The current checkpoint thread will be replaced by this checkpoint.",
+    confirmLabel: "Restore chat",
+  });
+  if (!ok) return;
   try {
     await api(`/api/workspaces/${state.slug}/chats/${state.chatId}/history/${encodeURIComponent(checkpointId)}/restore`, { method: "POST", body: {} });
     await loadConversation();
@@ -2254,7 +2397,14 @@ async function restoreCheckpoint(checkpointId) {
 }
 
 async function restoreFiles(snapshotId) {
-  if (!confirm("Restore workspace files to this snapshot? Current files will be replaced.")) return;
+  const ok = await actionDialog({
+    kicker: "History",
+    title: "Restore workspace files?",
+    description: "Current files will be replaced by this snapshot.",
+    confirmLabel: "Restore files",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await api(`/api/workspaces/${state.slug}/snapshots/restore`, { method: "POST", body: { chatId: state.chatId, snapshotId } });
     await refreshWorkspace();
@@ -2340,8 +2490,11 @@ function switchTab(tab) {
   if (tab === "history") loadHistory();
   if (tab === "mcp") loadMcp();
   state.activeTab = tab;
+  document.body.setAttribute("data-panel", tab);
   document.querySelectorAll(".inspector-tabs button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.tab === tab);
+    const active = button.dataset.tab === tab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
   });
   document.querySelectorAll(".panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === "panel-" + tab);
@@ -2350,8 +2503,11 @@ function switchTab(tab) {
 
 function switchSide(side) {
   state.activeSide = side;
+  document.body.setAttribute("data-side", side);
   document.querySelectorAll(".side-tabs button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.side === side);
+    const active = button.dataset.side === side;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
   });
   document.querySelectorAll(".side-panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === "side-" + side);
@@ -2359,6 +2515,85 @@ function switchSide(side) {
 }
 
 // ---------- dialogs ----------
+
+let actionDialogResolve = null;
+let actionDialogOptions = {};
+let actionDialogInvoker = null;
+
+// Accessible replacement for window.prompt/window.confirm. Native <dialog>
+// supplies the focus trap, Escape handling and focus return; this helper adds
+// inline validation, destructive styling and a promise-based API.
+function actionDialog(options = {}) {
+  const dialog = $("action-dialog");
+  const promptMode = options.mode === "prompt" || options.input !== undefined || options.value !== undefined || options.inputLabel !== undefined;
+  if (dialog.open) return Promise.resolve(promptMode ? null : false);
+  actionDialogInvoker = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  actionDialogOptions = { ...options, prompt: promptMode };
+  $("action-form").reset();
+  $("action-kicker").textContent = options.kicker || (promptMode ? "Edit" : "Confirm");
+  $("action-title").textContent = options.title || (promptMode ? "Edit value" : "Confirm action");
+  const desc = $("action-desc");
+  desc.textContent = options.description || "";
+  desc.hidden = !options.description;
+  const field = $("action-field");
+  const input = $("action-input");
+  field.hidden = !promptMode;
+  $("action-field-label").textContent = options.inputLabel || "Value";
+  input.placeholder = options.placeholder || "";
+  input.value = promptMode ? String(options.value ?? "") : "";
+  const error = $("action-error");
+  error.hidden = true;
+  error.textContent = "";
+  const confirm = $("action-confirm");
+  confirm.textContent = options.confirmLabel || (promptMode ? "Save" : "Confirm");
+  confirm.classList.toggle("danger", Boolean(options.danger));
+  $("action-cancel").textContent = options.cancelLabel || "Cancel";
+  dialog.returnValue = "";
+  dialog.showModal();
+  machineSend("modal", "OPEN");
+  if (promptMode) {
+    input.focus();
+    input.select();
+  } else {
+    confirm.focus();
+  }
+  return new Promise((resolve) => {
+    actionDialogResolve = resolve;
+  });
+}
+
+$("action-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!$("action-field").hidden) {
+    const value = $("action-input").value.trim();
+    const message = actionDialogOptions.validate
+      ? actionDialogOptions.validate(value)
+      : (!value ? "Enter a value." : "");
+    if (message) {
+      const error = $("action-error");
+      error.textContent = message;
+      error.hidden = false;
+      $("action-input").focus();
+      return;
+    }
+  }
+  $("action-dialog").close("confirm");
+});
+
+$("action-dialog").addEventListener("close", () => {
+  machineSend("modal", "CLOSE");
+  const resolve = actionDialogResolve;
+  actionDialogResolve = null;
+  if (!resolve) return;
+  const confirmed = $("action-dialog").returnValue === "confirm";
+  const promptMode = Boolean(actionDialogOptions.prompt);
+  resolve(confirmed ? (promptMode ? $("action-input").value.trim() : true) : (promptMode ? null : false));
+  const invoker = actionDialogInvoker;
+  actionDialogInvoker = null;
+  if (invoker && invoker.isConnected && typeof invoker.focus === "function") {
+    invoker.focus({ preventScroll: true });
+  }
+});
 
 function openSettings() {
   const form = $("settings-form");
@@ -2462,6 +2697,7 @@ function renderContextChips() {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.textContent = "×";
+    remove.setAttribute("aria-label", `Remove ${path} from context`);
     remove.addEventListener("click", () => {
       state.selectedContext = state.selectedContext.filter((item) => item !== path);
       saveContext();

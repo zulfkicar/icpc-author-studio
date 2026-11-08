@@ -96,6 +96,40 @@ try {
 })()
 '@ | Out-Null
   Shot '06-history.png'
+  Eval @'
+(async () => {
+  await openFile('submissions/accepted/ref.cpp');
+  switchSide('chats');
+  const messages = document.getElementById('messages');
+  messages.innerHTML = '';
+  for (let i = 0; i < 24; i++) {
+    const node = document.createElement('div');
+    node.className = 'msg ' + (i % 2 ? 'user' : 'assistant');
+    node.innerHTML = '<div class="msg-meta">' + (i % 2 ? 'YOU' : 'AGENT') + '</div><div class="bubble"><p>Step ' + i + ': the validator and reference are ready for review. This is a longer line to expose the scrollbar and keep the composer pinned.</p></div>';
+    messages.appendChild(node);
+  }
+  messages.scrollTop = messages.scrollHeight;
+  return true;
+})()
+'@ | Out-Null
+  Start-Sleep -Milliseconds 300
+  Shot '07-chat-scroll.png'
+  Eval @'
+(async () => {
+  actionDialog({
+    kicker: 'Conversation',
+    title: 'Rename chat',
+    description: 'Rename "Claim or Concede".',
+    inputLabel: 'Chat title',
+    value: 'Claim or Concede',
+    confirmLabel: 'Rename'
+  });
+  return true;
+})()
+'@ | Out-Null
+  Start-Sleep -Milliseconds 300
+  Shot '08-rename-dialog.png'
+  Eval 'document.getElementById("action-dialog").close(); true' | Out-Null
 }
 finally {
   try { $ws.Dispose() } catch {}

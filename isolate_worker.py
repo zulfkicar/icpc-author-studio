@@ -77,6 +77,14 @@ def _meta(path: str) -> dict:
     return data
 
 
+def _number(value, default: float = 0.0) -> float:
+    """Parse isolate metadata without letting one bad line fail the request."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _limits(body: dict) -> dict:
     def number(name: str, default: float, low: float, high: float) -> float:
         try:
@@ -121,10 +129,15 @@ def _isolate_args(box_id: int, work: str, limits: dict, cwd: str | None = None,
     return args
 
 
-def _copy_workspace(source: pathlib.Path, temp: pathlib.Path) -> None:
+def _copy_workspace(source: pathlib.Path, temp: pathlib.Path, include_data: bool = True) -> None:
     temp.mkdir(parents=True, exist_ok=True)
     for item in source.iterdir():
         if item.name in (".agent", "__pycache__", ".git"):
+            continue
+        # Test data can be tens of megabytes. Validator and solution runs get
+        # their input on stdin and never open data/; checkers and interactors
+        # pass data paths in argv, so detect that case before the copy.
+        if item.name == "data" and not include_data:
             continue
         target = temp / item.name
         if item.is_dir():
@@ -223,11 +236,22 @@ def _rewrite_argv(argv: list[str], source: pathlib.Path) -> list[str]:
     return out
 
 
-def _new_box(source: pathlib.Path, cwd: pathlib.Path) -> tuple[int, pathlib.Path, pathlib.Path]:
+def _needs_data(source: pathlib.Path, argv: list[str], cwd: pathlib.Path) -> bool:
+    for value in [str(cwd)] + [item for item in argv if item.startswith("/")]:
+        try:
+            relative = pathlib.Path(value).resolve().relative_to(source)
+        except (OSError, ValueError):
+            continue
+        if relative.parts and relative.parts[0] == "data":
+            return True
+    return False
+
+
+def _new_box(source: pathlib.Path, cwd: pathlib.Path, argv: list[str] | None = None) -> tuple[int, pathlib.Path, pathlib.Path]:
     box_id = _box()
     work = pathlib.Path(f"/tmp/isolate-run-{box_id}")
     temp = work / "workspace"
-    _copy_workspace(source, temp)
+    _copy_workspace(source, temp, include_data=_needs_data(source, argv or [], cwd))
     _write(f"{work}/stdin.txt", "", 0o644)
     _write(f"{work}/metadata.txt", "", 0o666)
     _write(f"{work}/stdout.txt", "", 0o666)
@@ -297,8 +321,8 @@ def _run_box(box_id: int, work: pathlib.Path, argv: list[str], cwd: str | None,
         "status": status,
         "stdout": stdout,
         "stderr": stderr,
-        "time": float(meta.get("time", 0) or 0),
-        "wallTime": float(meta.get("time-wall", wall) or wall),
+        "time": _number(meta.get("time"), 0.0),
+        "wallTime": _number(meta.get("time-wall"), wall),
         "memoryKb": int(meta.get("max-rss", 0) or 0),
         "message": meta.get("message", ""),
     }
@@ -320,7 +344,7 @@ def run_argv(body: dict) -> dict:
     box_id = None
     work = None
     try:
-        box_id, work, box = _new_box(source, cwd_path)
+        box_id, work, box = _new_box(source, cwd_path, argv)
         with open(f"{work}/stdin.txt", "wb") as handle:
             handle.write(stdin)
         cwd = "/box" if not relative.parts else "/box/" + relative.as_posix()
@@ -411,13 +435,13 @@ def run_interactive(body: dict) -> dict:
     if source is None:
         raise ValueError("Working directory is outside the workspace volume")
     relative = cwd_path.relative_to(source)
-    timeout = max(1.0, min(120.0, float(body.get("timeout") or 20.0)))
+    timeout = max(1.0, min(120.0, _number(body.get("timeout"), 20.0)))
     accepted = {int(item) for item in (body.get("acceptedExitCodes") or [0])}
     limits = {"time": timeout, "wall": timeout + 5.0, "memory": 1024 * 1024, "fsize": 64 * 1024}
     box_id = None
     work = None
     try:
-        box_id, work, box = _new_box(source, cwd_path)
+        box_id, work, box = _new_box(source, cwd_path, solution + validator)
         _write(f"{box}/.harness.py", HARNESS, 0o755)
         config = {
             "solution": _rewrite_argv(solution, source),
@@ -459,8 +483,8 @@ def run(body: dict) -> dict:
         raise ValueError(f"unsupported language: {language}")
     source = str(body.get("source") or "")
     stdin_text = str(body.get("stdin") or "")
-    time_limit = max(0.1, min(60.0, float(body.get("time") or 2.0)))
-    wall_time = max(time_limit + 0.5, min(120.0, float(body.get("wallTime") or time_limit * 2 + 2)))
+    time_limit = max(0.1, min(60.0, _number(body.get("time"), 2.0)))
+    wall_time = max(time_limit + 0.5, min(120.0, _number(body.get("wallTime"), time_limit * 2 + 2)))
     memory_kb = max(16, min(4096, int(body.get("memoryMb") or 256))) * 1024
     fsize_kb = max(1, min(256, int(body.get("fsizeMb") or 4))) * 1024
     box_id = _box()
@@ -523,8 +547,8 @@ def run(body: dict) -> dict:
             "stdout": stdout,
             "stderr": stderr,
             "compileOutput": compile_output,
-            "time": float(meta.get("time", 0) or 0),
-            "wallTime": float(meta.get("time-wall", 0) or 0),
+            "time": _number(meta.get("time"), 0.0),
+            "wallTime": _number(meta.get("time-wall"), 0.0),
             "memory": int(meta.get("max-rss", 0) or 0),
             "message": meta.get("message", ""),
             "isolate": _version(),
@@ -549,8 +573,8 @@ def _result(status: str, exit_code, stdout, stderr, compile_output, meta, box_id
         "stdout": stdout,
         "stderr": stderr,
         "compileOutput": compile_output,
-        "time": float(meta.get("time", 0) or 0),
-        "wallTime": float(meta.get("time-wall", 0) or 0),
+        "time": _number(meta.get("time"), 0.0),
+        "wallTime": _number(meta.get("time-wall"), 0.0),
         "memory": int(meta.get("max-rss", 0) or 0),
         "message": meta.get("message", ""),
         "isolate": _version(),

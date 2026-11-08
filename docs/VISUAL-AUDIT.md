@@ -44,6 +44,53 @@ long evidence tables stay readable.
   `.` root, so relative paths work immediately. Secret tests and `.ans` files
   remain blocked.
 
+## Skill-based audit
+
+Selected **UI UX Pro Max**
+(`nextlevelbuilder/ui-ux-pro-max-skill`, MIT, 146,849 stars, pushed
+2026-11-07) because it is recent, heavily used and its priority table starts
+with accessibility and interaction, not decoration. Supplemented with the
+objective gates from **UX/UI Agent Skills**
+(`plugin87/ux-ui-agent-skills`, MIT) and the anti-slop review from
+**Hallmark** (`Nutlope/hallmark`, MIT). The operating subset is vendored at
+[`.opencode/skills/ui-ux-audit/SKILL.md`](../.opencode/skills/ui-ux-audit/SKILL.md).
+
+Queries run against its local database (and applied):
+
+- `"chat scroll composer sticky overflow" --domain ux` → overflow hidden can
+  clip content; horizontal overflow is high severity; sticky UI must not
+  obscure content.
+- `"modal dialog destructive confirmation focus return" --domain ux` →
+  confirm destructive actions, visible focus inside dialogs, focus not
+  obscured, focus appearance ≥ 2 px / 3:1.
+- `"scrollbar visibility scroll affordance" --domain ux` → input affordance and
+  horizontal-scroll avoidance.
+
+Those findings match the reproduced measurements: the shell was clipping the
+composer and run panel instead of scrolling them, and native dialogs had no
+app-level focus/validation contract.
+
+## Reported defects fixed
+
+The four user-reported defects had one root cause and three interaction
+causes. They were reproduced with CDP measurements before the fix and are now
+covered by `qa/layout_regression.ps1`.
+
+| Defect | Root cause | Fix | Evidence |
+|---|---|---|---|
+| No chat scrollbar | `.layout` had no row constraint; `.chat-pane` had `min-height: auto; overflow: visible`, so the grid row grew to 6885 px and `.messages` never overflowed. | `grid-template-rows: minmax(0, 1fr)`; `min-height: 0; overflow: hidden` on the three regions; `.messages` is the only scroller with a 12 px thumb and stable gutter. | 60-message chat: messages 547 px, scrollHeight 6580, scrollbar 10 px. |
+| Composer disappears in long chats | The same growth pushed the composer to 6769–6929 px in a 900 px viewport. | The grid constraint above. | Composer bottom 886 px; visible. |
+| Run panel/custom input missing under a code file | The right inspector grew to 6885 px, so the run panel sat at 6790–6943 px, below the viewport. | The grid constraint above; run panel remains `flex: 0 0 auto`. | `submissions/accepted/ref.cpp`: run panel 747–900 px, stdin 817–885 px. |
+| Native prompt/confirm for rename/delete | `window.prompt`/`confirm` bypass the app's design, validation and focus model. | One accessible `actionDialog` with labelled input, inline error, danger styling, focus trap and focus return; every call site replaced. | Rename/delete chat verified end-to-end in the layout regression. |
+
+Also fixed: chat actions were hover-only and chat titles were not keyboard
+controls; both now work on focus and expose object-specific labels. Icon-only
+context-chip removal is labelled.
+
+The full IDE redesign, Judge0 embedding and phased plan are in
+[`UI-UX-REDESIGN.md`](UI-UX-REDESIGN.md). The implicit state-machine inventory
+and decision are in [`STATE-MACHINES.md`](STATE-MACHINES.md).
+
 ## Remaining suggestions
 
 1. **Report density.** Long file paths wrap; a two-line cell with a monospace
@@ -66,6 +113,20 @@ qa/accessibility_axe.ps1
   {"openInside":true,"label":"Provider settings","liveRegions":2,
    "closed":true,"focusReturned":true}
   AXE ACCESSIBILITY AUDIT PASSED
+
+qa/accessibility_tree.ps1
+  {"buttons":9,"emptyButtons":[],"textboxes":3,"emptyTextboxes":[],
+   "names":["combobox=Problem workspace","log=Conversation",
+            "button=Verify","textbox=Message the agent",...]}
+  ACCESSIBILITY TREE AUDIT PASSED
+
+qa/layout_regression.ps1
+  chatScrolls=true, scrollbarPx=10, chatConstrained=true,
+  composerVisible=true, runPanelVisible=true, runPanelInViewport=true,
+  chatActionLabels=true, dialogOpen=true, dialogLabelled=true,
+  dialogFocusInside=true, dialogFocusReturned=true,
+  chatRenamed=true, chatDeleted=true
+  LAYOUT REGRESSION PASSED
 
 qa/cdp_workflow.ps1
   judge0Visible=true, isolateVisible=true, mcpRows=5, mcpToggle=true,
