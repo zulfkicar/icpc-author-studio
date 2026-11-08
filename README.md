@@ -369,7 +369,7 @@ sandbox/             sitecustomize for headless child Python processes
 templates/           ICPC statement class and DOMjudge scaffold
 web/                 chat timeline, chats/files/changes sidebar, inspector
 web/vendor/          locally bundled highlight.js
-docs/                research/decision docs + LangGraph diagram
+docs/                master plan, adversarial verification, decisions + LangGraph diagram
 eval/                real-provider authoring eval harness + fixtures
 qa/                  deterministic fake-model stress/regression suite
 scripts/             reliable WSL Docker up/down wrappers
