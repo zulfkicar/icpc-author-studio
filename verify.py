@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import pathlib
 import re
@@ -315,6 +316,149 @@ def build_answers(slug: str, cancelled=None) -> dict:
     return {"ok": not reports, "written": written, "tests": len(tests), "disagreements": reports}
 
 
+def _set_yaml_memory(text: str, memory_mb: int) -> str:
+    if re.search(r"(?m)^\s*memory\s*:\s*\d+", text):
+        return re.sub(r"(?m)^(\s*memory\s*:\s*)\d+", rf"\g<1>{memory_mb}", text, count=1)
+    if re.search(r"(?m)^limits\s*:\s*$", text):
+        return re.sub(r"(?m)^(limits\s*:\s*)$", rf"\1\n  memory: {memory_mb}", text, count=1)
+    return text.rstrip() + f"\n\nlimits:\n  memory: {memory_mb}\n"
+
+
+def _set_limits_in_files(slug: str, time_limit: float, memory_mb: int) -> None:
+    root = workspace.ws_path(slug)
+    yaml_path = root / "problem.yaml"
+    if yaml_path.is_file():
+        text = yaml_path.read_text("utf-8")
+        workspace.write_text(slug, "problem.yaml", _set_yaml_memory(text, memory_mb), source="verify")
+    ini_path = root / "domjudge-problem.ini"
+    if ini_path.is_file():
+        text = ini_path.read_text("utf-8")
+        if re.search(r"(?m)^\s*timelimit\s*=", text):
+            text = re.sub(r"(?m)^(\s*timelimit\s*=\s*)[^\r\n]+", rf"\g<1>{time_limit:g}", text, count=1)
+        else:
+            text = text.rstrip() + f"\ntimelimit = {time_limit:g}\n"
+        workspace.write_text(slug, "domjudge-problem.ini", text, source="verify")
+    tex_path = root / "problem_statement" / "problem.en.tex"
+    if tex_path.is_file():
+        text = tex_path.read_text("utf-8")
+        text = re.sub(r"\\timelimit\{[^}]*\}", rf"\\timelimit{{{time_limit:g} seconds}}", text)
+        text = re.sub(r"\\memlimit\{[^}]*\}", rf"\\memlimit{{{memory_mb} MiB}}", text)
+        workspace.write_text(slug, "problem_statement/problem.en.tex", text, source="verify")
+
+
+def run_source(slug: str, path: str, stdin: str = "") -> dict:
+    """Compile and run an arbitrary code file in the workspace for the user's own testing."""
+    target = workspace.resolve(slug, path)
+    if not target.is_file():
+        raise FileNotFoundError("Source file not found")
+    language = SOLUTION_EXT.get(target.suffix.lower())
+    if not language:
+        raise ValueError("Run supports C, C++, Python, Java and Kotlin files")
+    solution = {"path": path, "absolute": target, "language": language, "kind": "accepted"}
+    build_root = _new_build_dir(slug)
+    compiled = _compile(slug, solution, build_root)
+    if not compiled["ok"]:
+        return {
+            "ok": False, "stage": "compile", "path": path, "language": language,
+            "error": compiled.get("error", "Compilation failed"),
+            "stderr": compiled.get("error", ""), "stdout": "", "exitCode": None,
+            "timedOut": False, "ms": 0,
+        }
+    time_limit = max(5.0, float(_read_meta(slug)["timeLimitSeconds"]) + 5.0)
+    result = winutil.run_measured(
+        compiled["argv"],
+        cwd=workspace.ws_path(slug),
+        data=str(stdin or "").encode("utf-8"),
+        timeout=time_limit,
+        env=winutil.python_env(),
+    )
+    return {
+        "ok": result["ok"],
+        "stage": "run",
+        "path": path,
+        "language": language,
+        "stdout": result["stdout"][:OUTPUT_CAP].decode("utf-8", "replace"),
+        "stderr": result["stderr"][:OUTPUT_CAP].decode("utf-8", "replace"),
+        "exitCode": result["returncode"],
+        "timedOut": result["timedOut"],
+        "ms": round(result["ms"], 1),
+        "diagnostic": winutil.diagnostic(result["returncode"]),
+    }
+
+
+def measure_limits(slug: str, cancelled=None) -> dict:
+    winutil.prepare()
+    deadline = time.monotonic() + VERIFY_BUDGET_SECONDS
+    _check_cancel(cancelled, deadline)
+    tests = _tests(slug)
+    accepted = [s for s in _solutions(slug) if s["kind"] == "accepted"]
+    if not tests:
+        raise ValueError("Add sample or secret tests before measuring limits")
+    if not accepted:
+        raise ValueError("Add an accepted reference solution before measuring limits")
+    build_root = _new_build_dir(slug)
+    compiled = {}
+    for solution in accepted:
+        _check_cancel(cancelled, deadline)
+        comp = _compile(slug, solution, build_root)
+        if not comp["ok"]:
+            raise RuntimeError(f"Reference failed to compile: {solution['path']}: {comp.get('error', '')[-1000:]}")
+        compiled[solution["path"]] = comp
+    max_ms = 0.0
+    max_rss = 0
+    slowest = None
+    worst_memory = None
+    samples = []
+    for solution in accepted:
+        for test in tests:
+            _check_cancel(cancelled, deadline)
+            result = winutil.run_measured(
+                compiled[solution["path"]]["argv"],
+                cwd=workspace.ws_path(slug),
+                data=test["input"].read_bytes(),
+                timeout=max(30.0, float(_read_meta(slug)["timeLimitSeconds"]) * 5),
+                env=winutil.python_env(),
+            )
+            if result["timedOut"] or not result["ok"]:
+                raise RuntimeError(
+                    f"Reference {solution['path']} failed on {test['relative']}"
+                    + (" (timed out)" if result["timedOut"] else f" (exit {result['returncode']})")
+                )
+            ms = result["ms"]
+            rss = int(result.get("peakRssBytes") or 0)
+            if ms > max_ms:
+                max_ms = ms
+                slowest = test["relative"]
+            if rss > max_rss:
+                max_rss = rss
+                worst_memory = test["relative"]
+            samples.append({"path": solution["path"], "test": test["relative"], "ms": round(ms, 1), "rss": rss})
+    runtime_s = max(0.001, max_ms / 1000.0)
+    time_limit = max(1.0, min(10.0, math.ceil(runtime_s * 2.5 * 2) / 2))
+    memory_mb = 256
+    if max_rss > 0:
+        measured_mb = max_rss / (1024 * 1024)
+        memory_mb = max(256, min(1024, math.ceil(measured_mb * 1.5 / 64) * 64))
+    _set_limits_in_files(slug, time_limit, memory_mb)
+    details = {
+        "maxRuntimeMs": round(max_ms, 1),
+        "maxMemoryMb": round(max_rss / (1024 * 1024), 1) if max_rss else None,
+        "slowestTest": slowest,
+        "worstMemoryTest": worst_memory,
+        "samples": samples,
+        "measuredAt": workspace.now(),
+    }
+    workspace.set_limits(slug, time_limit, memory_mb, details)
+    return {
+        "ok": True,
+        "timeLimitSeconds": time_limit,
+        "memoryMb": memory_mb,
+        "tests": len(tests),
+        "solutions": [s["path"] for s in accepted],
+        **details,
+    }
+
+
 def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
     winutil.prepare()
     deadline = time.monotonic() + VERIFY_BUDGET_SECONDS
@@ -327,6 +471,18 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
     negative = [s for s in solutions if s["kind"] == "negative"]
     validator = _validator(slug)
     checks = _structure(slug, tests, accepted, negative, validator)
+    limit_state = workspace.state(slug)
+    limits_measured = bool(limit_state.get("limitsMeasured"))
+    measured = limit_state.get("measuredLimits") or {}
+    checks.append({
+        "name": "Limits measured",
+        "status": "pass" if limits_measured else "fail",
+        "detail": (
+            f"{measured.get('timeLimitSeconds', meta.get('timeLimitSeconds'))} s / "
+            f"{measured.get('memoryMb', meta.get('memoryMb'))} MiB from {measured.get('slowestTest', 'reference runs')}"
+            if limits_measured else "run Measure limits after the reference and tests are ready"
+        ),
+    })
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -335,6 +491,8 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
             errors.append(f"{check['name']}: {check['detail']}")
         elif check["status"] == "warn":
             warnings.append(f"{check['name']}: {check['detail']}")
+    if not limits_measured:
+        errors.append("Limits have not been measured from the reference solutions. Run Measure limits.")
 
     built = {"ok": False, "written": 0, "errors": [], "disagreements": []}
     if accepted and write_answers:

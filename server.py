@@ -364,6 +364,16 @@ class Handler(BaseHTTPRequestHandler):
                         return result
 
                     return self.send_json(start_job("Generate answers", slug, run_answers))
+                if len(parts) == 4 and parts[3] == "run":
+                    body = self.read_json()
+                    return self.send_json(verify.run_source(slug, str(body.get("path") or ""), str(body.get("stdin") or "")))
+                if len(parts) == 4 and parts[3] == "measure-limits":
+                    def run_limits(emit, cancelled):
+                        result = verify.measure_limits(slug, cancelled=cancelled)
+                        emit("limits", result)
+                        return result
+
+                    return self.send_json(start_job("Measure limits", slug, run_limits))
             return self.send_error_json("Unknown route", 404)
         except FileNotFoundError as exc:
             return self.send_error_json(str(exc), 404)

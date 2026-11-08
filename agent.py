@@ -47,6 +47,8 @@ Non-negotiable rules:
 A good turn is: inspect the workspace, write or patch files, build answers, run verification, fix concrete failures, re-run until green, then summarize the remaining human-review items. If the idea is underspecified, state the assumptions you made and encode them in NOTES.md and the statement/validator.
 
 Narrate your work for the author. Before each batch of tool calls, write 1-3 short sentences saying what you are about to do and why. After tool results, say what you learned, what failed, and what you will do next. This is a working explanation, not a hidden chain-of-thought dump: be concrete, mention file names and commands, and keep moving. Never claim something passed unless the tool result says so.
+
+LIMITS: never choose time or memory limits when creating the problem. The workspace starts with provisional defaults. Only after the reference solution and tests are ready, build answers, then call measure_limits. It runs the accepted references on every test and writes measured limits to problem.yaml, domjudge-problem.ini and the statement. Verification will not pass until limits are measured.
 """
 
 TOOLS = [
@@ -285,6 +287,10 @@ def _dispatch(slug: str, name: str, args: dict, emit) -> dict:
     if name == "build_answers":
         result = verify.build_answers(slug)
         emit("verification", {"stage": "answers", "result": result})
+        return result
+    if name == "measure_limits":
+        result = verify.measure_limits(slug)
+        emit("limits", result)
         return result
     if name == "verify_package":
         value = args.get("write_answers")

@@ -20,6 +20,8 @@ const state = {
   activeSide: "chats",
   selectedChange: null,
   pendingMessage: null,
+  renderedChangeIds: new Set(),
+  fileMode: "view",
   streaming: { assistantEl: null, assistantText: "", reasoningEl: null, reasoningText: "" },
 };
 
@@ -71,6 +73,59 @@ function truncate(value, size) {
   return text.length > size ? text.slice(0, size - 1) + "…" : text;
 }
 
+const LANGUAGE_BY_EXT = {
+  cpp: "cpp", cc: "cpp", cxx: "cpp", c: "c", h: "cpp", hpp: "cpp",
+  py: "python", java: "java", kt: "kotlin",
+  tex: "latex", sty: "latex", cls: "latex",
+  yaml: "yaml", yml: "yaml", json: "json", ini: "ini",
+  md: "markdown", sh: "bash", js: "javascript", css: "css", html: "xml",
+};
+
+function languageForPath(path) {
+  const ext = String(path || "").split(".").pop().toLowerCase();
+  return LANGUAGE_BY_EXT[ext] || "plaintext";
+}
+
+function isRunnablePath(path) {
+  const ext = String(path || "").split(".").pop().toLowerCase();
+  return ["cpp", "cc", "cxx", "c", "py", "java", "kt"].includes(ext);
+}
+
+function highlightCodeElement(codeEl, code, language) {
+  const lang = language || "plaintext";
+  codeEl.textContent = code;
+  codeEl.className = "";
+  if (!window.hljs) {
+    codeEl.className = "hljs";
+    return;
+  }
+  try {
+    if (lang !== "plaintext" && hljs.getLanguage(lang)) {
+      codeEl.innerHTML = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+      codeEl.className = "hljs language-" + lang;
+      return;
+    }
+  } catch {
+    // fall back to plain text
+  }
+  codeEl.className = "hljs";
+}
+
+function highlightWithin(root) {
+  if (!window.hljs) return;
+  root.querySelectorAll("pre code").forEach((el) => {
+    try { hljs.highlightElement(el); } catch { /* ignore */ }
+  });
+}
+
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => toast("Copied"), () => toast("Copy failed", true));
+  } else {
+    toast("Copy is not available", true);
+  }
+}
+
 function formatTime(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -95,10 +150,17 @@ function renderMarkdown(text) {
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   for (const line of lines) {
-    if (line.trim().startsWith("```")) {
+    const fence = line.trim().match(/^```([A-Za-z0-9_+-]*)\s*$/);
+    if (fence) {
       flushList();
-      out.push(inCode ? "</code></pre>" : "<pre><code>");
-      inCode = !inCode;
+      if (inCode) {
+        out.push("</code></pre>");
+        inCode = false;
+      } else {
+        const lang = (fence[1] || "plaintext").replace(/[^A-Za-z0-9_+-]/g, "");
+        out.push(`<pre><code class="language-${lang}">`);
+        inCode = true;
+      }
       continue;
     }
     if (inCode) { out.push(line); continue; }
@@ -134,6 +196,7 @@ function addMessage(role, text) {
   const bubble = document.createElement("div");
   bubble.className = "bubble";
   bubble.innerHTML = role === "assistant" ? renderMarkdown(text) : `<p>${escapeHtml(text).replace(/\n/g, "<br>")}</p>`;
+  if (role === "assistant") highlightWithin(bubble);
   wrap.appendChild(meta);
   wrap.appendChild(bubble);
   $("messages").appendChild(wrap);
@@ -184,6 +247,7 @@ function finalizeAssistant(text) {
     const bubble = state.streaming.assistantEl;
     bubble.classList.remove("streaming");
     bubble.innerHTML = renderMarkdown(text || state.streaming.assistantText);
+    highlightWithin(bubble);
     state.streaming.assistantEl = null;
     state.streaming.assistantText = "";
     scrollMessages();
@@ -254,10 +318,255 @@ function toolSummary(args) {
   return Object.keys(args).slice(0, 3).join(", ");
 }
 
+function sanitizedToolArgs(name, args) {
+  if (!args || typeof args !== "object") return args;
+  if (name === "write_file") {
+    return { path: args.path, lines: String(args.content || "").split("\n").length };
+  }
+  if (name === "run_command") {
+    return {
+      command: args.command,
+      timeout_seconds: args.timeout_seconds,
+      stdin: args.stdin ? `${String(args.stdin).length} chars` : undefined,
+      cwd: args.cwd,
+      stdout_path: args.stdout_path,
+    };
+  }
+  if (name === "update_plan") return { steps: args.steps };
+  return args;
+}
+
 function renderToolCall(name, args) {
   const card = document.createElement("details");
   card.className = "tool-card";
-  card.innerHTML = `<summary><span class="tool-name">${escapeHtml(name)}</span><span class="tool-arg">${escapeHtml(toolSummary(args))}</span></summary><pre>${escapeHtml(JSON.stringify(args, null, 2))}</pre>`;
+  const preview = name === "write_file"
+    ? `${args.path || ""} · ${String(args.content || "").split("\n").length} lines`
+    : toolSummary(args);
+  card.innerHTML = `<summary><span class="tool-name">${escapeHtml(name)}</span><span class="tool-arg">${escapeHtml(preview)}</span></summary><pre>${escapeHtml(JSON.stringify(sanitizedToolArgs(name, args), null, 2))}</pre>`;
+  addEventCard(card);
+}
+
+function renderCodeCard(path, content, language, open = true) {
+  const card = document.createElement("div");
+  card.className = "code-card";
+  const head = document.createElement("div");
+  head.className = "code-head";
+  const pathEl = document.createElement("span");
+  pathEl.className = "path";
+  pathEl.textContent = path;
+  const copy = document.createElement("button");
+  copy.className = "quiet small";
+  copy.textContent = "Copy";
+  copy.addEventListener("click", () => copyText(content));
+  head.appendChild(pathEl);
+  head.appendChild(copy);
+  const pre = document.createElement("pre");
+  const code = document.createElement("code");
+  highlightCodeElement(code, String(content || "").slice(0, 30000), language || languageForPath(path));
+  pre.appendChild(code);
+  card.appendChild(head);
+  card.appendChild(pre);
+  addEventCard(card);
+}
+
+function renderFileList(result) {
+  const card = document.createElement("div");
+  card.className = "code-card";
+  const head = document.createElement("div");
+  head.className = "code-head";
+  const pathEl = document.createElement("span");
+  pathEl.className = "path";
+  pathEl.textContent = `Files · ${result.count ?? (result.entries || []).length}`;
+  head.appendChild(pathEl);
+  const list = document.createElement("div");
+  list.className = "file-list";
+  const entries = (result.entries || []).slice(0, 300);
+  if (!entries.length) {
+    list.innerHTML = '<div class="muted">empty</div>';
+  } else {
+    for (const entry of entries) {
+      const row = document.createElement("div");
+      row.className = entry.type === "dir" ? "dir" : "";
+      const depth = (entry.path.match(/\//g) || []).length;
+      row.style.paddingLeft = depth * 10 + "px";
+      row.textContent = entry.path.split("/").pop() + (entry.type === "dir" ? "/" : "");
+      list.appendChild(row);
+    }
+  }
+  card.appendChild(head);
+  card.appendChild(list);
+  addEventCard(card);
+}
+
+function diffStats(diff) {
+  let additions = 0;
+  let deletions = 0;
+  for (const line of String(diff || "").split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (line.startsWith("+")) additions += 1;
+    else if (line.startsWith("-")) deletions += 1;
+  }
+  return { additions, deletions };
+}
+
+function renderChangeCard(data) {
+  const changeId = data.changeId || data.id;
+  if (changeId && state.renderedChangeIds.has(changeId)) return;
+  if (changeId) state.renderedChangeIds.add(changeId);
+  const stats = diffStats(data.diff);
+  const card = document.createElement("div");
+  card.className = "change-card";
+  const path = document.createElement("span");
+  path.className = "path";
+  path.textContent = data.path || "file";
+  const statsEl = document.createElement("span");
+  statsEl.className = "change-stats";
+  statsEl.innerHTML = `<span class="add">+${stats.additions}</span> <span class="del">-${stats.deletions}</span>`;
+  const hint = document.createElement("span");
+  hint.className = "muted small";
+  hint.textContent = changeId ? "open diff" : "";
+  card.appendChild(path);
+  card.appendChild(statsEl);
+  card.appendChild(hint);
+  if (changeId) card.addEventListener("click", () => openChangeDiff(changeId));
+  addEventCard(card);
+}
+
+function renderVerifySummary(result) {
+  const card = document.createElement("div");
+  const status = result.status || (result.ok ? "ok" : "failed");
+  const ok = status === "verified";
+  card.className = "event-verify " + (ok ? "ok" : "bad");
+  const counts = result.counts || {};
+  const errors = result.errors || [];
+  card.innerHTML = `<b>${ok ? "Package verified" : "Verification " + escapeHtml(status)}</b>
+    <div class="muted small" style="margin-top:4px">${counts.tests || 0} tests · ${counts.accepted || 0} accepted · ${counts.negative || 0} negative</div>
+    ${errors.length ? `<ul class="report-list status-fail" style="margin-top:7px">${errors.slice(0, 5).map((e) => `<li>${escapeHtml(e)}</li>`).join("")}</ul>` : ""}
+    <button class="quiet small" style="margin-top:8px">Open report</button>`;
+  card.querySelector("button").addEventListener("click", () => switchTab("report"));
+  addEventCard(card);
+}
+
+function renderPlanResult(result) {
+  const card = document.createElement("div");
+  card.className = "tool-card";
+  const summary = document.createElement("div");
+  summary.className = "run-label";
+  summary.textContent = "Plan";
+  const list = document.createElement("div");
+  list.className = "agent-plan";
+  for (const step of (result.steps || [])) {
+    const row = document.createElement("div");
+    row.className = "agent-step " + (step.status || "pending");
+    row.innerHTML = `<span class="dot"></span><span>${escapeHtml(step.title)}</span>`;
+    list.appendChild(row);
+  }
+  card.appendChild(summary);
+  card.appendChild(list);
+  addEventCard(card);
+}
+
+function renderLimitsResult(result) {
+  const card = document.createElement("div");
+  card.className = "event-verify ok";
+  card.innerHTML = `<b>Limits measured</b>
+    <div class="muted small" style="margin-top:4px">${escapeHtml(String(result.timeLimitSeconds))} s time · ${escapeHtml(String(result.memoryMb))} MiB memory</div>
+    <div class="muted small">slowest test: ${escapeHtml(result.slowestTest || "n/a")} · ${escapeHtml(String(result.maxRuntimeMs || 0))} ms</div>`;
+  addEventCard(card);
+}
+
+function renderAnswersResult(result) {
+  const card = document.createElement("div");
+  card.className = "event-verify " + (result.ok ? "ok" : "bad");
+  const disagreements = result.disagreements || [];
+  card.innerHTML = `<b>${result.ok ? "Answers generated" : "Answer generation failed"}</b>
+    <div class="muted small" style="margin-top:4px">${result.written || 0}/${result.tests || 0} answers written</div>
+    ${disagreements.length ? `<div class="status-warn small" style="margin-top:4px">${disagreements.length} reference disagreement(s)</div>` : ""}`;
+  addEventCard(card);
+}
+
+function renderExportResult(result) {
+  const card = document.createElement("div");
+  card.className = "event-verify ok";
+  card.innerHTML = `<b>Package exported</b>
+    <div class="muted small" style="margin-top:4px">${result.files || 0} files · ${Math.round((result.size || 0) / 1024)} KiB</div>
+    <button class="primary small" style="margin-top:8px">Download ZIP</button>`;
+  card.querySelector("button").addEventListener("click", () => {
+    window.location.href = `/api/workspaces/${state.slug}/download`;
+  });
+  addEventCard(card);
+}
+
+function renderToolResult(name, result, open = true) {
+  if (!result || typeof result !== "object") {
+    const card = document.createElement("div");
+    card.className = "event-error";
+    card.textContent = String(result || "No result");
+    addEventCard(card);
+    return;
+  }
+  if (result.error) {
+    const card = document.createElement("div");
+    card.className = "event-error";
+    card.textContent = String(result.error);
+    addEventCard(card);
+    return;
+  }
+  if (name === "run_command") {
+    renderRunResult(result, open);
+    return;
+  }
+  if (name === "read_file") {
+    if (result.text === false) {
+      const card = document.createElement("div");
+      card.className = "event-verify";
+      card.textContent = `Binary file: ${result.path}`;
+      addEventCard(card);
+    } else {
+      renderCodeCard(result.path, result.content || "", languageForPath(result.path), open);
+    }
+    return;
+  }
+  if (name === "list_files") {
+    renderFileList(result);
+    return;
+  }
+  if (name === "write_file" || name === "delete_file") {
+    if (result.changed || result.deleted) {
+      renderChangeCard({ path: result.path, diff: result.diff || "", changeId: result.changeId });
+    } else {
+      const card = document.createElement("div");
+      card.className = "event-verify";
+      card.textContent = `${result.path}: no change`;
+      addEventCard(card);
+    }
+    return;
+  }
+  if (name === "verify_package" || name === "read_report") {
+    renderVerifySummary(result);
+    return;
+  }
+  if (name === "update_plan") {
+    renderPlanResult(result);
+    return;
+  }
+  if (name === "measure_limits") {
+    renderLimitsResult(result);
+    return;
+  }
+  if (name === "build_answers") {
+    renderAnswersResult(result);
+    return;
+  }
+  if (name === "export_package") {
+    renderExportResult(result);
+    return;
+  }
+  const text = JSON.stringify(result, null, 2);
+  const card = document.createElement("details");
+  card.className = "tool-card";
+  card.open = false;
+  card.innerHTML = `<summary><span class="tool-name">${escapeHtml(name)}</span><span class="tool-arg">result</span></summary><pre>${escapeHtml(text.slice(0, 16000))}</pre>`;
   addEventCard(card);
 }
 
@@ -324,11 +633,7 @@ function renderToolResult(name, result, open = true) {
 }
 
 function renderChangeEvent(data) {
-  const node = document.createElement("div");
-  node.className = "event-change";
-  node.innerHTML = `<span class="tag agent">write</span><span class="path">${escapeHtml(data.path || "")}</span><span class="spacer"></span><span class="muted small">open diff</span>`;
-  node.addEventListener("click", () => openChangeDiff(data.changeId));
-  addEventCard(node);
+  renderChangeCard(data);
 }
 
 function renderVerificationEvent(data) {
@@ -416,6 +721,47 @@ function renderTree() {
   }
 }
 
+function renderFileView() {
+  if (!state.file) return;
+  const file = state.file;
+  const view = $("file-view");
+  const code = $("file-code");
+  view.hidden = false;
+  $("file-editor").hidden = true;
+  $("edit-file").hidden = !file.text;
+  $("view-file").hidden = true;
+  $("save-file").hidden = true;
+  $("run-panel").hidden = !(file.text && isRunnablePath(file.path));
+  if (file.text) {
+    highlightCodeElement(code, file.content || "", languageForPath(file.path));
+  } else {
+    code.textContent = "(binary file)";
+    code.className = "hljs";
+  }
+}
+
+function enterEditMode() {
+  if (!state.file || !state.file.text) return;
+  state.fileMode = "edit";
+  $("file-view").hidden = true;
+  $("file-editor").hidden = false;
+  $("edit-file").hidden = true;
+  $("view-file").hidden = false;
+  $("save-file").hidden = !state.dirty;
+  $("file-editor").focus();
+}
+
+function enterViewMode() {
+  if (!state.file || !state.file.text) return;
+  if (state.dirty && !confirm("Discard the unsaved editor changes?")) return;
+  if (state.dirty) {
+    $("file-editor").value = state.file.content;
+    state.dirty = false;
+  }
+  state.fileMode = "view";
+  renderFileView();
+}
+
 async function openFile(path) {
   if (!state.slug) return;
   if (state.dirty && state.file && state.file.path !== path && !confirm("Discard the unsaved editor changes?")) return;
@@ -423,13 +769,17 @@ async function openFile(path) {
     const file = await api(`/api/workspaces/${state.slug}/file?path=${encodeURIComponent(path)}`);
     state.file = file;
     state.dirty = false;
+    state.fileMode = "view";
     $("file-name").textContent = file.path;
-    $("file-meta").textContent = file.text ? `${file.size} bytes` : "binary";
+    $("file-meta").textContent = file.text ? `${file.size} bytes · ${languageForPath(file.path)}` : "binary";
     const editor = $("file-editor");
     editor.disabled = !file.text;
-    editor.value = file.text ? file.content : "(binary file — not editable here)";
-    $("save-file").hidden = true;
+    editor.value = file.text ? file.content : "";
     $("reload-file").hidden = false;
+    $("run-output").hidden = true;
+    $("run-output").textContent = "";
+    $("run-output").className = "run-output";
+    renderFileView();
     switchSide("files");
     switchTab("file");
     renderTree();
@@ -439,16 +789,61 @@ async function openFile(path) {
 async function saveFile() {
   if (!state.slug || !state.file) return;
   try {
+    const content = $("file-editor").value;
     await api(`/api/workspaces/${state.slug}/file`, {
       method: "POST",
-      body: { path: state.file.path, content: $("file-editor").value },
+      body: { path: state.file.path, content },
     });
+    state.file.content = content;
+    state.file.size = new Blob([content]).size;
     state.dirty = false;
     $("save-file").hidden = true;
     toast("Saved");
     await refreshWorkspace();
-    await openFile(state.file.path);
+    renderFileView();
+    $("file-meta").textContent = `${state.file.size} bytes · ${languageForPath(state.file.path)}`;
   } catch (error) { toast(error.message, true); }
+}
+
+async function loadSampleInput() {
+  if (!state.slug) return;
+  try {
+    const file = await api(`/api/workspaces/${state.slug}/file?path=data/sample/01.in`);
+    $("run-stdin").value = file.text ? file.content : "";
+    toast("Sample input loaded");
+  } catch {
+    toast("No data/sample/01.in to load", true);
+  }
+}
+
+async function runFile() {
+  if (!state.slug || !state.file || !isRunnablePath(state.file.path)) return;
+  const output = $("run-output");
+  output.hidden = false;
+  output.className = "run-output";
+  output.textContent = "Running…";
+  try {
+    const result = await api(`/api/workspaces/${state.slug}/run`, {
+      method: "POST",
+      body: { path: state.file.path, stdin: $("run-stdin").value },
+    });
+    const ok = result.ok && !result.timedOut;
+    output.className = "run-output" + (ok ? "" : " err");
+    const parts = [];
+    if (result.stage === "compile") {
+      parts.push("Compilation failed", "", result.error || "", result.stderr || "");
+    } else {
+      parts.push(`${result.timedOut ? "timed out" : "exit " + result.exitCode} · ${Math.round(result.ms || 0)} ms`);
+      if ((result.stdout || "").trim()) parts.push("", "stdout:", result.stdout);
+      if ((result.stderr || "").trim()) parts.push("", "stderr:", result.stderr);
+      if (result.diagnostic) parts.push("", result.diagnostic);
+    }
+    output.textContent = parts.join("\n");
+    output.scrollTop = 0;
+  } catch (error) {
+    output.className = "run-output err";
+    output.textContent = error.message;
+  }
 }
 
 // ---------- changes ----------
@@ -613,6 +1008,7 @@ async function loadConversation() {
   const host = $("messages");
   host.innerHTML = "";
   resetStreaming();
+  state.renderedChangeIds = new Set();
   state.plan = { steps: [] };
   if (!state.slug || !state.chatId) {
     host.innerHTML = '<div class="empty"><h2>No conversation</h2><p>Create a chat to begin.</p></div>';
@@ -681,6 +1077,8 @@ function pipelineSteps() {
   const checks = (report && report.checks) || [];
   const statement = checks.find((c) => c.name === "Statement PDF");
   const verified = report && report.status === "verified" && !(state.summary && state.summary.stale);
+  const limitsMeasured = Boolean(state.summary && state.summary.limitsMeasured);
+  const measured = (state.summary && state.summary.measuredLimits) || {};
   return [
     { label: "Idea captured", done: paths.has("NOTES.md"), detail: "NOTES.md" },
     { label: "Statement written", done: paths.has("problem_statement/problem.en.tex"), detail: "problem.en.tex" },
@@ -689,6 +1087,7 @@ function pipelineSteps() {
     { label: "Reference solution", done: accepted > 0, detail: `${accepted} accepted` },
     { label: "Sample + secret tests", done: sample > 0 && secret > 0, detail: `${sample} sample · ${secret} secret` },
     { label: "Negative solutions", done: negative > 0, detail: `${negative} negative` },
+    { label: "Limits measured", done: limitsMeasured, detail: limitsMeasured ? `${measured.timeLimitSeconds}s / ${measured.memoryMb} MiB` : "provisional defaults" },
     { label: "Package verified", done: Boolean(verified), fail: report && report.status === "failed", detail: report ? `${report.status}${state.summary && state.summary.stale ? " · stale" : ""}` : "not run" },
   ];
 }
@@ -699,6 +1098,8 @@ function renderPlan() {
   const agentSteps = (state.plan && state.plan.steps) || [];
   const report = state.summary && state.summary.lastReport;
   const unreviewed = (state.summary && state.summary.unreviewed) || 0;
+  const limitsMeasured = Boolean(state.summary && state.summary.limitsMeasured);
+  const measured = (state.summary && state.summary.measuredLimits) || {};
   host.innerHTML = `
     <div class="plan-section">
       <h3>Authoring pipeline</h3>
@@ -723,6 +1124,7 @@ function renderPlan() {
       <div class="agent-plan">
         <div class="agent-step"><span class="dot ${report && report.status === "verified" ? "completed" : ""}"></span><span>${report ? `Last verification: ${escapeHtml(report.status)}` : "No verification run yet"}</span></div>
         <div class="agent-step"><span class="dot ${unreviewed ? "in_progress" : "completed"}"></span><span>${unreviewed} unreviewed change(s)</span></div>
+        <div class="agent-step"><span class="dot ${limitsMeasured ? "completed" : "in_progress"}"></span><span>${limitsMeasured ? `Limits: ${measured.timeLimitSeconds}s / ${measured.memoryMb} MiB` : "Limits not measured yet"}</span></div>
       </div>
     </div>`;
   renderPlanStrip();
@@ -855,12 +1257,21 @@ async function selectWorkspace(slug) {
   state.jobEvents = 0;
   resetStreaming();
   $("messages").innerHTML = "";
+  state.fileMode = "view";
   $("file-editor").value = "";
   $("file-editor").disabled = true;
+  $("file-editor").hidden = false;
+  $("file-view").hidden = true;
   $("file-name").textContent = "No file selected";
   $("file-meta").textContent = "";
   $("save-file").hidden = true;
   $("reload-file").hidden = true;
+  $("edit-file").hidden = true;
+  $("view-file").hidden = true;
+  $("run-panel").hidden = true;
+  $("run-output").hidden = true;
+  $("run-output").textContent = "";
+  $("run-output").className = "run-output";
   $("diff-body").innerHTML = '<div class="pad muted">Select a change to inspect its diff.</div>';
   $("report-body").innerHTML = "";
   if (!slug) {
@@ -959,6 +1370,12 @@ function processJobEvents(job) {
       window.location.href = `/api/workspaces/${state.slug}/download`;
     } else if (event.kind === "answers") {
       renderVerificationEvent({ stage: "answers", result: data });
+    } else if (event.kind === "limits") {
+      const node = document.createElement("div");
+      node.className = "event-verify ok";
+      node.textContent = `Limits measured: ${data.timeLimitSeconds}s time / ${data.memoryMb} MiB memory (slowest ${data.slowestTest || "n/a"}, ${data.maxRuntimeMs} ms).`;
+      addEventCard(node);
+      toast(`Limits: ${data.timeLimitSeconds}s / ${data.memoryMb} MiB`);
     }
   }
   state.jobEvents = events.length;
@@ -1063,7 +1480,10 @@ async function runToolJob(kind, body) {
     state.jobChatId = null;
     state.jobEvents = 0;
     $("send-btn").disabled = true;
-    $("agent-state").textContent = kind === "verify" ? "verifying…" : kind === "answers" ? "building answers…" : "exporting…";
+    $("agent-state").textContent = kind === "verify" ? "verifying…"
+      : kind === "answers" ? "building answers…"
+      : kind === "measure-limits" ? "measuring limits…"
+      : "exporting…";
     renderChatList();
     pollJob(job.id, async (finished) => {
       if (kind === "verify") {
@@ -1071,6 +1491,10 @@ async function runToolJob(kind, body) {
         if (finished.state === "done") toast(finished.result.status === "verified" ? "Package verified" : "Verification failed", finished.result.status !== "verified");
       }
       if (kind === "answers") toast("Answers generated");
+      if (kind === "measure-limits") {
+        switchTab("plan");
+        if (finished.state === "done") toast(`Limits: ${finished.result.timeLimitSeconds}s / ${finished.result.memoryMb} MiB`);
+      }
       if (kind === "export") toast("Package exported");
     });
   } catch (error) { toast(error.message, true); }
@@ -1145,8 +1569,6 @@ async function createProblem(event) {
         idea: form.idea.value.trim(),
         author: form.author.value.trim(),
         shortName: form.shortName.value.trim(),
-        timeLimit: Number(form.timeLimit.value || 2),
-        memoryMb: Number(form.memoryMb.value || 256),
       },
     });
     $("new-dialog").close();
@@ -1157,6 +1579,59 @@ async function createProblem(event) {
       await sendMessage("Author this problem end-to-end from the idea in NOTES.md. State your assumptions in NOTES.md, publish a plan, draft the statement, validator, reference solution, samples, secret edge cases and at least one negative solution, then generate answers and iterate with verify_package until the package is verified. Only ask me when a rule is genuinely ambiguous.");
     }
   } catch (error) { toast(error.message, true); }
+}
+
+// ---------- resizable panes ----------
+
+function applyStoredWidths() {
+  const left = localStorage.getItem("author-agent-left-width");
+  const right = localStorage.getItem("author-agent-right-width");
+  if (left) document.documentElement.style.setProperty("--left-width", left + "px");
+  if (right) document.documentElement.style.setProperty("--right-width", right + "px");
+}
+
+function initSplitters() {
+  const layout = document.querySelector(".layout");
+  const leftPane = document.querySelector(".left");
+  const rightPane = document.querySelector(".right");
+  document.querySelectorAll(".splitter").forEach((splitter) => {
+    splitter.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      const isLeft = splitter.dataset.split === "left";
+      const startX = event.clientX;
+      const startLeft = leftPane.getBoundingClientRect().width;
+      const startRight = rightPane.getBoundingClientRect().width;
+      document.body.classList.add("resizing");
+      const move = (moveEvent) => {
+        const dx = moveEvent.clientX - startX;
+        if (isLeft) {
+          const width = Math.max(200, Math.min(520, startLeft + dx));
+          document.documentElement.style.setProperty("--left-width", width + "px");
+          localStorage.setItem("author-agent-left-width", String(Math.round(width)));
+        } else {
+          const width = Math.max(320, Math.min(820, startRight - dx));
+          document.documentElement.style.setProperty("--right-width", width + "px");
+          localStorage.setItem("author-agent-right-width", String(Math.round(width)));
+        }
+      };
+      const up = () => {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        document.body.classList.remove("resizing");
+      };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
+    splitter.addEventListener("dblclick", () => {
+      if (splitter.dataset.split === "left") {
+        document.documentElement.style.setProperty("--left-width", "272px");
+        localStorage.removeItem("author-agent-left-width");
+      } else {
+        document.documentElement.style.setProperty("--right-width", "440px");
+        localStorage.removeItem("author-agent-right-width");
+      }
+    });
+  });
 }
 
 // ---------- wiring ----------
@@ -1176,6 +1651,7 @@ function wire() {
   });
   $("verify-btn").addEventListener("click", () => runToolJob("verify", { writeAnswers: false }));
   $("answers-btn").addEventListener("click", () => runToolJob("answers", {}));
+  $("limits-btn").addEventListener("click", () => runToolJob("measure-limits", {}));
   $("export-btn").addEventListener("click", () => runToolJob("export", {}));
   $("approve-btn").addEventListener("click", async () => {
     if (!state.slug) return;
@@ -1200,6 +1676,10 @@ function wire() {
   });
   $("save-file").addEventListener("click", saveFile);
   $("reload-file").addEventListener("click", () => state.file && openFile(state.file.path));
+  $("edit-file").addEventListener("click", enterEditMode);
+  $("view-file").addEventListener("click", enterViewMode);
+  $("run-file").addEventListener("click", runFile);
+  $("load-sample").addEventListener("click", loadSampleInput);
   document.querySelectorAll(".tabs button, .inspector-tabs button").forEach((button) => {
     button.addEventListener("click", () => switchTab(button.dataset.tab));
   });
@@ -1213,5 +1693,7 @@ function wire() {
   });
 }
 
+applyStoredWidths();
+initSplitters();
 wire();
 loadState();

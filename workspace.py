@@ -240,6 +240,7 @@ def create(name: str, idea: str = "", meta: dict | None = None) -> dict:
         "- [ ] Secret tests cover all constraints and edge cases",
         "- [ ] Answers are generated from the reference solution",
         "- [ ] Wrong solutions are killed by at least one secret test",
+        "- [ ] Time and memory limits are measured from the reference, not guessed",
         "- [ ] Package verification is green",
         "",
     ]
@@ -258,6 +259,8 @@ def create(name: str, idea: str = "", meta: dict | None = None) -> dict:
         "lastStatus": "unverified",
         "lastReport": None,
         "lastReview": None,
+        "limitsMeasured": False,
+        "measuredLimits": None,
     }
     _save_state(slug, st)
     _write_json(_state_dir(slug) / "changes.json", [])
@@ -275,6 +278,8 @@ def summary(slug: str) -> dict:
         "lastStatus": status,
         "lastReport": report,
         "lastReview": st.get("lastReview"),
+        "limitsMeasured": bool(st.get("limitsMeasured")),
+        "measuredLimits": st.get("measuredLimits"),
         "stale": stale,
         "unreviewed": sum(1 for c in changes(slug) if not c.get("reviewed") and not c.get("reverted")),
         "tree": tree(slug),
@@ -600,6 +605,21 @@ def set_active_chat(slug: str, chat_id: str) -> dict:
     index["activeChat"] = chat_id
     _save_chats_index(slug, index)
     return meta
+
+
+def set_limits(slug: str, time_limit_seconds: float, memory_mb: int, details: dict) -> dict:
+    st = state(slug)
+    meta = st.setdefault("meta", {})
+    meta["timeLimit"] = str(time_limit_seconds)
+    meta["memoryMb"] = str(memory_mb)
+    st["limitsMeasured"] = True
+    st["measuredLimits"] = {
+        "timeLimitSeconds": time_limit_seconds,
+        "memoryMb": memory_mb,
+        **details,
+    }
+    _save_state(slug, st)
+    return st["measuredLimits"]
 
 
 def set_report(slug: str, report: dict) -> None:

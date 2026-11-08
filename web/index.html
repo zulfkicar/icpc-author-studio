@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ICPC Author Agent</title>
+<link rel="stylesheet" href="/vendor/highlight-dark.min.css">
 <link rel="stylesheet" href="/style.css">
+<script defer src="/vendor/highlight.min.js"></script>
 <script defer src="/app.js"></script>
 </head>
 <body>
@@ -17,6 +19,7 @@
   <span class="spacer"></span>
   <span id="status-pill" class="pill unverified">unverified</span>
   <button id="answers-btn" class="quiet">Build answers</button>
+  <button id="limits-btn" class="quiet" title="Measure time and memory from the reference solutions">Limits</button>
   <button id="verify-btn" class="primary">Verify</button>
   <button id="export-btn" class="quiet" disabled>Export</button>
   <button id="settings-btn" class="icon-btn" title="Provider settings" aria-label="Provider settings">&#9881;</button>
@@ -64,6 +67,8 @@
     </div>
   </aside>
 
+  <div class="splitter" data-split="left" title="Drag to resize the sidebar"></div>
+
   <section class="chat-pane">
     <div class="chat-head">
       <div class="chat-heading">
@@ -99,6 +104,8 @@
     </div>
   </section>
 
+  <div class="splitter" data-split="right" title="Drag to resize the inspector"></div>
+
   <section class="right">
     <div class="inspector-tabs" role="tablist">
       <button data-tab="plan" class="active">Plan</button>
@@ -116,10 +123,26 @@
         <span id="file-name">No file selected</span>
         <span id="file-meta" class="muted small"></span>
         <span class="spacer"></span>
+        <button id="view-file" class="quiet small" hidden>View</button>
+        <button id="edit-file" class="quiet small" hidden>Edit</button>
         <button id="save-file" class="primary small" hidden>Save</button>
         <button id="reload-file" class="quiet small" hidden>Reload</button>
       </div>
-      <textarea id="file-editor" class="file-editor" spellcheck="false" placeholder="Select a file in the Files tab." disabled></textarea>
+      <div class="file-view-wrap">
+        <pre id="file-view" class="file-view" hidden><code id="file-code" class="hljs"></code></pre>
+        <textarea id="file-editor" class="file-editor" spellcheck="false" placeholder="Select a file in the Files tab." disabled></textarea>
+      </div>
+      <div id="run-panel" class="run-panel" hidden>
+        <div class="run-panel-head">
+          <span>Run</span>
+          <span class="muted small">stdin</span>
+          <span class="spacer"></span>
+          <button id="load-sample" class="quiet small">Load sample</button>
+          <button id="run-file" class="primary small">Run</button>
+        </div>
+        <textarea id="run-stdin" class="run-stdin" rows="3" placeholder="Input passed to the program on stdin"></textarea>
+        <pre id="run-output" class="run-output" hidden></pre>
+      </div>
     </div>
 
     <div id="panel-report" class="panel">
@@ -135,14 +158,12 @@
 <dialog id="new-dialog">
   <form method="dialog" id="new-form">
     <h2>New problem</h2>
-    <p class="dialog-sub muted">Start from an idea. The agent will turn it into a verified DOMjudge package.</p>
+    <p class="dialog-sub muted">Start from an idea. The agent will turn it into a verified DOMjudge package. Limits are measured from the reference after the tests are built.</p>
     <label>Problem name <input name="name" required placeholder="e.g. Claim or Concede"></label>
     <label>Idea / prompt <textarea name="idea" rows="5" placeholder="A rough idea is enough. Include the core mechanic, constraints you have in mind, and what should make it interesting."></textarea></label>
     <div class="grid2">
       <label>Author <input name="author" value="Author"></label>
       <label>Short name <input name="shortName" value="A" maxlength="4"></label>
-      <label>Time limit (s) <input name="timeLimit" type="number" step="0.5" min="0.5" value="2"></label>
-      <label>Memory (MiB) <input name="memoryMb" type="number" min="16" value="256"></label>
     </div>
     <label class="check"><input name="startNow" type="checkbox" checked> Start the agent immediately on this idea</label>
     <div class="dialog-actions">

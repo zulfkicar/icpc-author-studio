@@ -17,6 +17,7 @@ idea
   -> reference solution
   -> samples + hidden tests + answers
   -> plausible wrong solutions
+  -> measured time / memory limits
   -> statement PDF
   -> verified DOMjudge package
   -> human review
@@ -100,8 +101,8 @@ The model has no ambient authority. It can only call a typed registry:
 
 ```
 list_files        read_file        write_file       delete_file
-run_command       build_answers    verify_package   read_report
-export_package    update_plan
+run_command       build_answers    measure_limits   verify_package
+read_report       export_package   update_plan
 ```
 
 Design rules:
@@ -144,9 +145,12 @@ contract.
 5. Every negative solution compiles and is killed by at least one test. A
    wrong program that gets AC everywhere is a survivor and fails verification.
    A compile failure is reported but is not counted as a successful kill.
-6. `problem_statement/problem.en.tex` compiles with `pdflatex` (two passes) and
+6. Time and memory limits were measured from the accepted reference runs, not
+   guessed at problem creation. The measured values are written to
+   `problem.yaml`, `domjudge-problem.ini` and the statement.
+7. `problem_statement/problem.en.tex` compiles with `pdflatex` (two passes) and
    produces `problem.pdf`.
-7. The report stores a workspace snapshot hash.
+8. The report stores a workspace snapshot hash.
 
 Export is allowed only when:
 
@@ -168,7 +172,7 @@ correct is not evidence. The verifier is deliberately boring and deterministic.
 
 - Output comparison is whitespace-token based. Float tolerance, custom output
   validators and interactive problems are not implemented.
-- Memory limits are recorded but not enforced on Windows.
+- Memory limits are measured but not enforced on Windows.
 - `data/sample` and `data/secret` are flat; DOMjudge test groups are not modelled.
 - There is no mathematical claim about coverage. Tests and negative solutions
   are evidence, not proof.
@@ -340,6 +344,14 @@ evidence.
 - **Terminal output as a first-class card.** `run_command` is rendered with the
   command, exit code, duration, stdout and stderr. Output is not hidden in a
   collapsed JSON blob.
+- **Readable artifacts.** File reads are syntax-highlighted code cards, file
+  writes are compact change cards, verification is a summary card, and raw JSON
+  is only a collapsed fallback. highlight.js is vendored locally.
+- **Lightweight IDE.** The File inspector has View/Edit modes, syntax
+  highlighting, and a Run panel that compiles and executes the selected source
+  with user-provided stdin. This gives authors a direct local test loop.
+- **Resizable panes.** Draggable splitters between the sidebar, chat and
+  inspector, with widths remembered in the browser.
 - **Artifacts beside the conversation.** Files, diffs and the verification report
   are not modal interruptions; they live in the inspector.
 - **Actionable verification.** The report has **Fix with agent**, which composes
@@ -482,5 +494,8 @@ records rather than a single transcript.
 | `config.py` | Local provider settings and secret handling. |
 | `winutil.py` | Headless subprocess launch, Python environment, NTSTATUS diagnostics. |
 | `sandbox/sitecustomize.py` | Headless child processes for generated Python scripts. |
-| `web/` | Chat timeline, chats/files/changes sidebar, Plan/File/Report/Diff inspector. |
+| `web/` | Chat timeline, chats/files/changes sidebar, Plan/File/Report/Diff inspector, highlighted code viewer and Run panel. |
+| `web/vendor/` | Locally bundled highlight.js and theme. |
+| `docs/` | Compiled LangGraph diagram and Mermaid source. |
+| `scripts/` | Reliable WSL Docker up/down wrappers. |
 | `templates/` | ICPC statement class and DOMjudge package scaffold. |

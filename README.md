@@ -140,6 +140,8 @@ The model is given a bounded tool registry, not a raw host shell:
   redirection, a 120 s cap and output limits. Runs are headless; output is
   returned to the agent and shown in the chat, never in a host terminal window.
 - `build_answers` (run the accepted reference on every input and write `.ans`)
+- `measure_limits` (run the accepted references on every test and write measured
+  time/memory limits)
 - `verify_package`, `read_report`, `export_package`
 
 All tool calls go through the same workspace and verifier code used by the UI.
@@ -148,18 +150,20 @@ deterministic verifier and an explicit user click can do that.
 
 ## The workflow
 
-1. **New problem** creates a workspace from the ICPC template:
-   `problem.yaml`, `domjudge-problem.ini`, `problem_statement/problem.en.tex`,
-   `data/sample`, `data/secret`, `submissions/accepted`,
-   `submissions/wrong_answer`, `input_validators`, `NOTES.md`.
+1. **New problem** creates a workspace from the ICPC template. It asks only for
+   the name, idea, author and short name. Time and memory limits are provisional
+   defaults at this stage; they are measured later from the actual solutions.
 2. Ask the agent to author the idea. It writes the statement, validator,
    reference solution, tests and negative solutions.
 3. **Build answers** runs the reference solution on every input and writes the
    expected `.ans` files. Multiple accepted references must agree.
-4. **Verify** runs the full check.
-5. Review the **Changes** panel and diffs, revert anything unwanted, and mark
+4. **Measure limits** runs the accepted references on every test, then writes the
+   measured time and memory limits into `problem.yaml`,
+   `domjudge-problem.ini` and the statement. Verification requires this step.
+5. **Verify** runs the full check.
+6. Review the **Changes** panel and diffs, revert anything unwanted, and mark
    changes reviewed.
-6. **Export ZIP** builds the final DOMjudge package with
+7. **Export ZIP** builds the final DOMjudge package with
    `problem_statement/manifest.json` containing hashes and the verification
    timestamp. Export is refused while
    changes are unreviewed or the workspace has changed since verification, so
@@ -179,6 +183,9 @@ deterministic verifier and an explicit user click can do that.
 - `problem_statement/problem.en.tex` compiles with `pdflatex` (two passes) and
   `problem.pdf` is produced. If `pdflatex` is unavailable the check is marked
   skipped, not passed.
+- Limits have been measured from the accepted references, not guessed at
+  creation time. The measured values are written to the package metadata and the
+  statement.
 - Time limit is read from `domjudge-problem.ini`; memory is read from
   `problem.yaml`. Reference and negative runs are bounded by the time limit.
   Windows does not enforce the memory limit.
@@ -186,6 +193,19 @@ deterministic verifier and an explicit user click can do that.
 Output comparison is token-based (whitespace-insensitive). Custom checkers,
 interactive problems and float tolerances are intentionally not implemented in
 this MVP; the verifier will not pretend they are.
+
+## IDE and readable output
+
+- The **File** inspector has a syntax-highlighted **View** mode and an **Edit**
+  mode. highlight.js is vendored locally; there is no CDN.
+- Code tool results and assistant code blocks are shown as highlighted code, not
+  raw JSON. File writes show compact change cards with `+/-` stats and a diff
+  link.
+- **Run** compiles and runs the selected C/C++/Python/Java file with your stdin
+  in the workspace, then shows stdout, stderr, exit code and timing. **Load
+  sample** fills stdin from `data/sample/01.in`.
+- The left, center and right panes have draggable splitters. Double-click a
+  splitter to reset it; widths are remembered in the browser.
 
 ## Reduced from the full design
 
@@ -199,8 +219,8 @@ compilation, real subprocess execution, explicit verification, export gating.
 
 Deliberately dropped for now: multi-user auth/RBAC, the full contest platform,
 live DOMjudge adapters, MCP transport, managed AI usage accounting, container
-sandboxes, Monaco/IDE sessions, interactive/custom-checker problems, and the
-Keycloak/Postgres stack. This is a single-user localhost tool, not the
+sandboxes, a full Monaco/IDE session, interactive/custom-checker problems, and
+the Keycloak/Postgres stack. This is a single-user localhost tool, not the
 production platform.
 
 ## Known MVP limits
@@ -208,7 +228,9 @@ production platform.
 - `data/sample` and `data/secret` are flat; DOMjudge test groups are not modelled.
 - Comparison is whitespace-token based. Float tolerance, custom output validators
   and interactive problems are not verified.
-- Memory limits are recorded but not enforced on Windows.
+- Memory limits are measured but not enforced on Windows.
+- Limits are measured from the reference runtime and memory; they are not
+  manually chosen at problem creation.
 - One local user; no accounts, RBAC, audit trail or multi-tenant isolation.
 - Reference/negative languages: C++/C, Python, Java (toolchains must be on PATH).
 - The statement uses the local `icpcproblem.cls`; replace it with the official
@@ -234,5 +256,8 @@ winutil.py       headless Windows process execution
 sandbox/         sitecustomize for headless child Python processes
 templates/       ICPC statement class and DOMjudge scaffold
 web/             chat timeline, chats/files/changes sidebar, inspector
+web/vendor/      locally bundled highlight.js
+docs/            LangGraph diagram (PNG + Mermaid source)
+scripts/         reliable WSL Docker up/down wrappers
 workspaces/      one directory per problem (gitignored)
 ```

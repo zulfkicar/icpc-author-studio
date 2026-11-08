@@ -102,6 +102,13 @@ def build_answers(state: Annotated[dict, InjectedState] = None) -> dict:
 
 
 @tool
+def measure_limits(state: Annotated[dict, InjectedState] = None) -> dict:
+    """Measure the accepted references on every test and write measured time/memory limits.
+    Call this after the reference and tests exist, before final verification."""
+    return _run(state["slug"], "measure_limits", {})
+
+
+@tool
 def verify_package(write_answers: bool = False, state: Annotated[dict, InjectedState] = None) -> dict:
     """Run the deterministic package check: validator, reference answers, negative solutions, statement."""
     return _run(state["slug"], "verify_package", {"write_answers": write_answers})
@@ -133,6 +140,7 @@ TOOLS = [
     delete_file,
     run_command,
     build_answers,
+    measure_limits,
     verify_package,
     read_report,
     export_package,
@@ -322,6 +330,8 @@ def _emit_tool_side_effects(name: str, result: dict, emit) -> None:
         emit("verification", {"stage": "verify", "result": result})
     if name == "build_answers":
         emit("verification", {"stage": "answers", "result": result})
+    if name == "measure_limits":
+        emit("limits", result)
     if name == "export_package":
         emit("export", result)
     if name == "update_plan":
