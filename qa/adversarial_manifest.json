@@ -411,13 +411,13 @@
   },
   "H4": {
     "category": "executor/security",
-    "test": "qa/test_security.py",
-    "status": "partial"
+    "test": "qa/test_executor_limits.py",
+    "status": "automated"
   },
   "H5": {
     "category": "executor/security",
-    "test": "qa/test_security.py",
-    "status": "partial"
+    "test": "qa/test_executor_limits.py",
+    "status": "automated"
   },
   "H6": {
     "category": "executor/security",
@@ -426,13 +426,13 @@
   },
   "H7": {
     "category": "executor/security",
-    "test": "qa/test_security.py",
-    "status": "partial"
+    "test": "qa/test_executor_limits.py",
+    "status": "automated"
   },
   "H8": {
     "category": "executor/security",
-    "test": "qa/test_security.py",
-    "status": "partial"
+    "test": "qa/test_executor_limits.py",
+    "status": "automated"
   },
   "H9": {
     "category": "executor/security",

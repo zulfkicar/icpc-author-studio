@@ -93,18 +93,19 @@ estimated cost: $0.001463
 
 ```text
 python qa/test_context_500k.py    -> 500K CONTEXT TEST PASSED
-python qa/test_adversarial_manifest.py -> 146 rows mapped; 117 automated, 29 partial
+python qa/test_adversarial_manifest.py -> 146 rows mapped; 121 automated, 25 partial
 python qa/test_accessibility.py   -> ACCESSIBILITY AUDIT PASSED
 qa/cdp_workflow.ps1               -> followPaused=true, hunkRows=1, historyRows=9, mentionVisible=true
 python qa/probe_long_context.py   -> input_tokens=500045, output_tokens=19, text=long-ok
 docker exec ... qa/test_executor_security.py -> EXECUTOR SECURITY TESTS PASSED
+docker exec ... qa/test_executor_limits.py   -> EXECUTOR LIMIT TESTS PASSED (key/network/output/memory)
 ```
 
 ## Remaining gaps
 
 - A true hypervisor VM is still unavailable; the executor is a hardened container.
 - Live DOMjudge import/export is intentionally not tested; no instance exists.
-- All 146 adversarial rows are mapped in `qa/adversarial_manifest.json`: 117 automated, 29 partial. Partial rows are limited to container/network/VM checks, remaining UI matrix rows and provider failure modes.
+- All 146 adversarial rows are mapped in `qa/adversarial_manifest.json`: 121 automated, 25 partial. The executor now runs in a per-run workspace copy and tests prove no provider key, blocked external network, output caps and memory rejection. Remaining partial rows are process/PID cleanup, absolute-path cross-workspace isolation, UI race/recovery rows, provider failure modes and disk/clock chaos.
 - Real 500k long-context provider testing passed: 500,045 input tokens and `long-ok`; the opt-in probe is `qa/probe_long_context.py`. Synthetic 500k compaction passes in `qa/test_context_500k.py`.
 - Follow/pause scrolling is implemented and the CDP workflow reports `followPaused=true`. Static WCAG audit (`qa/test_accessibility.py`) passes; a full browser-based keyboard matrix remains partial.
 - Hunk UI and history/snapshot panel APIs are wired; the CDP workflow reports `hunkRows=1`, `historyRows=9`, `followPaused=true`, and the @-mention menu visible.

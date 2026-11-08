@@ -66,7 +66,7 @@ def _safe_env(value) -> dict:
     return env
 
 
-def _limits(timeout: float):
+def _limits(timeout: float, memory_bytes: int | None = None):
     cpu = max(1, int(timeout) + 2)
 
     def apply() -> None:
@@ -74,6 +74,8 @@ def _limits(timeout: float):
         os.umask(0o077)
         resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu + 1))
         resource.setrlimit(resource.RLIMIT_FSIZE, (256 * 1024 * 1024, 256 * 1024 * 1024))
+        if memory_bytes:
+            resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
 
     return apply
 
@@ -93,7 +95,7 @@ def run(body: dict) -> dict:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=env,
-        preexec_fn=_limits(timeout),
+        preexec_fn=_limits(timeout, 2 * 1024 * 1024 * 1024 if measure else None),
     )
     peak = 0
     stop = threading.Event()
