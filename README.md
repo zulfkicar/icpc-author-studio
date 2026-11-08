@@ -35,19 +35,21 @@ LangGraph (`langgraph` + `langchain-openai`) with the OpenAI-compatible provider
 The default compose stack has three services:
 
 - `author-agent` ? UI, agent, checkpoints and provider key.
-- `icpc-author-executor` ? bwrap-isolated compiler/runner worker (the
-  deterministic verifier authority).
-- `icpc-author-isolate` ? real Isolate 1.8.1 worker for quick runs. It has g++, the JDK
-  and TeX Live, **no provider key**, **no host port**, **no external network**,
-  a read-only root, dropped capabilities and container CPU/memory/PID limits.
-  It sees only `./workspaces`; each command runs under a bwrap mount namespace
-  with only the per-run workspace copy and read-only runtime paths.
-  `POST /isolate/run` exposes an Isolate-style contract (`time`, `wallTime`,
-  `memory`, `processes`, `stack`, `fsize`, `openFiles`) and Isolate-style
-  metadata (`status`, `exit`, `time`, `wallTime`, `maxRssKb`, `message`).
+- `icpc-author-executor` ? bwrap-isolated worker for statement PDF/LaTeX and
+  fallback execution.
+- `icpc-author-isolate` ? real Isolate 1.8.1 worker; the default executor for
+  the deterministic verifier, checkers, interactors and quick runs. It has g++,
+  the JDK and Python, **no provider key**, **no external network**, and runs
+  one Isolate box per request with CPU/wall/memory/file-size/stack/process
+  limits, a read-only root and only the selected workspace writable. It is
+  privileged and needs `seccomp=unconfined` for Isolate's mount namespace.
+  `POST /run` is the executor-compatible argv/workspace API; `POST /interact`
+  runs the two-process interaction harness; `POST /isolate/run` is the
+  source-run API used by the Run panel.
 
-The app routes every compile/run/verify command to the executor; it does not
-execute model-written code itself.
+The app routes every compile/run/verify command to the Isolate worker; only the
+statement PDF/LaTeX step goes to the bwrap executor. It never executes
+model-written code itself.
 
 ```powershell
 docker compose up --build -d
@@ -115,11 +117,11 @@ its hostname prints the executor container ID, not the app container ID. The
 full deterministic verifier (compiler, validator, reference, negative and
 statement PDF) runs through the executor.
 
-Each run is copied into a private temporary workspace and executed under bwrap
-with a read-only system root, only `/work` writable, `--unshare-all`,
-`--cap-drop ALL`, and CPU / wall / address-space / stack / file-size /
-open-file / process limits. `/app/workspaces` is hidden, so an absolute
-cross-workspace read fails. `qa/test_isolate_contract.py` exercises these
+The default Isolate worker copies the selected workspace into an Isolate box,
+rewrites workspace paths to `/box/...`, and runs the command under Isolate with
+CPU / wall / address-space / stack / file-size / process limits and no network.
+The bwrap fallback still applies a read-only root, `/work`-only writes,
+`--unshare-all`, `--cap-drop ALL` and the same limits. `qa/test_isolate_contract.py` exercises these
 properties, including a process cap applied inside the user namespace.
 
 ### Live Judge0 and Isolate backends

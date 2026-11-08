@@ -24,19 +24,32 @@ isolate-worker:
 
 ```text
 GET  /health
-POST /isolate/run
-  {"source": "...", "language": "cpp", "stdin": "...", "time": 2,
-   "wallTime": 5, "memoryMb": 256, "fsizeMb": 4}
+POST /isolate/run     # source-run API
+POST /run             # executor-compatible argv/workspace API
+POST /interact        # two-process interactive harness
 
-  -> {"ok": true, "status": "OK", "exit": 0, "stdout": "...",
-      "stderr": "", "compileOutput": "", "time": 0.003,
-      "wallTime": 0.005, "memory": 3128,
-      "isolate": "The process isolator 1.8.1"}
+POST /run
+  {"argv": ["g++", "-O2", "-o", "/app/workspaces/p/.agent/build/a.exe", "a.cpp"],
+   "cwd": "/app/workspaces/p", "stdin": "", "timeout": 10, "measure": true}
+  -> {"ok": true, "returncode": 0, "stdout": "...", "stderr": "",
+      "ms": 12, "peakRssBytes": 3200000}
 ```
+
+The worker copies the selected workspace into an Isolate box, rewrites workspace
+paths to `/box/...`, runs the command under Isolate, then syncs compiled
+artifacts and test outputs back. `/interact` runs a small Python harness inside
+the box that connects the validator and solution pipes, records the transcript,
+and enforces the wall-clock timeout.
 
 The app calls it through `isolate_client.py` and the Run-panel **Isolate**
 button (`/api/workspaces/<slug>/isolate/run`). The app container is on the
 internal `sandbox` network, so the worker has no external network.
+
+The default `AUTHOR_AGENT_EXECUTOR_URL` is `http://isolate-worker:8790`, so the
+same worker receives the verifier's `argv`/workspace runs on `/run` and the
+interactive harness on `/interact`. The bwrap executor remains at
+`AUTHOR_AGENT_BWRAP_EXECUTOR_URL` for the LaTeX statement PDF and as a
+fallback.
 
 ## Limits and isolation
 
@@ -78,6 +91,16 @@ POST /api/workspaces/sum-test/isolate/run
      verificationAuthority=false
 ```
 
-The deterministic verifier still uses the bwrap executor as its authority. The
-Isolate worker is the real execution backend for quick runs and is the drop-in
-path for a future verifier backend that needs Isolate's cgroup/namespace model.
+Verifier evidence through the Isolate `/run` and `/interact` endpoints:
+
+```text
+standard sum-test -> status=verified
+testlib checker/interactor -> TESTLIB FIXTURE TESTS PASSED
+interactive transcript -> INTERACTIVE TESTS PASSED
+executor limits -> EXECUTOR LIMIT TESTS PASSED
+```
+
+The app's default `AUTHOR_AGENT_EXECUTOR_URL` points at the Isolate worker, so the
+deterministic verifier, checkers, interactors and quick runs execute through
+Isolate. The bwrap executor remains the `AUTHOR_AGENT_BWRAP_EXECUTOR_URL` target
+for the statement PDF/LaTeX step (it has TeX Live) and as a fallback.

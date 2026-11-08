@@ -14,7 +14,8 @@ services:
       AUTHOR_AGENT_API_KEY: "${AUTHOR_AGENT_API_KEY:-}"
       AUTHOR_AGENT_BASE_URL: "${AUTHOR_AGENT_BASE_URL:-}"
       AUTHOR_AGENT_MODEL: "${AUTHOR_AGENT_MODEL:-}"
-      AUTHOR_AGENT_EXECUTOR_URL: "http://executor:8787"
+      AUTHOR_AGENT_EXECUTOR_URL: "http://isolate-worker:8790"
+      AUTHOR_AGENT_BWRAP_EXECUTOR_URL: "http://executor:8787"
       AUTHOR_AGENT_EXECUTOR_TOKEN: "${AUTHOR_AGENT_EXECUTOR_TOKEN:-}"
       AUTHOR_AGENT_REQUIRE_EXECUTOR: "1"
       AUTHOR_AGENT_ISOLATE_URL: "http://isolate-worker:8790"
@@ -30,6 +31,8 @@ services:
       - no-new-privileges:true
     depends_on:
       executor:
+        condition: service_healthy
+      isolate-worker:
         condition: service_healthy
     networks:
       - default
@@ -93,9 +96,12 @@ services:
       - "127.0.0.1:8790:8790"
     environment:
       AUTHOR_AGENT_ISOLATE_TOKEN: "${AUTHOR_AGENT_ISOLATE_TOKEN:-}"
+      AUTHOR_AGENT_WORKSPACES: "/app/workspaces"
       PYTHONUNBUFFERED: "1"
     volumes:
       - ./isolate_worker.py:/app/isolate_worker.py:ro
+      - ./templates:/app/templates:ro
+      - ./workspaces:/app/workspaces
       - isolate-box:/var/local/lib/isolate
     tmpfs:
       - /tmp:rw,exec,nosuid,nodev,size=512m

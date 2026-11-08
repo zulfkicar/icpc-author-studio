@@ -38,15 +38,19 @@ Isolate backend: [`ISOLATE-BACKEND.md`](ISOLATE-BACKEND.md)
 ### Live execution workers
 
 - **Real Isolate 1.8.1 worker** (`isolate-worker`) runs in the default compose
-  stack. It compiles/runs C++/C/Python/Java inside Isolate per request, with
-  CPU, wall, memory, file-size, stack and process limits, read-only root and no
-  network. The app calls it at `/api/workspaces/<slug>/isolate/run`; the Run
-  panel has an **Isolate** button. See [`ISOLATE-BACKEND.md`](ISOLATE-BACKEND.md).
+  stack and is the default `AUTHOR_AGENT_EXECUTOR_URL`. It compiles/runs
+  C++/C/Python/Java inside Isolate per request, with CPU, wall, memory,
+  file-size, stack and process limits, read-only root and no network. Its
+  `/run` and `/interact` endpoints carry the deterministic verifier, checkers,
+  interactors and solutions. The app also calls `/api/workspaces/<slug>/isolate/run`
+  from the Run panel's **Isolate** button. See [`ISOLATE-BACKEND.md`](ISOLATE-BACKEND.md).
 - **Live Judge0 CE 1.13.1 stack** (server, worker, PostgreSQL, Redis) runs from
   `docker-compose.judge0.yml`. The app calls it at
   `/api/workspaces/<slug>/judge0/run`; the Run panel has a **Judge0** button.
   See [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md).
-- The bwrap worker still exposes an Isolate-style `POST /isolate/run` contract:
+- The bwrap worker remains reachable at `AUTHOR_AGENT_BWRAP_EXECUTOR_URL` and
+exposes an Isolate-style `POST /isolate/run` contract for the statement PDF and
+fallback:
   `time`, `wallTime`, `memory`, `processes`, `stack`, `fsize`, `openFiles` and
   returns `status`, `exit`, `time`, `wallTime`, `maxRssKb`, `message`.
 - Every run is copied into a private temporary workspace.
@@ -126,8 +130,8 @@ Isolate backend: [`ISOLATE-BACKEND.md`](ISOLATE-BACKEND.md)
   soak.
 - `eval/run_eval.py` real-provider `sum` and `claim` fixtures verified; see
   [`EVAL-RESULTS.md`](EVAL-RESULTS.md).
-- `judge0_adapter.py` and `isolate_client.py` are live quick-run backends;
-  neither is the verification authority. Live route evidence:
+- `judge0_adapter.py` is a live quick-run backend; the Isolate worker is the
+  default verifier executor. Judge0 is not the verification authority. Live route evidence:
   Judge0 `ok=true, stdout=5, status=Accepted`; Isolate `ok=true, stdout=5,
   status=OK, isolate=1.8.1`.
 - MCP is enabled by default with `.` root; live probes:
@@ -190,7 +194,7 @@ container soak
   runs: 20, median 371.6 ms, p95 479.2 ms
   turns: 8, median 411.6 ms, p95 652.3 ms
 
-standard package through bwrap
+standard package through Isolate
   status=verified, spec 18/18, tests 6 (1 sample, 5 secret)
 ```
 
@@ -221,10 +225,9 @@ sum:   verified, 29 tests, 3 negatives, 1,325,603 input tokens
   Judge0 release with cgroup v2 support would remove that workaround.
 - **Manual screen-reader traversal:** axe (0 violations) and keyboard/dialog
   checks pass; a human screen-reader session is still a manual step.
-- **Verifier backend:** the deterministic verifier still executes through the
-  bwrap worker. Judge0 and the real Isolate worker are live quick-run backends;
-  moving full checker/interactor orchestration into Isolate is the next backend
-  step.
+- **Verifier backend:** the deterministic verifier, checkers and interactors
+  run through Isolate; only the LaTeX statement PDF uses the bwrap executor,
+  because that image carries TeX Live.
 - **Adversarial depth:** all 146 rows have automated owners, but some use
   deterministic contract tests rather than live third-party fault injection
   (for example an actual disk-full filesystem rather than `RLIMIT_FSIZE`, or a

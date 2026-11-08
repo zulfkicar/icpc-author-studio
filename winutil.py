@@ -102,6 +102,10 @@ def _executor_url() -> str:
     return (os.environ.get("AUTHOR_AGENT_EXECUTOR_URL") or "").rstrip("/")
 
 
+def _bwrap_url() -> str:
+    return (os.environ.get("AUTHOR_AGENT_BWRAP_EXECUTOR_URL") or os.environ.get("AUTHOR_AGENT_EXECUTOR_URL") or "").rstrip("/")
+
+
 def _executor_headers() -> dict:
     token = os.environ.get("AUTHOR_AGENT_EXECUTOR_TOKEN") or ""
     return {"X-Executor-Token": token} if token else {}
@@ -112,8 +116,8 @@ def _safe_env(env: dict | None) -> dict:
     return {key: value for key, value in (env or {}).items() if key in allowed and isinstance(value, str)}
 
 
-def _remote_run(argv: list[str], cwd, data: bytes, timeout: float, env: dict | None, measure: bool) -> dict:
-    url = _executor_url()
+def _remote_run(argv: list[str], cwd, data: bytes, timeout: float, env: dict | None, measure: bool, executor: str = "default") -> dict:
+    url = _bwrap_url() if executor == "bwrap" else _executor_url()
     if not url:
         raise RuntimeError("Code execution requires the isolated executor; set AUTHOR_AGENT_EXECUTOR_URL")
     body = json.dumps({
@@ -165,8 +169,8 @@ def isolate_run(
     open_files: int = 256,
     env: dict | None = None,
 ) -> dict:
-    """Call the executor's Isolate-compatible endpoint."""
-    url = _executor_url()
+    """Call the bwrap executor's Isolate-compatible endpoint."""
+    url = _bwrap_url()
     if not url:
         raise RuntimeError("Isolate execution requires the isolated executor")
     body = json.dumps({
@@ -255,10 +259,10 @@ def _require_local_or_executor() -> bool:
     return False
 
 
-def run_captured(argv: list[str], cwd, data: bytes = b"", timeout: float = 10.0, env: dict | None = None) -> dict:
+def run_captured(argv: list[str], cwd, data: bytes = b"", timeout: float = 10.0, env: dict | None = None, executor: str = "default") -> dict:
     """Run a bounded command and always reap its process tree on timeout."""
     if _require_local_or_executor():
-        return _remote_run(argv, cwd, data, timeout, env, measure=False)
+        return _remote_run(argv, cwd, data, timeout, env, measure=False, executor=executor)
     started = time.perf_counter()
     process = subprocess.Popen(
         argv,
@@ -301,10 +305,10 @@ def run_captured(argv: list[str], cwd, data: bytes = b"", timeout: float = 10.0,
     }
 
 
-def run_measured(argv: list[str], cwd, data: bytes = b"", timeout: float = 30.0, env: dict | None = None) -> dict:
+def run_measured(argv: list[str], cwd, data: bytes = b"", timeout: float = 30.0, env: dict | None = None, executor: str = "default") -> dict:
     """Like run_captured, but samples peak RSS for the process tree."""
     if _require_local_or_executor():
-        return _remote_run(argv, cwd, data, timeout, env, measure=True)
+        return _remote_run(argv, cwd, data, timeout, env, measure=True, executor=executor)
     import threading
     import psutil
 

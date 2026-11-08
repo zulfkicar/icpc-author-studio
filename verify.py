@@ -37,11 +37,11 @@ def _which(name: str) -> str | None:
     return shutil.which(name)
 
 
-def _run(argv: list[str], cwd: pathlib.Path, data: bytes = b"", timeout: float = 10.0, env: dict | None = None) -> dict:
+def _run(argv: list[str], cwd: pathlib.Path, data: bytes = b"", timeout: float = 10.0, env: dict | None = None, executor: str = "default") -> dict:
     run_env = winutil.python_env()
     if env:
         run_env.update(env)
-    result = winutil.run_captured(argv, cwd, data=data, timeout=timeout, env=run_env)
+    result = winutil.run_captured(argv, cwd, data=data, timeout=timeout, env=run_env, executor=executor)
     result["stdout"] = result["stdout"][:OUTPUT_CAP]
     result["stderr"] = result["stderr"][:OUTPUT_CAP]
     return result
@@ -258,14 +258,14 @@ def _statement(slug: str) -> dict:
     if not pdflatex:
         return {"status": "skip", "detail": "pdflatex was not found; statement compile was not checked"}
     env = {"TEXINPUTS": str(TEMPLATES) + os.pathsep + os.environ.get("TEXINPUTS", "")}
-    first = _run([pdflatex, "-interaction=nonstopmode", "-halt-on-error", "problem.en.tex"], cwd=tex.parent, timeout=180, env=env)
+    first = _run([pdflatex, "-interaction=nonstopmode", "-halt-on-error", "problem.en.tex"], cwd=tex.parent, timeout=180, env=env, executor="bwrap")
     if not first["ok"] or first["returncode"] != 0:
         tail = first["stderr"].decode("utf-8", "replace")[-3000:]
         log = tex.parent / "problem.en.log"
         if log.is_file():
             tail = log.read_text("utf-8", errors="replace")[-3000:]
         return {"status": "fail", "detail": "pdflatex failed\n" + tail}
-    second = _run([pdflatex, "-interaction=nonstopmode", "-halt-on-error", "problem.en.tex"], cwd=tex.parent, timeout=180, env=env)
+    second = _run([pdflatex, "-interaction=nonstopmode", "-halt-on-error", "problem.en.tex"], cwd=tex.parent, timeout=180, env=env, executor="bwrap")
     pdf = tex.parent / "problem.en.pdf"
     if not second["ok"] or second["returncode"] != 0 or not pdf.is_file():
         return {"status": "fail", "detail": "second pdflatex pass failed"}

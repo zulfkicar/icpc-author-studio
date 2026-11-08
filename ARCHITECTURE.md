@@ -292,7 +292,8 @@ file-size, open-file and process limits; `POST /isolate/run` exposes the same
 controls with Isolate-style names.
 
 A separate **real Isolate** worker (`isolate-worker`, `isolate_worker.py`) runs
-in the default compose stack on the internal sandbox network. It uses Isolate
+in the default compose stack on the internal sandbox network and is the default
+executor for the deterministic verifier, checkers, interactors and quick runs. It uses Isolate
 1.8.1 from the Judge0 CE image, creates one box per request, applies CPU, wall,
 memory, file-size, stack and process limits, and exposes
 `POST /isolate/run` for quick runs. It runs privileged/UID 1000 with
@@ -316,11 +317,12 @@ The app is packaged as a service stack:
   unless-stopped`, UID 1000.
 - `executor` (`Dockerfile.executor`): Python plus g++, the JDK, latexmk and TeX
   Live. Read-only root, no host port, no external network, no `.author-agent`
-  mount, only `./workspaces`. The container needs `SYS_ADMIN` and
-  `seccomp=unconfined` for bwrap; the sandboxed child drops capabilities.
+  mount, only `./workspaces`. Used for statement PDF/LaTeX and fallback.
 - `isolate-worker`: Judge0 CE image used as a real Isolate 1.8.1 worker. It is
-  privileged, runs as UID 1000, mounts only the `isolate-box` volume and the
-  worker script, and sits on the internal `sandbox` network.
+  privileged, runs as UID 1000, mounts the workspace, templates and worker
+  script, and sits on the internal `sandbox` network. The app's default
+  `AUTHOR_AGENT_EXECUTOR_URL` points here; `AUTHOR_AGENT_BWRAP_EXECUTOR_URL`
+  points at the bwrap executor for pdflatex.
 - `docker-compose.judge0.yml`: live Judge0 CE 1.13.1 server/worker plus
   PostgreSQL 13 and Redis 6. The app uses it only for quick runs; the
   deterministic verifier remains the bwrap executor.
