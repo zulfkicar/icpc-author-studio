@@ -45,6 +45,23 @@ docker compose down
 After the first build, `docker compose up -d` and `docker compose down` are
 enough. Use `--build` again after changing source.
 
+### Windows / WSL reliability
+
+On this machine Docker runs inside the WSL `Ubuntu` distro. WSL shuts the VM
+down when idle, which also stops `dockerd` and the container. Use the wrapper
+scripts to keep the VM alive while the app is up:
+
+```powershell
+.\scripts\docker-up.ps1
+.\scripts\docker-down.ps1
+```
+
+`docker-up.ps1` starts a hidden WSL keepalive, ensures Docker is running, runs
+`docker compose up -d --build`, and waits for the health endpoint.
+`docker-down.ps1` runs compose down and stops the keepalive. Direct
+`docker compose up` / `down` still work while the keepalive is running. Use
+`-Distro <name>` if your WSL distro is not `Ubuntu`.
+
 By default the container bind-mounts `./workspaces` and `./.author-agent`, so it
 sees your existing problems, chats, reports and provider key. `docker compose
 down` leaves them untouched. On Linux hosts, make those directories writable by

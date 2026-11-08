@@ -19,6 +19,7 @@ const state = {
   activeTab: "plan",
   activeSide: "chats",
   selectedChange: null,
+  pendingMessage: null,
   streaming: { assistantEl: null, assistantText: "", reasoningEl: null, reasoningText: "" },
 };
 
@@ -32,13 +33,27 @@ function toast(message, isError = false) {
   toast.timer = setTimeout(() => { el.className = "toast"; }, 3600);
 }
 
+function setConnection(online) {
+  const dot = $("connection-dot");
+  if (!dot) return;
+  dot.className = "conn-dot " + (online ? "online" : "offline");
+  dot.title = online ? "Connected to the author agent" : "Cannot reach the author agent";
+}
+
 async function api(path, options = {}) {
   const init = { method: options.method || "GET", headers: {} };
   if (options.body !== undefined) {
     init.headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(options.body);
   }
-  const response = await fetch(path, init);
+  let response;
+  try {
+    response = await fetch(path, init);
+  } catch {
+    setConnection(false);
+    throw new Error("Cannot reach the author agent server. Is the container running?");
+  }
+  setConnection(true);
   let payload = null;
   try { payload = await response.json(); } catch { payload = null; }
   if (!response.ok) throw new Error((payload && payload.error) || `Request failed (${response.status})`);
@@ -123,6 +138,7 @@ function addMessage(role, text) {
   wrap.appendChild(bubble);
   $("messages").appendChild(wrap);
   scrollMessages();
+  return wrap;
 }
 
 function addEventCard(node) {
@@ -937,7 +953,7 @@ function processJobEvents(job) {
       addEventCard(node);
       $("agent-state").textContent = "stopping…";
     } else if (event.kind === "report") {
-      renderReport(data);
+      if (job.state !== "running") renderReport(data);
     } else if (event.kind === "export") {
       toast(`Exported ${data.files || 0} files`);
       window.location.href = `/api/workspaces/${state.slug}/download`;
@@ -976,6 +992,9 @@ function pollJob(jobId, onDone) {
       else renderChatList();
       if (wasCancelled) toast("Stopped");
       if (onDone) await onDone(job);
+      const pending = state.pendingMessage;
+      state.pendingMessage = null;
+      if (pending && !state.jobId) await sendMessage(pending);
     } catch (error) {
       $("agent-state").textContent = "";
       $("send-btn").disabled = false;
@@ -989,23 +1008,30 @@ function pollJob(jobId, onDone) {
 
 async function sendMessage(override) {
   if (!state.slug) { toast("Create or select a problem first", true); return; }
-  if (state.jobId) { toast("Wait for the current turn to finish", true); return; }
   const composer = $("composer");
   const message = (override ?? composer.value).trim();
   if (!message) return;
-  if (!state.chatId) {
-    await loadChats();
-    if (!state.chatId) await newChat();
+  if (state.jobId) {
+    state.pendingMessage = message;
+    if (!override) composer.value = "";
+    toast("Queued; it will send when the current job finishes");
+    return;
   }
-  if (!state.chatId) { toast("Could not create a chat", true); return; }
-  if (!override) composer.value = "";
-  addMessage("user", message);
-  const chat = state.chats.find((c) => c.id === state.chatId);
-  if (chat && (!chat.title || chat.title === "New chat")) {
-    chat.title = truncate(message, 70);
-    renderChatList();
-  }
+  let userMessage = null;
   try {
+    if (!state.chatId) {
+      await loadChats();
+      if (!state.chatId) await newChat();
+    }
+    if (!state.chatId) throw new Error("Could not create a chat");
+    if (!override) composer.value = "";
+    userMessage = addMessage("user", message);
+    const chat = state.chats.find((c) => c.id === state.chatId);
+    if (chat && (!chat.title || chat.title === "New chat")) {
+      chat.title = truncate(message, 70);
+      renderChatList();
+    }
+    $("agent-state").textContent = "sending…";
     const job = await api(`/api/workspaces/${state.slug}/chat`, {
       method: "POST",
       body: { message, chatId: state.chatId },
@@ -1019,8 +1045,12 @@ async function sendMessage(override) {
     renderChatList();
     pollJob(job.id);
   } catch (error) {
-    toast(error.message, true);
+    if (userMessage && userMessage.parentNode) userMessage.remove();
+    if (!override) composer.value = message;
+    $("agent-state").textContent = "";
     $("send-btn").disabled = false;
+    toast(error.message, true);
+    renderErrorEvent({ error: "Could not send message: " + error.message });
   }
 }
 
