@@ -1271,7 +1271,7 @@ async function openChangeDiff(changeId) {
     }
     body.appendChild(pre);
     const hunks = hunkData.hunks || [];
-    if (hunks.length && hunks.length > 1) {
+    if (hunks.length) {
       const tools = document.createElement("div");
       tools.className = "hunk-tools";
       const title = document.createElement("div");

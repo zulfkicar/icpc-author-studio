@@ -1,0 +1,732 @@
+{
+  "A1": {
+    "category": "agent",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "A2": {
+    "category": "agent",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "A3": {
+    "category": "agent",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "A4": {
+    "category": "agent",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "A5": {
+    "category": "agent",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "A6": {
+    "category": "agent",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "A7": {
+    "category": "agent",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "A8": {
+    "category": "agent",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "A9": {
+    "category": "agent",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "A10": {
+    "category": "agent",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "B1": {
+    "category": "context",
+    "test": "qa/test_context_500k.py",
+    "status": "automated"
+  },
+  "B2": {
+    "category": "context",
+    "test": "qa/test_context_500k.py",
+    "status": "automated"
+  },
+  "B3": {
+    "category": "context",
+    "test": "qa/test_context_500k.py",
+    "status": "automated"
+  },
+  "B4": {
+    "category": "context",
+    "test": "qa/test_context_500k.py",
+    "status": "automated"
+  },
+  "B5": {
+    "category": "context",
+    "test": "qa/test_context_500k.py",
+    "status": "automated"
+  },
+  "B6": {
+    "category": "context",
+    "test": "qa/test_context_500k.py",
+    "status": "automated"
+  },
+  "B7": {
+    "category": "context",
+    "test": "qa/test_context_500k.py",
+    "status": "automated"
+  },
+  "B8": {
+    "category": "context",
+    "test": "qa/test_context_500k.py",
+    "status": "automated"
+  },
+  "B9": {
+    "category": "context",
+    "test": "qa/test_context_500k.py",
+    "status": "automated"
+  },
+  "B10": {
+    "category": "context",
+    "test": "qa/test_context_500k.py",
+    "status": "automated"
+  },
+  "C1": {
+    "category": "clarification/approval",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "C2": {
+    "category": "clarification/approval",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "C3": {
+    "category": "clarification/approval",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "C4": {
+    "category": "clarification/approval",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "C5": {
+    "category": "clarification/approval",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "C6": {
+    "category": "clarification/approval",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "C7": {
+    "category": "clarification/approval",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "C8": {
+    "category": "clarification/approval",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "C9": {
+    "category": "clarification/approval",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "C10": {
+    "category": "clarification/approval",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "D1": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D2": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D3": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D4": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D5": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D6": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D7": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D8": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D9": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D10": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D11": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D12": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D13": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D14": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "D15": {
+    "category": "package/validator",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E1": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E2": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E3": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E4": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E5": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E6": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E7": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E8": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E9": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E10": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E11": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E12": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E13": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "E14": {
+    "category": "checker",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "F1": {
+    "category": "interactive",
+    "test": "qa/test_interactive.py",
+    "status": "automated"
+  },
+  "F2": {
+    "category": "interactive",
+    "test": "qa/test_interactive.py",
+    "status": "automated"
+  },
+  "F3": {
+    "category": "interactive",
+    "test": "qa/test_interactive.py",
+    "status": "automated"
+  },
+  "F4": {
+    "category": "interactive",
+    "test": "qa/test_interactive.py",
+    "status": "automated"
+  },
+  "F5": {
+    "category": "interactive",
+    "test": "qa/test_interactive.py",
+    "status": "automated"
+  },
+  "F6": {
+    "category": "interactive",
+    "test": "qa/test_interactive.py",
+    "status": "automated"
+  },
+  "F7": {
+    "category": "interactive",
+    "test": "qa/test_interactive.py",
+    "status": "automated"
+  },
+  "F8": {
+    "category": "interactive",
+    "test": "qa/test_interactive.py",
+    "status": "automated"
+  },
+  "F9": {
+    "category": "interactive",
+    "test": "qa/test_interactive.py",
+    "status": "automated"
+  },
+  "F10": {
+    "category": "interactive",
+    "test": "qa/test_interactive.py",
+    "status": "automated"
+  },
+  "F11": {
+    "category": "interactive",
+    "test": "qa/test_interactive.py",
+    "status": "automated"
+  },
+  "F12": {
+    "category": "interactive",
+    "test": "qa/test_interactive.py",
+    "status": "automated"
+  },
+  "G1": {
+    "category": "groups/float",
+    "test": "qa/test_groups_float.py",
+    "status": "automated"
+  },
+  "G2": {
+    "category": "groups/float",
+    "test": "qa/test_groups_float.py",
+    "status": "automated"
+  },
+  "G3": {
+    "category": "groups/float",
+    "test": "qa/test_groups_float.py",
+    "status": "automated"
+  },
+  "G4": {
+    "category": "groups/float",
+    "test": "qa/test_groups_float.py",
+    "status": "automated"
+  },
+  "G5": {
+    "category": "groups/float",
+    "test": "qa/test_groups_float.py",
+    "status": "automated"
+  },
+  "G6": {
+    "category": "groups/float",
+    "test": "qa/test_groups_float.py",
+    "status": "automated"
+  },
+  "G7": {
+    "category": "groups/float",
+    "test": "qa/test_groups_float.py",
+    "status": "automated"
+  },
+  "G8": {
+    "category": "groups/float",
+    "test": "qa/test_groups_float.py",
+    "status": "automated"
+  },
+  "H1": {
+    "category": "executor/security",
+    "test": "qa/test_executor_security.py",
+    "status": "automated"
+  },
+  "H2": {
+    "category": "executor/security",
+    "test": "qa/test_executor_security.py",
+    "status": "automated"
+  },
+  "H3": {
+    "category": "executor/security",
+    "test": "qa/test_executor_security.py",
+    "status": "automated"
+  },
+  "H4": {
+    "category": "executor/security",
+    "test": "qa/test_security.py",
+    "status": "partial"
+  },
+  "H5": {
+    "category": "executor/security",
+    "test": "qa/test_security.py",
+    "status": "partial"
+  },
+  "H6": {
+    "category": "executor/security",
+    "test": "qa/test_security.py",
+    "status": "partial"
+  },
+  "H7": {
+    "category": "executor/security",
+    "test": "qa/test_security.py",
+    "status": "partial"
+  },
+  "H8": {
+    "category": "executor/security",
+    "test": "qa/test_security.py",
+    "status": "partial"
+  },
+  "H9": {
+    "category": "executor/security",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "H10": {
+    "category": "executor/security",
+    "test": "qa/test_security.py",
+    "status": "partial"
+  },
+  "H11": {
+    "category": "executor/security",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "H12": {
+    "category": "executor/security",
+    "test": "qa/test_security.py",
+    "status": "partial"
+  },
+  "H13": {
+    "category": "executor/security",
+    "test": "qa/test_security.py",
+    "status": "automated"
+  },
+  "H14": {
+    "category": "executor/security",
+    "test": "qa/test_verification_modes.py",
+    "status": "automated"
+  },
+  "I1": {
+    "category": "persistence",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "I2": {
+    "category": "persistence",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "I3": {
+    "category": "persistence",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "I4": {
+    "category": "persistence",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "I5": {
+    "category": "persistence",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "I6": {
+    "category": "persistence",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "I7": {
+    "category": "persistence",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "I8": {
+    "category": "persistence",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "I9": {
+    "category": "persistence",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "I10": {
+    "category": "persistence",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "J1": {
+    "category": "ui",
+    "test": "qa/cdp_workflow.ps1",
+    "status": "partial"
+  },
+  "J2": {
+    "category": "ui",
+    "test": "qa/cdp_workflow.ps1",
+    "status": "automated"
+  },
+  "J3": {
+    "category": "ui",
+    "test": "qa/cdp_workflow.ps1",
+    "status": "partial"
+  },
+  "J4": {
+    "category": "ui",
+    "test": "qa/cdp_workflow.ps1",
+    "status": "partial"
+  },
+  "J5": {
+    "category": "ui",
+    "test": "qa/cdp_workflow.ps1",
+    "status": "partial"
+  },
+  "J6": {
+    "category": "ui",
+    "test": "qa/cdp_workflow.ps1",
+    "status": "partial"
+  },
+  "J7": {
+    "category": "ui",
+    "test": "qa/cdp_workflow.ps1",
+    "status": "partial"
+  },
+  "J8": {
+    "category": "ui",
+    "test": "qa/cdp_workflow.ps1",
+    "status": "partial"
+  },
+  "J9": {
+    "category": "ui",
+    "test": "qa/test_accessibility.py",
+    "status": "automated"
+  },
+  "J10": {
+    "category": "ui",
+    "test": "qa/cdp_workflow.ps1",
+    "status": "partial"
+  },
+  "J11": {
+    "category": "ui",
+    "test": "qa/test_accessibility.py",
+    "status": "automated"
+  },
+  "J12": {
+    "category": "ui",
+    "test": "qa/cdp_workflow.ps1",
+    "status": "partial"
+  },
+  "J13": {
+    "category": "ui",
+    "test": "qa/cdp_workflow.ps1",
+    "status": "partial"
+  },
+  "J14": {
+    "category": "ui",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "J15": {
+    "category": "ui",
+    "test": "qa/cdp_workflow.ps1",
+    "status": "partial"
+  },
+  "K1": {
+    "category": "provider",
+    "test": "qa/test_phase1.py",
+    "status": "partial"
+  },
+  "K2": {
+    "category": "provider",
+    "test": "qa/test_phase1.py",
+    "status": "partial"
+  },
+  "K3": {
+    "category": "provider",
+    "test": "qa/test_context_500k.py",
+    "status": "automated"
+  },
+  "K4": {
+    "category": "provider",
+    "test": "qa/test_phase1.py",
+    "status": "partial"
+  },
+  "K5": {
+    "category": "provider",
+    "test": "qa/test_phase1.py",
+    "status": "partial"
+  },
+  "K6": {
+    "category": "provider",
+    "test": "qa/test_phase1.py",
+    "status": "partial"
+  },
+  "K7": {
+    "category": "provider",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "K8": {
+    "category": "provider",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "K9": {
+    "category": "provider",
+    "test": "qa/test_phase1.py",
+    "status": "automated"
+  },
+  "K10": {
+    "category": "provider",
+    "test": "qa/test_phase1.py",
+    "status": "partial"
+  },
+  "L1": {
+    "category": "concurrency/chaos",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "L2": {
+    "category": "concurrency/chaos",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "L3": {
+    "category": "concurrency/chaos",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "L4": {
+    "category": "concurrency/chaos",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "L5": {
+    "category": "concurrency/chaos",
+    "test": "qa/stress_agent.py",
+    "status": "partial"
+  },
+  "L6": {
+    "category": "concurrency/chaos",
+    "test": "qa/stress_agent.py",
+    "status": "partial"
+  },
+  "L7": {
+    "category": "concurrency/chaos",
+    "test": "qa/stress_agent.py",
+    "status": "automated"
+  },
+  "L8": {
+    "category": "concurrency/chaos",
+    "test": "qa/stress_agent.py",
+    "status": "partial"
+  },
+  "L9": {
+    "category": "concurrency/chaos",
+    "test": "qa/stress_agent.py",
+    "status": "partial"
+  },
+  "L10": {
+    "category": "concurrency/chaos",
+    "test": "qa/stress_agent.py",
+    "status": "partial"
+  },
+  "M1": {
+    "category": "mcp",
+    "test": "qa/test_mcp.py",
+    "status": "automated"
+  },
+  "M2": {
+    "category": "mcp",
+    "test": "qa/test_mcp.py",
+    "status": "automated"
+  },
+  "M3": {
+    "category": "mcp",
+    "test": "qa/test_mcp.py",
+    "status": "automated"
+  },
+  "M4": {
+    "category": "mcp",
+    "test": "qa/test_mcp.py",
+    "status": "automated"
+  },
+  "M5": {
+    "category": "mcp",
+    "test": "qa/test_mcp.py",
+    "status": "automated"
+  },
+  "M6": {
+    "category": "mcp",
+    "test": "qa/test_mcp.py",
+    "status": "automated"
+  },
+  "M7": {
+    "category": "mcp",
+    "test": "qa/test_mcp.py",
+    "status": "automated"
+  },
+  "M8": {
+    "category": "mcp",
+    "test": "qa/test_mcp.py",
+    "status": "automated"
+  }
+}

@@ -289,6 +289,10 @@ A change cannot be called complete unless:
 13. CI passes without a provider key.
 14. No secret in git diff.
 
+## 6.5 Automation status
+
+Every row is mapped in `qa/adversarial_manifest.json`. Current mapping: **117 automated, 29 partial**. Partial rows are limited to executor/network/VM checks, remaining UI matrix rows and provider failure modes; the manifest test fails if a row is unmapped or points at a missing test file.
+
 ## 7. Test implementation order
 
 1. Harness and fake model.

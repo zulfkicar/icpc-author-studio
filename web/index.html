@@ -185,7 +185,7 @@
   </section>
 </main>
 
-<dialog id="new-dialog">
+<dialog id="new-dialog" aria-label="New problem">
   <form method="dialog" id="new-form">
     <h2>New problem</h2>
     <p class="dialog-sub muted">Start from an idea. The agent will turn it into a verified DOMjudge package. Limits are measured from the reference after the tests are built.</p>
@@ -203,7 +203,7 @@
   </form>
 </dialog>
 
-<dialog id="settings-dialog">
+<dialog id="settings-dialog" aria-label="Provider settings">
   <form method="dialog" id="settings-form">
     <h2>Provider settings</h2>
     <p class="dialog-sub muted">DeepSeek or any OpenAI-compatible chat endpoint with tool calling. The key is stored only in <code>.author-agent/config.json</code> on this machine.</p>
@@ -246,7 +246,7 @@
   </form>
 </dialog>
 
-<dialog id="context-dialog">
+<dialog id="context-dialog" aria-label="Selected context">
   <form method="dialog" id="context-form">
     <h2>Selected context</h2>
     <p class="dialog-sub muted">Explicitly include these files in the agent's pinned context. Hidden test data is not listed here.</p>

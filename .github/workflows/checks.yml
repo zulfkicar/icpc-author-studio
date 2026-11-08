@@ -23,11 +23,18 @@ jobs:
             workspace.py verify.py config.py winutil.py executor_server.py schemas.py skill_registry.py prompt_loader.py package_model.py verification_modes.py mcp_server.py \
             eval/run_eval.py qa/stress_agent.py qa/test_phase1.py qa/test_skills.py \
             qa/test_verification_modes.py qa/test_interactive.py qa/test_hunks.py qa/test_snapshots.py qa/test_mcp.py \
-            qa/test_groups_float.py qa/test_security.py qa/test_stale_export.py qa/test_stale_export.py
+            qa/test_groups_float.py qa/test_security.py qa/test_stale_export.py \
+            qa/test_context_500k.py qa/test_adversarial_manifest.py qa/probe_long_context.py qa/test_stale_export.py qa/test_accessibility.py
       - name: Check UI JavaScript
         run: node --check web/app.js
       - name: Run Phase 1 tests
         run: python qa/test_phase1.py
+      - name: Run 500k context test
+        run: python qa/test_context_500k.py
+      - name: Validate adversarial manifest
+        run: python qa/test_adversarial_manifest.py
+      - name: Skip opt-in long-context probe in CI
+        run: python qa/probe_long_context.py
       - name: Run skill tests
         run: python qa/test_skills.py
       - name: Run verification-mode tests
@@ -44,6 +51,8 @@ jobs:
         run: python qa/test_groups_float.py
       - name: Run security tests
         run: python qa/test_security.py
+      - name: Run accessibility audit
+        run: python qa/test_accessibility.py
       - name: Run stale export tests
         run: python qa/test_stale_export.py
       - name: Run deterministic stress suite
