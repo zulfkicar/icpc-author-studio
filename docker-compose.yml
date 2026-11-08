@@ -59,9 +59,14 @@ services:
       # The executor sees only package files. No provider key, no app state.
       - ./workspaces:/app/workspaces
     tmpfs:
-      - /tmp:rw,nosuid,nodev,size=512m
+      - /tmp:rw,exec,nosuid,nodev,size=512m
     security_opt:
       - no-new-privileges:true
+      # bwrap needs mount namespaces; the child drops capabilities and has
+      # only the temporary workspace plus read-only runtime paths.
+      - seccomp=unconfined
+    cap_add:
+      - SYS_ADMIN
     cap_drop:
       - ALL
     pids_limit: 256

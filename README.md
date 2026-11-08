@@ -38,7 +38,7 @@ The compose stack has two services:
 - `icpc-author-executor` ? isolated compiler/runner worker. It has g++, the JDK
   and TeX Live, **no provider key**, **no host port**, **no external network**,
   a read-only root, dropped capabilities and container CPU/memory/PID limits.
-  It sees only `./workspaces`.
+  It sees only `./workspaces`; each command runs under a bwrap mount namespace with only the per-run workspace copy and read-only runtime paths.
 
 The app routes every compile/run/verify command to the executor; it does not
 execute model-written code itself.

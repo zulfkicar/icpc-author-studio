@@ -19,6 +19,7 @@ def run_code(slug, code, timeout=10, measured=False):
 def main():
     created = workspace.create("QA Executor Limits", "limits")
     slug = created["slug"]
+    other = workspace.create("QA Executor Other", "other")["slug"]
     try:
         key = run_code(slug, "import os; print('KEY' if os.environ.get('AUTHOR_AGENT_API_KEY') else 'NO_KEY')")
         assert key["returncode"] == 0 and b"NO_KEY" in key["stdout"], key
@@ -54,8 +55,14 @@ def main():
         second = child_log.stat().st_size
         assert first == second, (first, second)
         print("  PASS orphan process tree killed")
+
+        workspace.write_text(other, "marker.txt", "other-secret", source="test")
+        cross = run_code(slug, f"import os\ntry:\n open('/app/workspaces/{other}/marker.txt').read(); print('LEAKED')\nexcept Exception: print('BLOCKED')\nprint(os.getcwd())")
+        assert b"BLOCKED" in cross["stdout"], cross
+        print("  PASS absolute cross-workspace path blocked")
     finally:
         shutil.rmtree(workspace.ws_path(slug), ignore_errors=True)
+        shutil.rmtree(workspace.ws_path(other), ignore_errors=True)
     print("EXECUTOR LIMIT TESTS PASSED")
     return 0
 

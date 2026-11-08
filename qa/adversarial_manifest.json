@@ -451,8 +451,8 @@
   },
   "H12": {
     "category": "executor/security",
-    "test": "qa/test_security.py",
-    "status": "partial"
+    "test": "qa/test_executor_limits.py",
+    "status": "automated"
   },
   "H13": {
     "category": "executor/security",

@@ -12,6 +12,7 @@ import json
 import os
 import pathlib
 import resource
+import shutil
 import signal
 import subprocess
 import threading
@@ -25,6 +26,104 @@ ALLOWED = {"g++", "gcc", "python", "python3", "javac", "java", "pdflatex", "late
 SEMAPHORE = threading.Semaphore(int(os.environ.get("AUTHOR_AGENT_EXECUTOR_SLOTS", "4")))
 MAX_TIMEOUT = 120.0
 MAX_OUTPUT = 4 * 1024 * 1024
+BWRAP = shutil.which("bwrap")
+
+
+def _workspace_root(cwd: pathlib.Path) -> pathlib.Path | None:
+    try:
+        relative = cwd.resolve().relative_to(WORKSPACES)
+    except ValueError:
+        return None
+    if not relative.parts:
+        return None
+    return WORKSPACES / relative.parts[0]
+
+
+def _copy_workspace(source: pathlib.Path, temp: pathlib.Path) -> None:
+    temp.mkdir(parents=True, exist_ok=True)
+    for item in source.iterdir():
+        if item.name in (".agent", "__pycache__", ".git"):
+            continue
+        target = temp / item.name
+        if item.is_dir():
+            shutil.copytree(item, target)
+        else:
+            shutil.copy2(item, target)
+    build = source / ".agent" / "build"
+    if build.is_dir():
+        shutil.copytree(build, temp / ".agent" / "build")
+    for binary in temp.rglob("*.exe"):
+        try:
+            binary.chmod(0o755)
+        except OSError:
+            pass
+
+
+def _sync_workspace(temp: pathlib.Path, source: pathlib.Path) -> None:
+    for item in temp.iterdir():
+        if item.name == ".agent":
+            continue
+        target = source / item.name
+        if item.is_dir():
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(item, target)
+        else:
+            shutil.copy2(item, target)
+    build = temp / ".agent" / "build"
+    if build.is_dir():
+        target = source / ".agent" / "build"
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.copytree(build, target)
+        for binary in target.rglob("*.exe"):
+            try:
+                binary.chmod(0o755)
+            except OSError:
+                pass
+
+
+def _rewrite_path(value: str, source: pathlib.Path, target_root: pathlib.Path) -> str:
+    path = pathlib.Path(value)
+    if not path.is_absolute():
+        return value
+    try:
+        relative = path.resolve().relative_to(source)
+    except ValueError:
+        return value
+    return str(target_root / relative)
+
+
+def _rewrite_argv(argv: list[str], source: pathlib.Path, target_root: pathlib.Path) -> list[str]:
+    return [_rewrite_path(item, source, target_root) for item in argv]
+
+
+def _bwrap_command(argv: list[str], cwd: pathlib.Path, source: pathlib.Path, temp: pathlib.Path) -> list[str]:
+    relative = cwd.relative_to(source)
+    work_cwd = "/work" if not relative.parts else "/work/" + relative.as_posix()
+    command = [
+        str(BWRAP),
+        "--unshare-all", "--die-with-parent", "--new-session",
+        "--ro-bind", "/usr", "/usr",
+        "--ro-bind", "/usr/local", "/usr/local",
+        "--ro-bind", "/bin", "/bin",
+        "--ro-bind", "/lib", "/lib",
+        "--ro-bind", "/lib64", "/lib64",
+        "--ro-bind", "/etc", "/etc",
+        "--ro-bind", "/var", "/var",
+        "--ro-bind", "/sys", "/sys",
+        "--proc", "/proc",
+        "--dev", "/dev",
+        "--tmpfs", "/tmp",
+        "--bind", str(temp), "/work",
+        "--chdir", work_cwd,
+    ]
+    for optional in ("/app/templates", "/app/sandbox"):
+        if pathlib.Path(optional).is_dir():
+            command.extend(["--ro-bind", optional, optional])
+    command.append("--")
+    command.extend(_rewrite_argv(argv, source, pathlib.Path("/work")))
+    return command
 
 
 def _safe_cwd(value: str) -> pathlib.Path:
@@ -87,10 +186,23 @@ def run(body: dict) -> dict:
     stdin = base64.b64decode(body.get("stdin") or "")
     env = _safe_env(body.get("env"))
     measure = bool(body.get("measure"))
+    command = argv
+    popen_cwd = cwd
+    source = _workspace_root(cwd)
+    temp = None
+    if source is not None:
+        temp = pathlib.Path("/tmp") / f"author-run-{os.getpid()}-{threading.get_ident()}-{time.time_ns()}"
+        _copy_workspace(source, temp)
+        if BWRAP:
+            command = _bwrap_command(argv, cwd, source, temp)
+            popen_cwd = temp
+        else:
+            command = _rewrite_argv(argv, source, temp)
+            popen_cwd = temp / cwd.relative_to(source)
     started = time.perf_counter()
     process = subprocess.Popen(
-        argv,
-        cwd=str(cwd),
+        command,
+        cwd=str(popen_cwd),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -151,6 +263,11 @@ def run(body: dict) -> dict:
         stop.set()
         if measure:
             sampler.join(timeout=0.5)
+        if source is not None and temp is not None:
+            try:
+                _sync_workspace(temp, source)
+            finally:
+                shutil.rmtree(temp, ignore_errors=True)
     return {
         "ok": not timed_out and (returncode == 0 if measure else True),
         "timedOut": timed_out,
@@ -168,6 +285,22 @@ def run_interactive(body: dict) -> dict:
     solution = _safe_argv(body.get("solution") or [])
     cwd = _safe_cwd(str(body.get("cwd") or WORKSPACES))
     timeout = max(1.0, min(MAX_TIMEOUT, float(body.get("timeout") or 20.0)))
+    source = _workspace_root(cwd)
+    temp = None
+    validator_cmd = validator
+    solution_cmd = solution
+    popen_cwd = cwd
+    if source is not None:
+        temp = pathlib.Path("/tmp") / f"author-int-{os.getpid()}-{threading.get_ident()}-{time.time_ns()}"
+        _copy_workspace(source, temp)
+        if BWRAP:
+            validator_cmd = _bwrap_command(validator, cwd, source, temp)
+            solution_cmd = _bwrap_command(solution, cwd, source, temp)
+            popen_cwd = temp
+        else:
+            validator_cmd = _rewrite_argv(validator, source, temp)
+            solution_cmd = _rewrite_argv(solution, source, temp)
+            popen_cwd = temp / cwd.relative_to(source)
     transcript: list[dict] = []
     lock = threading.Lock()
 
