@@ -3,6 +3,7 @@ import os
 import pathlib
 import shutil
 import sys
+import time
 
 sys.path.insert(0, "/app")
 import winutil
@@ -34,6 +35,25 @@ def main():
         memory = run_code(slug, "x = bytearray(3_000_000_000); x[::4096] = b'x' * (len(x)//4096 + 1)", timeout=20, measured=True)
         assert not memory["ok"] or memory["returncode"] != 0, memory
         print("  PASS memory limit enforced", memory["returncode"])
+
+        pids = run_code(slug, "import subprocess, sys\nps=[subprocess.Popen(['/bin/sleep','5']) for _ in range(300)]\nprint(len(ps))", timeout=20)
+        assert not pids["ok"] or pids["returncode"] != 0, pids
+        print("  PASS PID limit enforced", pids["returncode"])
+
+        child_log = workspace.ws_path(slug) / "child.log"
+        child_log.write_text("", "utf-8")
+        code = (
+            "import subprocess, sys\n"
+            f"subprocess.Popen([sys.executable, '-c', \"import time; open(r'{child_log}', 'a').write('x'); time.sleep(60)\"])\n"
+            "print('spawned')\n"
+        )
+        run_code(slug, code, timeout=10)
+        time.sleep(0.5)
+        first = child_log.stat().st_size
+        time.sleep(2.0)
+        second = child_log.stat().st_size
+        assert first == second, (first, second)
+        print("  PASS orphan process tree killed")
     finally:
         shutil.rmtree(workspace.ws_path(slug), ignore_errors=True)
     print("EXECUTOR LIMIT TESTS PASSED")

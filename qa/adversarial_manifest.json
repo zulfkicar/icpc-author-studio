@@ -421,8 +421,8 @@
   },
   "H6": {
     "category": "executor/security",
-    "test": "qa/test_security.py",
-    "status": "partial"
+    "test": "qa/test_executor_limits.py",
+    "status": "automated"
   },
   "H7": {
     "category": "executor/security",
@@ -441,8 +441,8 @@
   },
   "H10": {
     "category": "executor/security",
-    "test": "qa/test_security.py",
-    "status": "partial"
+    "test": "qa/test_executor_limits.py",
+    "status": "automated"
   },
   "H11": {
     "category": "executor/security",
