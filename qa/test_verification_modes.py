@@ -53,6 +53,9 @@ def main() -> int:
         workspace.write_text(slug, "output_validator/checker.py", "import sys\nsys.exit(0)\n", source="test")
         bad = verification_modes.checker_selftest(slug)
         check("accepts-everything checker fails", bad["status"] == "fail", bad)
+        workspace.write_text(slug, "output_validator/checker.py", "import sys\nsys.exit(3)\n", source="test")
+        crashed = verification_modes.checker_selftest(slug)
+        check("crashing checker fails", crashed["status"] == "fail", crashed)
 
         # Full check: accepted Python reference, wrong negative, checker comparator.
         workspace.write_text(slug, "output_validator/checker.py", CHECKER, source="test")

@@ -1,7 +1,7 @@
 # Implementation Status
 
 Updated: 2026-11-08  
-Latest commit: `pending`  
+Latest commit: `f8dfac1`  
 Specification: [`MASTER-PLAN.md`](MASTER-PLAN.md)  
 Verification: [`ADVERSARIAL-VERIFICATION.md`](ADVERSARIAL-VERIFICATION.md)  
 Design: [`DESIGN.md`](DESIGN.md)
@@ -90,7 +90,7 @@ estimated cost: $0.001463
 
 - A true hypervisor VM is still unavailable; the executor is a hardened container.
 - Live DOMjudge import/export is intentionally not tested; no instance exists.
-- The full adversarial matrix is not yet automated row-for-row; current automated coverage includes checker, interactive, path/zip traversal, secret exposure, hunk, snapshot, group/float, MCP and context/clarification tests.
+- The full adversarial matrix is not yet automated row-for-row; current automated coverage includes checker accept-all/crash, interactive, path/zip traversal, secret exposure, hunk, snapshot, group/float, MCP, stale export and context/clarification tests.
 - Real 500k long-context provider testing was not performed; a synthetic 500k budget test is in place.
 - Follow/pause scrolling is implemented; automated accessibility scanning and a complete keyboard-only matrix remain to be completed.
 - Hunk UI and history/snapshot panel APIs are wired; backend hunk/history tests and live API checks pass. The full UI click-through remains a manual check.
