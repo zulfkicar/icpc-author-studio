@@ -242,6 +242,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(workspace.get_chat(slug, parts[4]))
                 if len(parts) == 6 and parts[3] == "chats" and parts[5] == "plan":
                     return self.send_json(workspace.get_plan(slug, parts[4]))
+                if len(parts) == 6 and parts[3] == "chats" and parts[5] == "history":
+                    return self.send_json({"history": graph_agent.list_history(slug, parts[4])})
+                if len(parts) == 4 and parts[3] == "snapshots":
+                    chat_id = (query.get("chatId") or [""])[0]
+                    return self.send_json({"snapshots": workspace.list_snapshots(slug, chat_id)})
+                if len(parts) == 6 and parts[3] == "changes" and parts[5] == "hunks":
+                    entry = next((c for c in workspace.changes(slug) if c["id"] == parts[4]), None)
+                    if entry is None:
+                        return self.send_error_json("Change not found", 404)
+                    return self.send_json({"id": entry["id"], "path": entry["path"], "hunks": workspace.parse_hunks(workspace.diff(entry.get("before") or "", entry.get("after") or "", entry["path"]))})
                 if len(parts) == 4 and parts[3] == "conversation":
                     active = workspace.list_chats(slug).get("activeChat")
                     chat_id = (query.get("chatId") or [active])[0]
@@ -371,6 +381,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(workspace.mark_reviewed(slug))
                 if len(parts) == 6 and parts[3] == "changes" and parts[5] == "revert":
                     return self.send_json(workspace.revert(slug, parts[4]))
+                if len(parts) == 6 and parts[3] == "changes" and parts[5] == "apply-hunks":
+                    body = self.read_json()
+                    with workspace_lock(slug):
+                        return self.send_json(workspace.apply_hunks(slug, parts[4], body.get("selected")))
                 if len(parts) == 4 and parts[3] == "chats":
                     return self.send_json(workspace.create_chat(slug), 201)
                 if len(parts) == 4 and parts[3] == "chat":
@@ -401,6 +415,16 @@ class Handler(BaseHTTPRequestHandler):
                                 ACTIVE_CHATS.discard(slug)
 
                     return self.send_json(start_job("Agent turn", slug, run_chat, chat_id=chat_id))
+                if len(parts) == 8 and parts[3] == "chats" and parts[5] == "history" and parts[7] == "restore":
+                    chat_id, checkpoint = parts[4], parts[6]
+                    with CHAT_LOCK:
+                        if slug in ACTIVE_CHATS:
+                            raise ValueError("A chat turn is already running")
+                    return self.send_json(graph_agent.restore_history(slug, chat_id, checkpoint))
+                if len(parts) == 5 and parts[3] == "snapshots" and parts[4] == "restore":
+                    body = self.read_json()
+                    with workspace_lock(slug):
+                        return self.send_json(workspace.restore_snapshot(slug, str(body.get("chatId") or ""), str(body.get("snapshotId") or "")))
                 if len(parts) == 6 and parts[3] == "chats" and parts[5] == "resume":
                     body = self.read_json()
                     chat_id = parts[4]
