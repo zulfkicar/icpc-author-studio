@@ -830,8 +830,9 @@ function renderTree() {
         : node.path.endsWith(".pdf") ? "D"
         : "\u00b7";
       const icon = document.createElement("span");
-      icon.className = "tree-icon";
-      icon.textContent = glyph;
+      icon.className = "tree-icon" + (isDir ? " folder" : "");
+      icon.textContent = isDir ? "" : glyph;
+      icon.title = isDir ? "Folder" : "";
       const name = document.createElement("span");
       name.className = "tree-name";
       name.textContent = node.name;
@@ -1561,9 +1562,12 @@ function renderChatList() {
   $("stop-btn").hidden = !state.jobId;
   $("stop-btn").disabled = !state.jobId;
   const active = state.chats.find((c) => c.id === state.chatId);
-  $("chat-title").textContent = active ? chatTitle(active) : "No conversation";
+  const problemName = document.querySelector(".problem-name")?.textContent || "";
+  const activeTitle = active ? chatTitle(active) : "No conversation";
+  const displayTitle = active && activeTitle === "New chat" && problemName ? problemName : activeTitle;
+  $("chat-title").textContent = displayTitle;
   $("chat-sub").textContent = active
-    ? `${formatTime(active.updatedAt)} · ${active.messageCount || 0} messages${state.jobId && state.jobChatId === active.id ? " · working" : ""}`
+    ? (activeTitle === "New chat" ? "Start a conversation" : `${formatTime(active.updatedAt)} · ${active.messageCount || 0} messages${state.jobId && state.jobChatId === active.id ? " · working" : ""}`)
     : "";
   $("composer-chat").textContent = active ? chatTitle(active) : "no chat";
   renderChatTabs();
@@ -1747,7 +1751,7 @@ function renderStageRail() {
     ["Review", !summary.unreviewed],
     ["Export", summary.lastStatus === "verified" && !summary.unreviewed],
   ];
-  host.innerHTML = stages.map(([label, done], index) => `<span class="stage-chip ${done ? "done" : ""}"><span class="stage-num">${index + 1}</span>${escapeHtml(label)}</span>`).join('<span class="stage-sep">&gt;</span>');
+  host.innerHTML = stages.map(([label, done], index) => `<span class="stage-chip ${done ? "done" : ""}" title="${escapeHtml(label)}: ${done ? "verified evidence present" : "not yet complete"}"><span class="stage-num">${index + 1}</span>${escapeHtml(label)}</span>`).join('<span class="stage-sep">&gt;</span>');
 }
 
 function renderPlan() {
@@ -2280,7 +2284,7 @@ async function loadMcp() {
           <span class="mcp-tool-name">${escapeHtml(tool.name)}</span>
           <label class="check"><input type="checkbox" data-mcp-tool="${escapeHtml(tool.name)}" aria-label="Allow ${escapeHtml(tool.name)}" ${granted ? "checked" : ""}> allow</label>
         </div>
-        <div class="mcp-tool-desc">${escapeHtml(tool.description)}</div>
+        <div class="mcp-tool-desc" title="${escapeHtml(tool.description)}">${escapeHtml(tool.description)}</div>
         <div class="mcp-tool-actions">${arg}<button class="quiet small" data-mcp-test="${escapeHtml(tool.name)}" aria-label="Probe ${escapeHtml(tool.name)}">Test</button></div>
       </div>`;
     }).join("");

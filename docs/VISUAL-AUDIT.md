@@ -46,21 +46,17 @@ long evidence tables stay readable.
 
 ## Remaining suggestions
 
-1. **Folder glyph.** The folder icon is a small square; a CSS folder shape
-   (tab + body) would read faster than a glyph.
-2. **Chat header state.** Show the problem name plus a state word (“ready”,
-   “3 unreviewed”) instead of “New chat · 0 messages” when empty.
-3. **Report density.** Long file paths wrap; a two-line cell with a monospace
+1. **Report density.** Long file paths wrap; a two-line cell with a monospace
    path and a status chip would scan faster.
-4. **Stage tooltips.** Add per-stage evidence on hover (test count, checker
-   contract, measured limit).
-5. **MCP purpose text.** Keep two lines maximum and move the rest to a title or
-   expandable detail.
-6. **Plan evidence links.** The filename on the right should open the file or
+2. **Plan evidence links.** The filename on the right should open the file or
    report directly.
-7. **Top bar order.** Build answers and Limits are peers of Verify; a numbered
+3. **Top bar order.** Build answers and Limits are peers of Verify; a numbered
    pipeline or disabled-until-ready state would clarify the order.
-8. **Empty state.** Add a third action: “open an existing package”.
+4. **Empty state.** Add a third action: “open an existing package”.
+
+Implemented since the first pass: CSS folder shapes, a problem-name chat header
+with “Start a conversation”, stage tooltips with evidence state, two-line MCP
+purpose clamping, and a cleaner run toolbar.
 
 ## Evidence
 
