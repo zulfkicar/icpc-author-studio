@@ -339,8 +339,7 @@ submission its own disposable sandbox.
 - The key lives in `.author-agent/config.json`, which is gitignored, or in
   environment overrides. It is never sent to the browser.
 
-Not implemented yet: provider-side rate-limit handling beyond a retry, model
-fallback, or a managed-credential flow.
+Implemented: model retry, model fallback, tool retry, context budget and per-model pricing. Not implemented: managed-credential flow or a shared price service.
 
 ## 9. UI/UX decisions
 
@@ -470,8 +469,7 @@ patterns that fit ICPC authoring.
 - Headless Chrome DOM load: verifies mode/context/settings controls and the
   approval card render without JS console errors.
 
-Not yet tested: real DOMjudge import, Linux/macOS execution,
-interactive/custom-checker problems, or a hostile-code sandbox.
+Not yet tested: real DOMjudge import, Linux/macOS execution, or a hostile-code microVM. Local Kattis/ICPC checker and interactive fixtures pass.
 
 ## 12. What I would build next
 

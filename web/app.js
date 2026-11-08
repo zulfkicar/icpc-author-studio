@@ -29,6 +29,7 @@ const state = {
   testResults: [],
   openTabs: [],
   mentionQuery: null,
+  follow: true,
   renderedChangeIds: new Set(),
   fileMode: "view",
   streaming: { assistantEl: null, assistantText: "", reasoningEl: null, reasoningText: "" },
@@ -192,8 +193,18 @@ function renderMarkdown(text) {
 }
 
 function scrollMessages() {
+  if (!state.follow) return;
   const host = $("messages");
   host.scrollTop = host.scrollHeight;
+  const button = $("follow-btn");
+  if (button) button.hidden = true;
+}
+
+function setFollow(value) {
+  state.follow = Boolean(value);
+  const button = $("follow-btn");
+  if (button) button.hidden = state.follow;
+  if (state.follow) scrollMessages();
 }
 
 function addMessage(role, text) {
@@ -1551,6 +1562,7 @@ async function loadConversation() {
   const host = $("messages");
   host.innerHTML = "";
   resetStreaming();
+  setFollow(true);
   state.renderedChangeIds = new Set();
   state.plan = { steps: [] };
   if (!state.slug || !state.chatId) {
@@ -2586,6 +2598,13 @@ function wire() {
   $("context-btn").addEventListener("click", openContextDialog);
   $("context-cancel").addEventListener("click", () => $("context-dialog").close());
   $("context-form").addEventListener("submit", applyContext);
+  $("follow-btn").addEventListener("click", () => setFollow(true));
+  $("messages").addEventListener("scroll", () => {
+    const host = $("messages");
+    const nearBottom = host.scrollHeight - host.scrollTop - host.clientHeight < 80;
+    if (!nearBottom && state.follow) setFollow(false);
+    else if (nearBottom && !state.follow) setFollow(true);
+  });
   $("stop-btn").addEventListener("click", async () => {
     if (!state.jobId) return;
     try {
