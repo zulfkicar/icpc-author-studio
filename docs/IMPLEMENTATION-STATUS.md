@@ -196,6 +196,7 @@ qa/accessibility_axe.ps1
 
 qa/accessibility_tree.ps1 -> ACCESSIBILITY TREE AUDIT PASSED (no unnamed buttons/textboxes)
 qa/layout_regression.ps1 -> LAYOUT REGRESSION PASSED (scrollbar=10px, composer/run panel/stdin visible, dialog focus+rename+delete)
+node qa/test_state_machines.mjs -> STATE MACHINE TESTS PASSED
 qa/cdp_workflow.ps1
   judge0Visible=true, isolateVisible=true, mcpRows=5, mcpToggle=true,
   mcpSave=true, treeGlyphsOk=true,

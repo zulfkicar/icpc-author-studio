@@ -71,6 +71,7 @@ try {
   results.runPanelVisible = !panel.hidden && Boolean(stdin && stdin.bottom <= innerHeight && stdin.height > 0);
   results.runPanelInViewport = Boolean(box('#run-panel') && box('#run-panel').bottom <= innerHeight);
   results.chatActionLabels = [...document.querySelectorAll('.chat-actions button')].every((button) => Boolean(button.getAttribute('aria-label')));
+  results.chatTitleButtons = document.querySelectorAll('.chat-item-title').length;
   results.machines = window.AuthorMachines ? window.AuthorMachines.snapshot() : null;
   results.panelAttribute = document.body.getAttribute('data-panel');
   results.sideAttribute = document.body.getAttribute('data-side');
@@ -139,6 +140,7 @@ try {
   if ($report.scrollbarPx -le 0) { throw "chat scrollbar is not visible" }
   if ($report.dialogValue -ne 'New title') { throw "dialog did not return the edited value" }
   if (-not $report.machines -or $report.machines.turn -ne 'idle') { throw "state machine snapshot missing or turn is not idle" }
+  if ($report.chatTitleButtons -lt 1) { throw "chat titles are not buttons" }
   Write-Output 'LAYOUT REGRESSION PASSED'
 }
 finally {
