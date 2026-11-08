@@ -1,0 +1,3 @@
+on_reject: break
+grading: default
+output_validator_flags: ""

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ICPC Author Agent</title>
+<link rel="stylesheet" href="/style.css">
+<script defer src="/app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brand-mark"></span><span>Author Agent</span><span class="ver">local</span></div>
+  <div class="workspace-switch">
+    <select id="workspace-select" aria-label="Problem workspace"></select>
+    <button id="new-problem" class="icon-btn" title="New problem">+</button>
+  </div>
+  <span class="spacer"></span>
+  <span id="status-pill" class="pill unverified">unverified</span>
+  <button id="answers-btn" class="quiet">Build answers</button>
+  <button id="verify-btn" class="primary">Verify</button>
+  <button id="export-btn" class="quiet" disabled>Export</button>
+  <button id="settings-btn" class="icon-btn" title="Provider settings" aria-label="Provider settings">&#9881;</button>
+</header>
+
+<main class="layout">
+  <aside class="left">
+    <div id="problem-card" class="problem-card">
+      <div class="problem-name">No problem</div>
+      <div class="problem-sub muted">Create a workspace to begin</div>
+    </div>
+
+    <div class="side-tabs" role="tablist">
+      <button data-side="chats" class="active">Chats</button>
+      <button data-side="files">Files</button>
+      <button data-side="changes">Changes</button>
+    </div>
+
+    <div id="side-chats" class="side-panel active">
+      <div class="side-head">
+        <span>Conversations</span>
+        <button id="new-chat" class="icon-btn" title="New chat">+</button>
+      </div>
+      <div id="chat-list" class="chat-list"></div>
+    </div>
+
+    <div id="side-files" class="side-panel">
+      <div class="side-head">
+        <span>Workspace</span>
+        <button id="refresh-tree" class="icon-btn" title="Refresh files">&#8635;</button>
+      </div>
+      <div id="file-tree" class="tree"></div>
+    </div>
+
+    <div id="side-changes" class="side-panel">
+      <div class="side-head">
+        <span>Changes</span>
+        <span id="unreviewed-count" class="badge zero">0</span>
+      </div>
+      <div id="changes-list" class="changes"></div>
+      <div class="side-actions">
+        <button id="approve-btn" class="wide" disabled>Mark reviewed</button>
+        <button id="revert-unreviewed" class="wide quiet" disabled>Revert unreviewed</button>
+      </div>
+    </div>
+  </aside>
+
+  <section class="chat-pane">
+    <div class="chat-head">
+      <div class="chat-heading">
+        <div id="chat-title" class="chat-title">No conversation</div>
+        <div id="chat-sub" class="chat-sub muted"></div>
+      </div>
+      <span id="agent-state" class="agent-state"></span>
+      <span class="spacer"></span>
+      <button id="stop-btn" class="quiet small" hidden>Stop</button>
+      <button id="reload-chat" class="icon-btn" title="Reload conversation">&#8635;</button>
+    </div>
+
+    <div id="plan-strip" class="plan-strip" hidden></div>
+
+    <div id="messages" class="messages">
+      <div class="empty">
+        <h2>Author a problem end to end</h2>
+        <p>Describe the idea. The agent writes the statement, validator, reference solution, tests and negative solutions, then verifies the package before export.</p>
+        <p class="muted">Every write is tracked under Changes. Conversations are kept per problem.</p>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="composer-context">
+        <span class="context-chip">workspace context</span>
+        <span id="composer-chat" class="context-chip muted">no chat</span>
+      </div>
+      <textarea id="composer" rows="3" placeholder="Ask the agent to author, debug, test, or explain. Ctrl+Enter to send."></textarea>
+      <div class="composer-row">
+        <span class="hint">Deterministic verification gates export. The agent cannot approve its own work.</span>
+        <button id="send-btn" class="primary">Send</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="right">
+    <div class="inspector-tabs" role="tablist">
+      <button data-tab="plan" class="active">Plan</button>
+      <button data-tab="file">File</button>
+      <button data-tab="report">Report</button>
+      <button data-tab="diff">Diff</button>
+    </div>
+
+    <div id="panel-plan" class="panel active">
+      <div id="plan-body" class="plan-body"></div>
+    </div>
+
+    <div id="panel-file" class="panel">
+      <div class="file-head">
+        <span id="file-name">No file selected</span>
+        <span id="file-meta" class="muted small"></span>
+        <span class="spacer"></span>
+        <button id="save-file" class="primary small" hidden>Save</button>
+        <button id="reload-file" class="quiet small" hidden>Reload</button>
+      </div>
+      <textarea id="file-editor" class="file-editor" spellcheck="false" placeholder="Select a file in the Files tab." disabled></textarea>
+    </div>
+
+    <div id="panel-report" class="panel">
+      <div id="report-body" class="report"></div>
+    </div>
+
+    <div id="panel-diff" class="panel">
+      <div id="diff-body" class="diff-view"><div class="pad muted">Select a change to inspect its diff.</div></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="new-dialog">
+  <form method="dialog" id="new-form">
+    <h2>New problem</h2>
+    <p class="dialog-sub muted">Start from an idea. The agent will turn it into a verified DOMjudge package.</p>
+    <label>Problem name <input name="name" required placeholder="e.g. Claim or Concede"></label>
+    <label>Idea / prompt <textarea name="idea" rows="5" placeholder="A rough idea is enough. Include the core mechanic, constraints you have in mind, and what should make it interesting."></textarea></label>
+    <div class="grid2">
+      <label>Author <input name="author" value="Author"></label>
+      <label>Short name <input name="shortName" value="A" maxlength="4"></label>
+      <label>Time limit (s) <input name="timeLimit" type="number" step="0.5" min="0.5" value="2"></label>
+      <label>Memory (MiB) <input name="memoryMb" type="number" min="16" value="256"></label>
+    </div>
+    <label class="check"><input name="startNow" type="checkbox" checked> Start the agent immediately on this idea</label>
+    <div class="dialog-actions">
+      <button type="button" id="new-cancel" class="quiet">Cancel</button>
+      <button value="create" class="primary">Create workspace</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settings-dialog">
+  <form method="dialog" id="settings-form">
+    <h2>Provider settings</h2>
+    <p class="dialog-sub muted">DeepSeek or any OpenAI-compatible chat endpoint with tool calling. The key is stored only in <code>.author-agent/config.json</code> on this machine.</p>
+    <label>Base URL <input name="baseUrl" placeholder="https://api.deepseek.com/v1"></label>
+    <label>Model <input name="model" placeholder="deepseek-chat"></label>
+    <label>API key <input name="apiKey" type="password" placeholder="Leave blank to keep the saved key" autocomplete="off"></label>
+    <p id="key-status" class="muted small"></p>
+    <div class="grid2">
+      <label>Temperature <input name="temperature" type="number" step="0.1" min="0" max="2" value="0.2"></label>
+      <label>Max tool rounds <input name="maxToolRounds" type="number" min="1" max="64" value="24"></label>
+    </div>
+    <label class="check"><input name="clearKey" type="checkbox"> Delete the saved key</label>
+    <div class="dialog-actions">
+      <button type="button" id="settings-cancel" class="quiet">Cancel</button>
+      <button value="save" class="primary">Save settings</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

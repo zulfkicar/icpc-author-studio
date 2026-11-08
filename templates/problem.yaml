@@ -1,0 +1,10 @@
+name: "{{PROBLEM_NAME}}"
+author: "{{AUTHOR}}"
+source: "{{SOURCE}}"
+license: "{{LICENSE}}"
+rights_owner: "{{RIGHTS_OWNER}}"
+
+limits:
+  memory: {{MEMORY_MB}}
+
+validation: "default"
