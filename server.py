@@ -338,7 +338,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/settings":
                 body = self.read_json()
                 update = {}
-                for key in ("baseUrl", "model", "temperature", "maxToolRounds", "reviewWrites", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion"):
+                for key in ("baseUrl", "model", "temperature", "maxToolRounds", "reviewWrites", "contextBudgetTokens", "modelWindowTokens", "maxOutputTokens", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion", "fallbackModel", "fallbackBaseUrl", "fallbackApiKey", "maxRetries", "requestTimeoutSeconds"):
                     if key in body:
                         update[key] = body[key]
                 if body.get("clearKey"):

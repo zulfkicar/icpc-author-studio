@@ -90,6 +90,7 @@
       <button id="reload-chat" class="icon-btn" title="Reload conversation">&#8635;</button>
     </div>
 
+    <div id="stage-rail" class="stage-rail"></div>
     <div id="plan-strip" class="plan-strip" hidden></div>
 
     <div id="messages" class="messages">
@@ -124,6 +125,7 @@
       <button data-tab="file">File</button>
       <button data-tab="report">Report</button>
       <button data-tab="diff">Diff</button>
+      <button data-tab="history">History</button>
     </div>
 
     <div id="panel-plan" class="panel active">
@@ -175,6 +177,10 @@
     <div id="panel-diff" class="panel">
       <div id="diff-body" class="diff-view"><div class="pad muted">Select a change to inspect its diff.</div></div>
     </div>
+
+    <div id="panel-history" class="panel">
+      <div id="history-body" class="report"><div class="pad muted">Open a chat to inspect checkpoints.</div></div>
+    </div>
   </section>
 </main>
 
@@ -209,9 +215,23 @@
       <label>Max tool rounds <input name="maxToolRounds" type="number" min="1" max="64" value="24"></label>
     </div>
     <div class="grid2">
-      <label>Summary trigger (tokens) <input name="summaryTriggerTokens" type="number" min="50" step="1000" value="30000"></label>
-      <label>Summary keep (messages) <input name="summaryKeepMessages" type="number" min="1" step="1" value="12"></label>
+      <label>Context budget (tokens) <input name="contextBudgetTokens" type="number" min="1000" step="1000" value="500000"></label>
+      <label>Model window (tokens) <input name="modelWindowTokens" type="number" min="1000" step="1000" value="1048576"></label>
     </div>
+    <div class="grid2">
+      <label>Max output (tokens) <input name="maxOutputTokens" type="number" min="1" step="1000" value="393216"></label>
+      <label>Max retries <input name="maxRetries" type="number" min="0" max="8" value="2"></label>
+    </div>
+    <div class="grid2">
+      <label>Summary trigger (tokens) <input name="summaryTriggerTokens" type="number" min="50" step="1000" value="500000"></label>
+      <label>Summary keep (messages) <input name="summaryKeepMessages" type="number" min="1" step="1" value="24"></label>
+    </div>
+    <div class="grid2">
+      <label>Request timeout (s) <input name="requestTimeoutSeconds" type="number" min="10" step="10" value="300"></label>
+      <label>Fallback model <input name="fallbackModel" placeholder="optional"></label>
+    </div>
+    <label>Fallback base URL <input name="fallbackBaseUrl" placeholder="optional"></label>
+    <label>Fallback API key <input name="fallbackApiKey" type="password" placeholder="Leave blank to keep the saved fallback key" autocomplete="off"></label>
     <div class="grid2">
       <label>Input $ / 1M tokens <input name="inputPricePerMillion" type="number" min="0" step="0.0001" value="0"></label>
       <label>Output $ / 1M tokens <input name="outputPricePerMillion" type="number" min="0" step="0.0001" value="0"></label>

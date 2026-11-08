@@ -46,6 +46,7 @@ def main() -> int:
         workspace.write_text(slug, "output_validator/interactor.py", INTERACTOR, source="test")
         workspace.write_text(slug, "submissions/accepted/ref.py", "n=int(input());print(2*n)\n", source="test")
         workspace.write_text(slug, "submissions/wrong_answer/wrong.py", "n=int(input());print(n+1)\n", source="test")
+        workspace.write_text(slug, "input_validators/validate.py", "import sys\nn=int(sys.stdin.read().strip());sys.exit(42 if 0<n<100 else 1)\n", source="test")
         workspace.write_text(slug, "data/sample/01.in", "21\n", source="test")
         workspace.write_text(slug, "data/secret/01.in", "7\n", source="test")
         result = verification_modes.interactive_selftest(slug)

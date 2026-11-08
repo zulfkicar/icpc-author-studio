@@ -1240,7 +1240,10 @@ function renderChanges() {
 async function openChangeDiff(changeId) {
   if (!state.slug || !changeId) return;
   try {
-    const data = await api(`/api/workspaces/${state.slug}/changes/${changeId}/diff`);
+    const [data, hunkData] = await Promise.all([
+      api(`/api/workspaces/${state.slug}/changes/${changeId}/diff`),
+      api(`/api/workspaces/${state.slug}/changes/${changeId}/hunks`),
+    ]);
     state.selectedChange = changeId;
     switchTab("diff");
     const body = $("diff-body");
@@ -1256,6 +1259,45 @@ async function openChangeDiff(changeId) {
       pre.appendChild(document.createTextNode("\n"));
     }
     body.appendChild(pre);
+    const hunks = hunkData.hunks || [];
+    if (hunks.length && hunks.length > 1) {
+      const tools = document.createElement("div");
+      tools.className = "hunk-tools";
+      const title = document.createElement("div");
+      title.className = "muted small";
+      title.textContent = "Select hunks to apply";
+      tools.appendChild(title);
+      const boxes = [];
+      for (const hunk of hunks) {
+        const label = document.createElement("label");
+        label.className = "hunk-row";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = true;
+        box.value = String(hunk.index);
+        const code = document.createElement("code");
+        code.textContent = hunk.header || `hunk ${hunk.index + 1}`;
+        label.appendChild(box);
+        label.appendChild(code);
+        tools.appendChild(label);
+        boxes.push(box);
+      }
+      const apply = document.createElement("button");
+      apply.className = "primary small";
+      apply.textContent = "Apply selected hunks";
+      apply.addEventListener("click", async () => {
+        const selected = boxes.filter((box) => box.checked).map((box) => Number(box.value));
+        if (!selected.length) { toast("Select at least one hunk", true); return; }
+        try {
+          await api(`/api/workspaces/${state.slug}/changes/${changeId}/apply-hunks`, { method: "POST", body: { selected } });
+          await refreshWorkspace();
+          if (state.file) await openFile(state.file.path);
+          toast("Selected hunks applied");
+        } catch (error) { toast(error.message, true); }
+      });
+      tools.appendChild(apply);
+      body.appendChild(tools);
+    }
   } catch (error) { toast(error.message, true); }
 }
 
@@ -1384,7 +1426,7 @@ function renderMentions() {
   menu.hidden = false;
 }
 
-async function newChat() {
+function renderChatList() {
   const host = $("chat-list");
   host.innerHTML = "";
   const query = state.chatQuery.trim().toLowerCase();
@@ -2072,7 +2114,46 @@ async function runToolJob(kind, body) {
 
 // ---------- navigation ----------
 
+async function loadHistory() {
+  const host = $("history-body");
+  if (!host) return;
+  if (!state.slug || !state.chatId) { host.innerHTML = '<div class="pad muted">Open a chat first.</div>'; return; }
+  host.innerHTML = '<div class="pad muted">Loading checkpoints?</div>';
+  try {
+    const [history, snapshots] = await Promise.all([
+      api(`/api/workspaces/${state.slug}/chats/${state.chatId}/history`),
+      api(`/api/workspaces/${state.slug}/snapshots?chatId=${encodeURIComponent(state.chatId)}`),
+    ]);
+    const rows = (history.history || []).map((item) => `<tr><td class="mono">${escapeHtml(String(item.checkpointId || "").slice(0, 18))}</td><td>${escapeHtml(item.createdAt || "")}</td><td>${item.messages}</td><td>${escapeHtml(item.lastUser || "")}</td><td><button class="quiet small" data-restore="${escapeHtml(item.checkpointId)}">Restore chat</button></td></tr>`).join("");
+    const snaps = (snapshots.snapshots || []).map((item) => `<tr><td class="mono">${escapeHtml(item.id)}</td><td>${escapeHtml(item.at || "")}</td><td>${Math.round((item.size || 0) / 1024)} KiB</td><td><button class="quiet small" data-snapshot="${escapeHtml(item.id)}">Restore files</button></td></tr>`).join("");
+    host.innerHTML = `<h3>Conversation checkpoints</h3><table class="table"><thead><tr><th>Checkpoint</th><th>Created</th><th>Messages</th><th>Last user</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">none</td></tr>'}</tbody></table><h3>Workspace snapshots</h3><table class="table"><thead><tr><th>Snapshot</th><th>Created</th><th>Size</th><th></th></tr></thead><tbody>${snaps || '<tr><td colspan="4" class="muted">none</td></tr>'}</tbody></table>`;
+    host.querySelectorAll("[data-restore]").forEach((button) => button.addEventListener("click", () => restoreCheckpoint(button.dataset.restore)));
+    host.querySelectorAll("[data-snapshot]").forEach((button) => button.addEventListener("click", () => restoreFiles(button.dataset.snapshot)));
+  } catch (error) { host.innerHTML = `<div class="pad status-fail">${escapeHtml(error.message)}</div>`; }
+}
+
+async function restoreCheckpoint(checkpointId) {
+  if (!confirm("Restore the conversation to this checkpoint? The current checkpoint thread will be replaced.")) return;
+  try {
+    await api(`/api/workspaces/${state.slug}/chats/${state.chatId}/history/${encodeURIComponent(checkpointId)}/restore`, { method: "POST", body: {} });
+    await loadConversation();
+    await loadHistory();
+    toast("Conversation restored");
+  } catch (error) { toast(error.message, true); }
+}
+
+async function restoreFiles(snapshotId) {
+  if (!confirm("Restore workspace files to this snapshot? Current files will be replaced.")) return;
+  try {
+    await api(`/api/workspaces/${state.slug}/snapshots/restore`, { method: "POST", body: { chatId: state.chatId, snapshotId } });
+    await refreshWorkspace();
+    if (state.file) await openFile(state.file.path);
+    toast("Workspace files restored");
+  } catch (error) { toast(error.message, true); }
+}
+
 function switchTab(tab) {
+  if (tab === "history") loadHistory();
   state.activeTab = tab;
   document.querySelectorAll(".inspector-tabs button").forEach((button) => {
     button.classList.toggle("active", button.dataset.tab === tab);
@@ -2102,8 +2183,16 @@ function openSettings() {
   form.apiKey.value = "";
   form.temperature.value = settings.temperature ?? 0.2;
   form.maxToolRounds.value = settings.maxToolRounds ?? 24;
-  form.summaryTriggerTokens.value = settings.summaryTriggerTokens ?? 30000;
-  form.summaryKeepMessages.value = settings.summaryKeepMessages ?? 12;
+  form.contextBudgetTokens.value = settings.contextBudgetTokens ?? 500000;
+  form.modelWindowTokens.value = settings.modelWindowTokens ?? 1048576;
+  form.maxOutputTokens.value = settings.maxOutputTokens ?? 393216;
+  form.summaryTriggerTokens.value = settings.summaryTriggerTokens ?? 500000;
+  form.summaryKeepMessages.value = settings.summaryKeepMessages ?? 24;
+  form.maxRetries.value = settings.maxRetries ?? 2;
+  form.requestTimeoutSeconds.value = settings.requestTimeoutSeconds ?? 300;
+  form.fallbackModel.value = settings.fallbackModel || "";
+  form.fallbackBaseUrl.value = settings.fallbackBaseUrl || "";
+  form.fallbackApiKey.value = "";
   form.inputPricePerMillion.value = settings.inputPricePerMillion ?? 0;
   form.outputPricePerMillion.value = settings.outputPricePerMillion ?? 0;
   form.clearKey.checked = false;
@@ -2120,14 +2209,22 @@ async function saveSettings(event) {
     model: form.model.value.trim(),
     temperature: Number(form.temperature.value || 0.2),
     maxToolRounds: Number(form.maxToolRounds.value || 24),
-    summaryTriggerTokens: Number(form.summaryTriggerTokens.value || 30000),
-    summaryKeepMessages: Number(form.summaryKeepMessages.value || 12),
+    contextBudgetTokens: Number(form.contextBudgetTokens.value || 500000),
+    modelWindowTokens: Number(form.modelWindowTokens.value || 1048576),
+    maxOutputTokens: Number(form.maxOutputTokens.value || 393216),
+    summaryTriggerTokens: Number(form.summaryTriggerTokens.value || 500000),
+    summaryKeepMessages: Number(form.summaryKeepMessages.value || 24),
+    maxRetries: Number(form.maxRetries.value || 2),
+    requestTimeoutSeconds: Number(form.requestTimeoutSeconds.value || 300),
+    fallbackModel: form.fallbackModel.value.trim(),
+    fallbackBaseUrl: form.fallbackBaseUrl.value.trim(),
     inputPricePerMillion: Number(form.inputPricePerMillion.value || 0),
     outputPricePerMillion: Number(form.outputPricePerMillion.value || 0),
     reviewWrites: form.reviewWrites.checked,
     clearKey: form.clearKey.checked,
   };
   if (form.apiKey.value.trim()) body.apiKey = form.apiKey.value.trim();
+  if (form.fallbackApiKey.value.trim()) body.fallbackApiKey = form.fallbackApiKey.value.trim();
   try {
     state.settings = await api("/api/settings", { method: "POST", body });
     $("settings-dialog").close();

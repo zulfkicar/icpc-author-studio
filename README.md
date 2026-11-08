@@ -251,9 +251,10 @@ deterministic verifier and an explicit user click can do that.
   `problem.yaml`. Reference and negative runs are bounded by the time limit.
   Windows does not enforce the memory limit.
 
-Output comparison is token-based (whitespace-insensitive). Custom checkers,
-interactive problems and float tolerances are intentionally not implemented in
-this MVP; the verifier will not pretend they are.
+Output comparison is token-based by default. Custom output validators/checkers,
+interactive problems, test groups and explicit float tolerance are supported
+through the deterministic verification modes; checker/interactor self-tests are
+required before verification can pass.
 
 ## IDE and readable output
 
@@ -313,16 +314,16 @@ reference/wrong-solution evidence, statement compilation, isolated execution,
 explicit verification, export gating and a real-provider eval loop.
 
 Deliberately dropped for now: multi-user auth/RBAC, the full contest platform,
-live DOMjudge adapters, MCP transport, managed cost accounting, a full
-Monaco/IDE session, interactive/custom-checker problems, and the
-Keycloak/Postgres stack. This is a single-user localhost tool, not the
+live DOMjudge adapters, managed cost accounting, a full Monaco/IDE session,
+and the Keycloak/Postgres stack. This is a single-user localhost tool, not the
 production platform.
 
 ## Known MVP limits
 
 - `data/sample` and `data/secret` are flat; DOMjudge test groups are not modelled.
-- Comparison is whitespace-token based. Float tolerance, custom output validators
-  and interactive problems are not verified.
+- Default comparison is whitespace-token based. Float tolerance is explicit;
+  custom checkers and interactive problems use the verification-mode harness.
+  There is no live DOMjudge import test.
 - Memory limits are measured but not enforced on Windows.
 - Limits are measured from the reference runtime and memory; they are not
   manually chosen at problem creation.
@@ -359,7 +360,12 @@ server.py            loopback HTTP API, static UI, background jobs
 graph_agent.py       create_agent runtime, middleware, checkpoints, streaming
 executor_server.py   isolated compiler/runner worker (no key, no external network)
 agent_state.py       typed AuthorState + bounded working-memory helpers
-agent_middleware.py  pinned context and tool-error middleware
+agent_middleware.py  pinned context, context budget and tool-error middleware
+prompt_loader.py     composable prompt assembly
+skill_registry.py    progressive-disclosure SKILL.md registry
+package_model.py     Kattis/ICPC package discovery and groups
+verification_modes.py checker/interactor self-tests
+mcp_server.py        scoped read-only MCP stdio server
 agent.py             bounded tool dispatch + system prompt
 verify.py            deterministic package checks and ZIP export
 workspace.py         path safety, scaffold, chats, plans, changes, diffs, revert
@@ -369,7 +375,7 @@ sandbox/             sitecustomize for headless child Python processes
 templates/           ICPC statement class and DOMjudge scaffold
 web/                 chat timeline, chats/files/changes sidebar, inspector
 web/vendor/          locally bundled highlight.js
-docs/                master plan, adversarial verification, decisions + LangGraph diagram
+docs/                master plan, design, adversarial verification, status, decisions
 eval/                real-provider authoring eval harness + fixtures
 qa/                  deterministic fake-model stress/regression suite
 scripts/             reliable WSL Docker up/down wrappers

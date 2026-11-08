@@ -178,7 +178,7 @@ correct is not evidence. The verifier is deliberately boring and deterministic.
 ### Known verifier limits
 
 - Output comparison is whitespace-token based. Float tolerance, custom output
-  validators and interactive problems are not implemented.
+  validators and interactive problems are supported by verification modes.
 - Memory limits are measured but not enforced on Windows.
 - `data/sample` and `data/secret` are flat; DOMjudge test groups are not modelled.
 - There is no mathematical claim about coverage. Tests and negative solutions
@@ -233,7 +233,7 @@ a durable artifact.
 ### Conversation context management
 
 - The checkpointer stores the full message state plus working memory.
-- `SummarizationMiddleware` compacts old history (30k-token trigger, keep the
+- `SummarizationMiddleware` compacts old history (500k-token trigger, keep the
   latest 12 messages) using the configured provider. It is tool-pair safe.
 - `PinnedContextMiddleware` re-injects the brief, decisions, requirements, open
   questions, focus, mode, todos, selected-file snippets and verifier evidence on
