@@ -14,6 +14,7 @@ slug = created['slug']
 chat = workspace.ensure_chats(slug)['activeChat']
 use_model(FakeChat(auto_text='cdp history'))
 graph_agent.run_turn(slug, chat, 'seed checkpoint', lambda *_: None)
+workspace.save_pending(slug, chat, [{"id": "cdp-clar", "value": {"type": "clarification", "questions": ["Which format?"], "options": ["a", "b"], "recommended": "a"}}])
 workspace.write_text(slug, 'notes.txt', 'a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n', source='test')
 workspace.write_text(slug, 'notes.txt', 'a\nB\nc\nd\ne\nf\ng\nh\ni\nJ\n', source='test')
 print(slug + ' ' + chat)
@@ -70,6 +71,7 @@ try {
   const followPaused = !document.getElementById('follow-btn').hidden;
   setFollow(true);
   return {
+    clarificationVisible: !!document.querySelector('.clarification-card'),
     followPaused,
     hunkRows,
     historyRows,

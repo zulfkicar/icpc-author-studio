@@ -68,6 +68,12 @@ def main() -> int:
     key = cfg.get("apiKey") or "xpl_1234567890abcdef"
     redacted = config.redact(f"prefix {key} suffix xpl_abcdef1234567890")
     check("secret redaction", key not in redacted and "xpl_abcdef" not in redacted, redacted)
+    try:
+        graph_agent._model({**cfg, "apiKey": ""})
+    except RuntimeError:
+        check("missing key fails clearly", True)
+    else:
+        check("missing key fails clearly", False)
 
     print("PHASE 1 TESTS PASSED")
     return 0

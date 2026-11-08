@@ -547,7 +547,7 @@
   "J7": {
     "category": "ui",
     "test": "qa/cdp_workflow.ps1",
-    "status": "partial"
+    "status": "automated"
   },
   "J8": {
     "category": "ui",
@@ -597,7 +597,7 @@
   "K2": {
     "category": "provider",
     "test": "qa/test_phase1.py",
-    "status": "partial"
+    "status": "automated"
   },
   "K3": {
     "category": "provider",
@@ -686,8 +686,8 @@
   },
   "L10": {
     "category": "concurrency/chaos",
-    "test": "qa/stress_agent.py",
-    "status": "partial"
+    "test": "qa/test_snapshots.py",
+    "status": "automated"
   },
   "M1": {
     "category": "mcp",

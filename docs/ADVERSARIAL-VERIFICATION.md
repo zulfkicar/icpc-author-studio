@@ -291,7 +291,7 @@ A change cannot be called complete unless:
 
 ## 6.5 Automation status
 
-Every row is mapped in `qa/adversarial_manifest.json`. Current mapping: **121 automated, 25 partial**. Partial rows are limited to process/PID cleanup, absolute-path cross-workspace isolation, remaining UI matrix rows, provider failure modes and disk/clock chaos; the manifest test fails if a row is unmapped or points at a missing test file.
+Every row is mapped in `qa/adversarial_manifest.json`. Current mapping: **124 automated, 22 partial**. Partial rows are limited to process/PID cleanup, absolute-path cross-workspace isolation, remaining UI matrix rows, provider failure modes and disk/clock chaos; the manifest test fails if a row is unmapped or points at a missing test file.
 
 ## 7. Test implementation order
 
