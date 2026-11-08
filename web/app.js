@@ -20,6 +20,8 @@ const state = {
   activeSide: "chats",
   selectedChange: null,
   pendingMessage: null,
+  pendingApproval: null,
+  selectedContext: [],
   renderedChangeIds: new Set(),
   fileMode: "view",
   streaming: { assistantEl: null, assistantText: "", reasoningEl: null, reasoningText: "" },
@@ -562,6 +564,40 @@ function renderToolResult(name, result, open = true) {
     renderExportResult(result);
     return;
   }
+  if (name === "search_workspace") {
+    const card = document.createElement("div");
+    card.className = "event-verify";
+    const matches = (result.matches || []).slice(0, 12).map((m) => `<div class="mono small">${escapeHtml(m.path)}:${m.line} ${escapeHtml(m.text)}</div>`).join("");
+    card.innerHTML = `<b>Search · ${escapeHtml(result.query || "")}</b><div class="muted small" style="margin-top:4px">${result.count || 0} match(es)</div>${matches}`;
+    addEventCard(card);
+    return;
+  }
+  if (name === "list_tests") {
+    const card = document.createElement("div");
+    card.className = "event-verify";
+    card.innerHTML = `<b>Tests</b><div class="muted small" style="margin-top:4px">${result.sampleCount || 0} sample · ${result.secretCount || 0} secret</div>`;
+    addEventCard(card);
+    return;
+  }
+  if (name === "report_summary") {
+    renderVerifySummary(result);
+    return;
+  }
+  if (name === "review_package") {
+    const card = document.createElement("div");
+    card.className = "event-verify";
+    card.innerHTML = `<b>Independent review</b><div class="bubble" style="margin-top:6px">${renderMarkdown(result.review || "")}</div>`;
+    highlightWithin(card);
+    addEventCard(card);
+    return;
+  }
+  if (name === "write_todos" || name === "update_brief" || name === "record_decision" || name === "set_focus") {
+    const card = document.createElement("div");
+    card.className = "event-verify";
+    card.textContent = result.result || "State updated.";
+    addEventCard(card);
+    return;
+  }
   const text = JSON.stringify(result, null, 2);
   const card = document.createElement("details");
   card.className = "tool-card";
@@ -1047,6 +1083,10 @@ async function loadConversation() {
         renderToolResult(name, result, false);
       }
     }
+    const pending = data.pending || [];
+    state.pendingApproval = pending.length ? pending : null;
+    if (pending.length) renderApproval(pending);
+    $("send-btn").disabled = Boolean(state.jobId || state.pendingApproval);
     renderChatList();
     renderPlan();
   } catch (error) {
@@ -1252,6 +1292,8 @@ async function selectWorkspace(slug) {
   state.plan = { steps: [] };
   state.file = null;
   state.dirty = false;
+  state.pendingApproval = null;
+  state.selectedContext = [];
   state.jobId = null;
   state.jobChatId = null;
   state.jobEvents = 0;
@@ -1285,8 +1327,10 @@ async function selectWorkspace(slug) {
   }
   localStorage.setItem("author-agent-slug", slug);
   $("workspace-select").value = slug;
+  $("mode-select").value = localStorage.getItem("author-agent-mode") || "author";
   await refreshWorkspace();
   await loadReport();
+  loadContext();
   await loadChats();
   await loadConversation();
   renderPlan();
@@ -1376,6 +1420,10 @@ function processJobEvents(job) {
       node.textContent = `Limits measured: ${data.timeLimitSeconds}s time / ${data.memoryMb} MiB memory (slowest ${data.slowestTest || "n/a"}, ${data.maxRuntimeMs} ms).`;
       addEventCard(node);
       toast(`Limits: ${data.timeLimitSeconds}s / ${data.memoryMb} MiB`);
+    } else if (event.kind === "usage") {
+      renderUsage(data);
+    } else if (event.kind === "approval") {
+      state.pendingApproval = data.interrupts || [];
     }
   }
   state.jobEvents = events.length;
@@ -1395,6 +1443,17 @@ function pollJob(jobId, onDone) {
       processJobEvents(job);
       if (job.state === "running") {
         state.pollTimer = setTimeout(tick, 700);
+        return;
+      }
+      if (job.state === "paused") {
+        state.jobId = null;
+        state.jobChatId = null;
+        state.pendingApproval = (job.result && job.result.interrupts) || [];
+        $("agent-state").textContent = "";
+        $("send-btn").disabled = true;
+        await refreshWorkspace();
+        await loadChats(state.chatId);
+        await loadConversation();
         return;
       }
       $("agent-state").textContent = "";
@@ -1425,6 +1484,10 @@ function pollJob(jobId, onDone) {
 
 async function sendMessage(override) {
   if (!state.slug) { toast("Create or select a problem first", true); return; }
+  if (state.pendingApproval) {
+    toast("Approve or reject the pending action first", true);
+    return;
+  }
   const composer = $("composer");
   const message = (override ?? composer.value).trim();
   if (!message) return;
@@ -1451,7 +1514,12 @@ async function sendMessage(override) {
     $("agent-state").textContent = "sending…";
     const job = await api(`/api/workspaces/${state.slug}/chat`, {
       method: "POST",
-      body: { message, chatId: state.chatId },
+      body: {
+        message,
+        chatId: state.chatId,
+        mode: $("mode-select").value || "author",
+        context: state.selectedContext,
+      },
     });
     state.jobId = job.id;
     state.jobChatId = job.chatId || state.chatId;
@@ -1533,6 +1601,7 @@ function openSettings() {
   form.temperature.value = settings.temperature ?? 0.2;
   form.maxToolRounds.value = settings.maxToolRounds ?? 24;
   form.clearKey.checked = false;
+  form.reviewWrites.checked = Boolean(settings.reviewWrites);
   $("key-status").textContent = settings.hasKey ? `A key ending in ${settings.keyHint} is saved.` : "No API key saved yet.";
   $("settings-dialog").showModal();
 }
@@ -1545,6 +1614,7 @@ async function saveSettings(event) {
     model: form.model.value.trim(),
     temperature: Number(form.temperature.value || 0.2),
     maxToolRounds: Number(form.maxToolRounds.value || 24),
+    reviewWrites: form.reviewWrites.checked,
     clearKey: form.clearKey.checked,
   };
   if (form.apiKey.value.trim()) body.apiKey = form.apiKey.value.trim();
@@ -1579,6 +1649,167 @@ async function createProblem(event) {
       await sendMessage("Author this problem end-to-end from the idea in NOTES.md. State your assumptions in NOTES.md, publish a plan, draft the statement, validator, reference solution, samples, secret edge cases and at least one negative solution, then generate answers and iterate with verify_package until the package is verified. Only ask me when a rule is genuinely ambiguous.");
     }
   } catch (error) { toast(error.message, true); }
+}
+
+// ---------- context / mode / approvals ----------
+
+function renderContextChips() {
+  const host = $("context-chips");
+  host.innerHTML = "";
+  for (const path of state.selectedContext) {
+    const chip = document.createElement("span");
+    chip.className = "context-chip";
+    chip.textContent = path.split("/").pop();
+    chip.title = path;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.addEventListener("click", () => {
+      state.selectedContext = state.selectedContext.filter((item) => item !== path);
+      saveContext();
+      renderContextChips();
+    });
+    chip.appendChild(remove);
+    host.appendChild(chip);
+  }
+}
+
+function contextStorageKey() {
+  return "author-agent-context-" + state.slug;
+}
+
+function saveContext() {
+  if (state.slug) localStorage.setItem(contextStorageKey(), JSON.stringify(state.selectedContext));
+}
+
+function loadContext() {
+  state.selectedContext = [];
+  if (!state.slug) return;
+  try {
+    const value = JSON.parse(localStorage.getItem(contextStorageKey()) || "[]");
+    if (Array.isArray(value)) state.selectedContext = value.filter((item) => typeof item === "string");
+  } catch { state.selectedContext = []; }
+  renderContextChips();
+}
+
+function openContextDialog() {
+  const list = $("context-list");
+  list.innerHTML = "";
+  const files = state.tree.filter((row) => row.type === "file" && row.text && !row.path.startsWith("data/secret/") && !row.path.endsWith(".ans"));
+  if (!files.length) {
+    list.innerHTML = '<div class="muted small">No selectable text files.</div>';
+  }
+  for (const row of files) {
+    const label = document.createElement("label");
+    label.className = "context-row";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.value = row.path;
+    box.checked = state.selectedContext.includes(row.path);
+    const text = document.createElement("span");
+    text.textContent = row.path;
+    label.appendChild(box);
+    label.appendChild(text);
+    list.appendChild(label);
+  }
+  $("context-dialog").showModal();
+}
+
+function applyContext(event) {
+  event.preventDefault();
+  const checked = [...$("context-list").querySelectorAll('input[type="checkbox"]:checked')].map((box) => box.value);
+  state.selectedContext = checked;
+  saveContext();
+  renderContextChips();
+  $("context-dialog").close();
+}
+
+function renderUsage(data) {
+  const card = document.createElement("div");
+  card.className = "usage-card";
+  const values = [];
+  if (data.input_tokens) values.push(`${data.input_tokens} in`);
+  if (data.output_tokens) values.push(`${data.output_tokens} out`);
+  if (data.total_tokens) values.push(`${data.total_tokens} total`);
+  card.textContent = `Tokens: ${values.join(" · ") || "provider did not report usage"}`;
+  addEventCard(card);
+}
+
+function approvalActions(value) {
+  if (!value || typeof value !== "object") return [{ name: "Action", args: {}, id: null }];
+  if (Array.isArray(value.action_requests)) {
+    return value.action_requests.map((item) => ({ name: item.name, args: item.args || {}, description: item.description, id: null }));
+  }
+  return [{ name: value.name || "Action", args: value.args || {}, description: value.description, id: value.tool_call_id || null }];
+}
+
+function renderApproval(interrupts) {
+  if (!interrupts || !interrupts.length) return;
+  state.pendingApproval = interrupts;
+  const card = document.createElement("div");
+  card.className = "approval-card";
+  const title = document.createElement("div");
+  title.className = "approval-title";
+  title.textContent = interrupts.length > 1 ? "Approval required (multiple actions)" : "Approval required";
+  card.appendChild(title);
+  for (const item of interrupts) {
+    const value = item.value || {};
+    for (const action of approvalActions(value)) {
+      const row = document.createElement("div");
+      row.className = "approval-action";
+      const label = document.createElement("div");
+      label.textContent = action.name;
+      const pre = document.createElement("pre");
+      pre.textContent = JSON.stringify(action.args, null, 2);
+      const description = document.createElement("div");
+      description.className = "muted small";
+      description.textContent = action.description || "";
+      row.appendChild(label);
+      row.appendChild(pre);
+      if (description.textContent) row.appendChild(description);
+      card.appendChild(row);
+    }
+  }
+  const buttons = document.createElement("div");
+  buttons.className = "approval-actions";
+  const approve = document.createElement("button");
+  approve.className = "primary small";
+  approve.textContent = "Approve all";
+  approve.addEventListener("click", () => resumeApproval("approve"));
+  const reject = document.createElement("button");
+  reject.className = "quiet small";
+  reject.textContent = "Reject all";
+  reject.addEventListener("click", () => resumeApproval("reject"));
+  buttons.appendChild(approve);
+  buttons.appendChild(reject);
+  card.appendChild(buttons);
+  addEventCard(card);
+  $("send-btn").disabled = true;
+}
+
+async function resumeApproval(decision) {
+  if (!state.slug || !state.chatId) return;
+  const interrupts = state.pendingApproval || [];
+  const batched = interrupts.some((item) => item.value && Array.isArray(item.value.action_requests));
+  const decisions = batched
+    ? { decisions: interrupts.flatMap((item) => (item.value.action_requests || []).map(() => ({ type: decision }))) }
+    : Object.fromEntries(interrupts.map((item) => [item.id, { type: decision }]));
+  try {
+    const job = await api(`/api/workspaces/${state.slug}/chats/${state.chatId}/resume`, {
+      method: "POST",
+      body: { decisions },
+    });
+    state.pendingApproval = null;
+    document.querySelectorAll(".approval-card").forEach((card) => card.remove());
+    state.jobId = job.id;
+    state.jobChatId = state.chatId;
+    state.jobEvents = 0;
+    $("send-btn").disabled = true;
+    $("agent-state").textContent = "resuming…";
+    pollJob(job.id);
+  } catch (error) {
+    toast(error.message, true);
+  }
 }
 
 // ---------- resizable panes ----------
@@ -1660,6 +1891,12 @@ function wire() {
   });
   $("revert-unreviewed").addEventListener("click", revertAllUnreviewed);
   $("new-chat").addEventListener("click", newChat);
+  $("mode-select").addEventListener("change", (event) => {
+    localStorage.setItem("author-agent-mode", event.target.value || "author");
+  });
+  $("context-btn").addEventListener("click", openContextDialog);
+  $("context-cancel").addEventListener("click", () => $("context-dialog").close());
+  $("context-form").addEventListener("submit", applyContext);
   $("stop-btn").addEventListener("click", async () => {
     if (!state.jobId) return;
     try {

@@ -1,0 +1,6 @@
+{
+  "name": "Eval Sum",
+  "author": "Eval",
+  "shortName": "S",
+  "idea": "Given two integers a and b, print a+b. Constraints: -10^9 <= a,b <= 10^9. Include a strict validator, samples, secret edge cases (minimum, maximum, mixed signs, zeros), a reference solution and a plausible wrong solution."
+}

@@ -22,6 +22,7 @@ DEFAULTS = {
     "apiKey": "",
     "temperature": 0.2,
     "maxToolRounds": 24,
+    "reviewWrites": False,
 }
 
 _LOCK = threading.Lock()
@@ -52,13 +53,19 @@ def load() -> dict:
         data["baseUrl"] = base_url
     if model:
         data["model"] = model
+    max_rounds = os.environ.get("AUTHOR_AGENT_MAX_TOOL_ROUNDS")
+    if max_rounds:
+        try:
+            data["maxToolRounds"] = max(1, min(64, int(max_rounds)))
+        except ValueError:
+            pass
     return data
 
 
 def save(update: dict) -> dict:
     with _LOCK:
         data = load()
-        for key in ("baseUrl", "model", "apiKey", "temperature", "maxToolRounds"):
+        for key in ("baseUrl", "model", "apiKey", "temperature", "maxToolRounds", "reviewWrites"):
             if key in update and update[key] is not None:
                 data[key] = update[key]
         data["temperature"] = max(0.0, min(2.0, float(data.get("temperature", 0.2))))
@@ -78,4 +85,5 @@ def public(data: dict | None = None) -> dict:
         "keyHint": ("..." + key[-4:]) if len(key) >= 8 else ("" if not key else "set"),
         "temperature": data.get("temperature", 0.2),
         "maxToolRounds": data.get("maxToolRounds", 24),
+        "reviewWrites": bool(data.get("reviewWrites", False)),
     }

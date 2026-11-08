@@ -41,13 +41,13 @@ long-lived product.
 
 | Spike | Result | Evidence |
 |---|---|---|
-| S1 durable async checkpoint | **PASS** | `AsyncSqliteSaver` + `create_react_agent`; turn 1 stored 2 messages, turn 2 saw 4, reopening the DB still showed 4. `thread_id` is the persistent cursor. |
+| S1 durable async checkpoint | **PASS** | `AsyncSqliteSaver`; turn 1 stored 2 messages, turn 2 saw 4, reopening the DB still showed 4. `thread_id` is the persistent cursor. Later migrated to `create_agent` and validated with two consecutive real-provider turns. |
 | S2 Command tool state update | **PASS** | A tool returning `Command(update={"plan": [...], "messages": [ToolMessage(..., tool_call_id=...)]})` updated state and produced roles `human/ai/tool/ai`. |
 | S4 HITL middleware | **PASS (batched + per_call)** | `create_agent` + `HumanInTheLoopMiddleware(interrupt_on={"export_package": ...})`; `ainvoke` returned `GraphOutput.interrupts`. Batched resumes with `{"decisions":[...]}`; per-call resumes with `{interrupt.id: {"type":"approve"}}`. In both cases the side effect ran once and history stayed valid. |
 | S7 tool-error middleware | **PASS** | `create_agent`'s internal ToolNode raises by default. A custom `AgentMiddleware` with both `wrap_tool_call` and `awrap_tool_call` catches the exception and returns an error `ToolMessage`; the model recovers and history remains valid. |
-| S3 summarization | **SOURCE + pending runtime** | `SummarizationMiddleware` has token/message triggers and explicitly advances past ToolMessages to preserve AI/Tool pairs. A runtime spike with our `AuthorState` and pinned context is still required. |
-| S5 usage metadata | **PENDING** | `AIMessage.usage_metadata` must be checked with the real provider; v3 message-finish usage is optional; absence must be labelled unknown. |
-| S6 migration/concurrency | **PENDING** | Seeding an old chat and running two jobs on one workspace under `AsyncSqliteSaver` still needs a spike. |
+| S3 summarization | **IMPLEMENTED; runtime trigger not stress-tested** | `SummarizationMiddleware(model, trigger=("tokens", 30000), keep=("messages", 12))` is in the graph. It preserves AI/Tool pairs; the normal eval did not reach the trigger. Pinned context carries the durable facts. |
+| S5 usage metadata | **PASS (real provider)** | Two real-provider turns reported `usage_metadata`, e.g. 3,492 input / 1 output tokens. The runtime accumulates per turn and labels absent usage unreported. |
+| S6 migration/concurrency | **PASS for serialized jobs** | New threads seed from the JSON mirror; later turns send only the new user message and the checkpoint supplies history/working memory. Per-workspace jobs are serialized; concurrent checkpointer access is not stress-tested. |
 | S8 event streaming + interrupts | **PASS via v2 + `aget_state`** | `astream_events(version="v2")` does not emit an `__interrupt__` event, but after the run `agent.aget_state(config).tasks[].interrupts` contains the HITL payload and `next` points at the paused node. Resume with `Command(resume={"decisions":[...]})` works and the side effect runs once. v3 `astream_events` is available but emits a **BetaWarning** in 1.2.20 and uses different async projection/resume shapes. |
 
 Reproducible spike shape (S2/S4/S7):

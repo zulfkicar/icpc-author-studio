@@ -45,11 +45,14 @@ server.py
   |-- workspace/file/change/chat/report endpoints
   |-- background jobs
   |
-  +--> graph_agent.py      LangGraph StateGraph
+  +--> graph_agent.py      LangChain create_agent runtime
   |      |-- model node     ChatOpenAI (OpenAI-compatible)
   |      |-- tool node      bounded tools
-  |      `-- streaming      events -> UI
+  |      |-- middleware     pinned context, todo, HITL, summarization, errors
+  |      `-- checkpointer   AsyncSqliteSaver per workspace
   |
+  +--> agent_state.py       typed working-memory state
+  +--> agent_middleware.py  pinned context + tool-error middleware
   +--> agent.py            tool implementations + system prompt
   +--> workspace.py        path safety, scaffold, chats, changes, snapshots
   +--> verify.py           deterministic package verification + ZIP export
@@ -57,9 +60,10 @@ server.py
   `--> sandbox/sitecustomize.py  headless child Python processes
 ```
 
-The app is local-first and single-user by design. There is no database, no
-multi-tenant identity provider, and no cloud dependency. The workspace on disk
-is the source of truth.
+The app is local-first and single-user by design. There is no multi-tenant
+identity provider and no cloud dependency. The workspace on disk is the source
+of truth for the package; the per-workspace SQLite checkpoint is the durable
+conversation state. Both are local.
 
 ## 3. Why LangGraph
 
@@ -102,7 +106,9 @@ The model has no ambient authority. It can only call a typed registry:
 ```
 list_files        read_file        write_file       delete_file
 run_command       build_answers    measure_limits   verify_package
-read_report       export_package   update_plan
+read_report       export_package   search_workspace list_tests
+report_summary    write_todos      update_brief     record_decision
+set_focus         review_package
 ```
 
 Design rules:
@@ -203,8 +209,10 @@ workspaces/<slug>/
     changes.json        reviewable file changes
     report.json         last deterministic report
     chats.json          chat index + active chat
-    chats/<id>.json     message history
-    chats/<id>.plan.json agent plan
+    chats/<id>.json     message mirror (UI/backup)
+    chats/<id>.plan.json agent plan (mirrored from todos)
+    checkpoints.sqlite  LangGraph AsyncSqliteSaver (authoritative agent state)
+    pending/<id>.json   pending human approvals
     export/             generated ZIPs
 ```
 
@@ -223,23 +231,34 @@ a durable artifact.
 
 ### Conversation context management
 
-- The provider receives the current user turn intact plus as much earlier history
-  as fits a character budget (about 180k characters).
-- Saved history is trimmed to about 120k characters at a user-message boundary.
-- Tool results are capped before they are sent back to the model.
-- A user message is persisted before the provider call, so a provider failure
-  does not lose the turn.
-- Each chat is independent. `New chat` creates a new file; it does not delete
-  the previous conversation.
+- The checkpointer stores the full message state plus working memory.
+- `SummarizationMiddleware` compacts old history (30k-token trigger, keep the
+  latest 12 messages) using the configured provider. It is tool-pair safe.
+- `PinnedContextMiddleware` re-injects the brief, decisions, requirements, open
+  questions, focus, mode, todos, selected-file snippets and verifier evidence on
+  every model call. Compaction cannot erase those facts.
+- Tool results are bounded by each tool; `read_file` supports line ranges and
+  `search_workspace` returns bounded snippets.
+- A failed turn's user message is preserved in the visible mirror; incomplete
+  tool-call groups are removed from the checkpoint before the next model call.
+- Each chat has its own `thread_id`; `New chat` creates a new thread and does not
+  delete the previous one.
 
-### Why the graph itself is stateless per turn
+### Durable checkpoints and migration
 
-The graph receives the stored history plus the new user message on each turn.
-Workspace files are the durable state. A per-turn `MemorySaver` checkpointer is
-used only to read the definitive final message list (including handled tool
-errors) before saving it; it is not a durable session store. The next step is a
-persistent checkpointer (SQLite/Postgres) so an interrupted graph can resume
-from a node rather than replaying the turn.
+`graph_agent.py` opens `<workspace>/.agent/checkpoints.sqlite` with
+`AsyncSqliteSaver` and uses the chat id as `thread_id`. On a new thread it seeds
+from the existing JSON chat mirror, including the plan as todos. On later turns
+it sends only the new user message; the checkpointer supplies history and
+working memory. The JSON chat/plan files are a UI and backup mirror, written
+after each turn; the checkpoint is authoritative for the agent.
+
+Human-in-the-loop pauses are real graph pauses: the assistant tool call remains
+pending, `pending/<id>.json` records the interrupt, and the UI resumes with
+`Command(resume={interrupt_id: decision})` for per-call mode. The runtime skips
+checkpoint repair for these paused tasks; it repairs only crashed/recursion
+limited turns. One persistent event loop is used for all turns so provider
+clients do not outlive a closed `asyncio.run` loop.
 
 ## 7. Execution model (Windows)
 
@@ -305,13 +324,19 @@ container or microVM with a read-only checkout and no shared mounts.
 - Streaming is enabled. Provider `reasoning_content` is surfaced as **Thinking**
   cards when present; otherwise the agent is prompted to narrate its plan in
   normal assistant text.
+- One persistent event loop is shared by all turns; per-turn model clients are
+  closed after use. `Accept-Encoding: identity` avoids a streaming decoder bug
+  in the pinned `httpx2`/OpenAI dependency set.
 - Limits: 8,000 max output tokens per response, 300 s request timeout, one retry
-  on 429/5xx, graph recursion limit derived from max tool rounds.
+  on 429/5xx, model-call limit from `maxToolRounds`, and a wider graph step budget
+  because middleware nodes add steps.
+- `AIMessage.usage_metadata` is accumulated per turn and emitted as a usage
+  event; absent usage is labelled unreported. There is no cost meter.
 - The key lives in `.author-agent/config.json`, which is gitignored, or in
   environment overrides. It is never sent to the browser.
 
-Not implemented yet: token/cost accounting, provider-side rate-limit handling
-beyond a retry, model fallback, or a managed-credential flow.
+Not implemented yet: provider-side rate-limit handling beyond a retry, model
+fallback, or a managed-credential flow.
 
 ## 9. UI/UX decisions
 
@@ -334,7 +359,8 @@ evidence.
 - **Durable chats, not a single transcript.** Users return to a problem over
   days. Chats are listed with title, time and message count; New chat creates a
   new session instead of destroying the old one.
-- **Plan first.** The `update_plan` tool publishes 3–8 steps. The Plan inspector
+- **Plan first.** The `write_todos` tool maintains the task list; the runtime
+  mirrors it into the per-chat plan. The Plan inspector
   shows both the authoring pipeline and the agent's current plan. This follows
   the plan-review pattern in Cursor and the progress/todo pattern in Claude Code
   and Replit Agent.
@@ -386,8 +412,10 @@ patterns that fit ICPC authoring.
 
 | Failure | Behavior |
 |---|---|
-| Provider error / no key | User message is already persisted; error card; context is not lost. |
-| Tool error | `ToolNode(handle_tool_errors=True)` turns it into a `ToolMessage`; the model can diagnose and the transcript stays valid. Legacy dangling tool calls are repaired when a chat is loaded. |
+| Provider error / no key | The user message is preserved in the visible mirror; error card; the checkpoint is repaired before the next turn. |
+| Tool error | Async `ToolErrorMiddleware` turns it into a `ToolMessage`; the model can diagnose and the transcript stays valid. |
+| Crashed/recursion-limited turn | The next turn removes incomplete assistant/tool groups and orphan tool messages from the checkpoint (while preserving real HITL pauses). |
+| HITL approval pending | The graph is paused; `pending/<id>.json` stores interrupts; the UI resumes with the approval decision. |
 | Concurrent workspace writes | Jobs are serialized per workspace; metadata files use unique temporary names and atomic replace. |
 | Compile failure | Report says `CE`; not counted as a kill or a pass. |
 | Validator reject | Report shows the input and exit code. |
@@ -403,37 +431,43 @@ patterns that fit ICPC authoring.
 
 - `python -m py_compile` for all Python modules.
 - `node --check web/app.js` for the UI.
-- Direct unit-style test of the LangGraph loop with a fake chat model: verifies
-  tool dispatch, message persistence and event ordering.
-- End-to-end mock provider test over SSE: verifies `ChatOpenAI` streaming,
-  LangGraph events, a tool call, plan persistence and chat history.
-- Headless Chrome DOM load: verifies the app boots and renders without JS
-  console errors.
+- Direct unit-style tests of the `create_agent` runtime with fake chat models:
+  tool dispatch, durable two-turn memory, todo mirror, pinned context, review
+  mode and HITL pause/resume.
+- Real-provider HTTP smoke test: two consecutive turns with usage metadata.
+- Real-provider HITL HTTP test: export paused before the tool, approval resumed,
+  the export gate still refused an unverified package, pending state cleared.
 - A verified synthetic demo problem (`sum-test`) exercises validator, reference,
   negative solution, statement PDF, report and export.
 - A survivor test proves that a wrong solution that passes every test fails the
   verification gate.
 - A stale-snapshot test proves that editing after verification blocks export.
+- A real-provider eval baseline (`eval/run_eval.py --fixture sum`) authored a
+  package; one repair turn removed a negative solution that was actually correct
+  for the constraints; the verifier finished green.
+- Headless Chrome DOM load: verifies the app boots and renders without JS
+  console errors.
 
-Not yet tested: a real paid provider run, real DOMjudge import, Linux/macOS
-execution, interactive/custom-checker problems, or a hostile-code sandbox.
+Not yet tested: real DOMjudge import, Linux/macOS execution,
+interactive/custom-checker problems, or a hostile-code sandbox.
 
 ## 12. What I would build next
 
 1. **Container execution.** Run all commands in a locked-down container or WSL
    sandbox with no host mounts, memory/CPU limits and no network.
-2. **Checkpoints and restore.** LangGraph checkpointer plus a per-turn workspace
-   snapshot. Offer "restore to this turn", not just per-file revert.
-3. **Human-in-the-loop modes.** "Review every edit", "auto-apply safe edits" and
-   "plan only". Add `interrupt` before risky tools and before export.
+2. **Restore to a turn.** Checkpoints are durable; add a UI picker to restore
+   conversation/workspace state to an earlier turn, not just per-file revert.
+3. **Approval modes.** Export and reviewed writes are gated; add "plan only" and
+   "auto-apply safe edits" policies.
 4. **Inline review.** Accept/reject hunks in a unified diff view.
-5. **Explicit context selection.** @-mention files and evidence instead of
-   implicit whole-workspace access.
+5. **Richer context.** @-mention files/evidence and pin specific verifier checks
+   beyond the current selected-context list.
 6. **Chat management.** Rename/delete/search, recency groups, unread indicators,
    tabs for open chats (the Linear pattern).
 7. **True cancellation.** Abort the provider HTTP request, not just the event
    loop.
-8. **Usage and cost.** Token/cost meter per turn and per workspace.
+8. **Cost meter.** Token usage is captured; add provider pricing and per-workspace
+   cost.
 9. **MCP adapter.** Expose the same command services through a scoped MCP server;
    no second permissive policy.
 10. **DOMjudge integration.** Import/export against a real contest, with native
@@ -487,7 +521,9 @@ records rather than a single transcript.
 | File | Responsibility |
 |---|---|
 | `server.py` | Loopback HTTP server, static UI, jobs, cancellation, API routes. |
-| `graph_agent.py` | LangGraph graph, tools, streaming, plan tool, message conversion. |
+| `graph_agent.py` | `create_agent` runtime, middleware, checkpoints, streaming, tools, message conversion. |
+| `agent_state.py` | Typed `AuthorState` and working-memory bounds. |
+| `agent_middleware.py` | Pinned context and tool-error middleware. |
 | `agent.py` | Bounded tool dispatch, system prompt, workspace state note. |
 | `verify.py` | Deterministic verification and DOMjudge ZIP export. |
 | `workspace.py` | Path safety, scaffold, chats, plans, changes, diffs, snapshots. |
@@ -496,6 +532,7 @@ records rather than a single transcript.
 | `sandbox/sitecustomize.py` | Headless child processes for generated Python scripts. |
 | `web/` | Chat timeline, chats/files/changes sidebar, Plan/File/Report/Diff inspector, highlighted code viewer and Run panel. |
 | `web/vendor/` | Locally bundled highlight.js and theme. |
-| `docs/` | Compiled LangGraph diagram and Mermaid source. |
+| `eval/` | Real-provider eval harness, fixtures and generated results. |
+| `docs/` | Research/decision docs and LangGraph diagram. |
 | `scripts/` | Reliable WSL Docker up/down wrappers. |
 | `templates/` | ICPC statement class and DOMjudge package scaffold. |

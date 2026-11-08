@@ -1,8 +1,22 @@
 # Agent Improvement Plan — durable memory, context, and human-in-the-loop
 
-Status: **plan only, not implemented**  
-Pinned stack at time of writing: `langgraph 1.2.20`, `langchain-core 1.7.6`,
+Status: **implemented 2026-11-08; remaining items listed below**
+Pinned stack: `langchain 1.4.9`, `langgraph 1.2.20`, `langchain-core 1.7.6`,
 `langchain-openai 1.7.4`, `langgraph-checkpoint-sqlite 3.1.3`.
+
+> **Implementation update (2026-11-08):**
+> - `create_agent` runtime, `AuthorState`, pinned context, todo middleware,
+>   `AsyncSqliteSaver` per workspace, checkpoint migration/repair, durable
+>   two-turn memory, HITL export approval, review-mode write approval, usage
+>   events, context tools, mode selector, selected-file context, reviewer tool
+>   and eval harness are implemented.
+> - Real-provider smoke test and HTTP HITL test passed.
+> - Sum eval authored a package; one repair turn removed a negative solution
+>   that was actually correct for the constraints; verification is green.
+> - Remaining: summary middleware is implemented but not trigger-tested at
+>   scale; concurrent checkpointer access is guarded by per-workspace job locks
+>   but not stress-tested; reviewer is a nested read-only agent, not a separate
+>   subgraph; v3 streaming deferred.
 
 > **Research update (2026-11-08):** read
 > [`AGENT-DECISIONS.md`](AGENT-DECISIONS.md) first. `create_react_agent` is

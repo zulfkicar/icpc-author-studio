@@ -77,6 +77,11 @@
       </div>
       <span id="agent-state" class="agent-state"></span>
       <span class="spacer"></span>
+      <select id="mode-select" class="mode-select" title="Agent mode">
+        <option value="author">Author</option>
+        <option value="debug">Debug</option>
+        <option value="review">Review</option>
+      </select>
       <button id="stop-btn" class="quiet small" hidden>Stop</button>
       <button id="reload-chat" class="icon-btn" title="Reload conversation">&#8635;</button>
     </div>
@@ -95,6 +100,8 @@
       <div class="composer-context">
         <span class="context-chip">workspace context</span>
         <span id="composer-chat" class="context-chip muted">no chat</span>
+        <button id="context-btn" class="context-chip context-button" type="button">+ context</button>
+        <span id="context-chips" class="context-chips"></span>
       </div>
       <textarea id="composer" rows="3" placeholder="Ask the agent to author, debug, test, or explain. Ctrl+Enter to send."></textarea>
       <div class="composer-row">
@@ -186,9 +193,22 @@
       <label>Max tool rounds <input name="maxToolRounds" type="number" min="1" max="64" value="24"></label>
     </div>
     <label class="check"><input name="clearKey" type="checkbox"> Delete the saved key</label>
+    <label class="check"><input name="reviewWrites" type="checkbox"> Review every file write/delete before it runs</label>
     <div class="dialog-actions">
       <button type="button" id="settings-cancel" class="quiet">Cancel</button>
       <button value="save" class="primary">Save settings</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="context-dialog">
+  <form method="dialog" id="context-form">
+    <h2>Selected context</h2>
+    <p class="dialog-sub muted">Explicitly include these files in the agent's pinned context. Hidden test data is not listed here.</p>
+    <div id="context-list" class="context-list"></div>
+    <div class="dialog-actions">
+      <button type="button" id="context-cancel" class="quiet">Cancel</button>
+      <button value="apply" class="primary">Apply context</button>
     </div>
   </form>
 </dialog>

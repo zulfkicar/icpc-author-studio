@@ -1,0 +1,6 @@
+{
+  "name": "Eval Claim or Concede",
+  "author": "Eval",
+  "shortName": "C",
+  "idea": "Two players process a row of n non-negative values. The player holding the lead chooses CLAIM (take w_i, pass the lead) or CONCEDE (opponent takes w_i, keep the lead). Both play optimally for their own total. Print A's total. Use n up to 2e5, w_i up to 1e9, 64-bit answers. Include edge cases and a naive wrong solution."
+}

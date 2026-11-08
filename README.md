@@ -116,19 +116,33 @@ $env:AUTHOR_AGENT_MODEL = "deepseek-chat"
 
 ## Agent architecture
 
-The provider loop is a LangGraph `StateGraph` (`graph_agent.py`) built with
-`create_react_agent`. The model node can call a bounded tool registry; a
-`ToolNode` executes it. LangGraph event streaming feeds the UI with reasoning,
-assistant text, tool start/end, plan updates and verification events in real
-time. The agent can publish a plan with `update_plan`, which is stored per chat
-and shown in the **Plan** inspector.
+The provider loop is a LangChain `create_agent` graph (`graph_agent.py`) with
+middleware. The model node calls a bounded tool registry; the built-in tool node
+executes it. Middleware adds:
+
+- `AsyncSqliteSaver` checkpoints per workspace (`<workspace>/.agent/checkpoints.sqlite`);
+  `thread_id` is the chat id.
+- `TodoListMiddleware` for `write_todos` (the Plan inspector mirrors it).
+- `PinnedContextMiddleware` for the brief, decisions, open questions, selected
+  context, mode and verifier evidence on every model call.
+- `HumanInTheLoopMiddleware` for export approval (and optionally every write).
+- `SummarizationMiddleware` for bounded history, plus `ModelCallLimitMiddleware`.
+- `ToolErrorMiddleware` so tool failures become `ToolMessage`s and the graph
+  does not abort.
+
+The runtime keeps one persistent event loop for provider clients, repairs
+incomplete tool-call groups left by a crashed turn, and streams v2 events to the
+UI (reasoning, narration, tool start/end, changes, verification, usage and
+approval requests). v3 streaming is deferred because it is beta in the pinned
+LangGraph release.
 
 Conversations are durable per workspace. **Chats** in the left sidebar are
 separate sessions with titles, timestamps and message counts. **New chat** no
 longer deletes the previous one; you can switch back at any time.
 
-Deterministic tools and the verifier remain the authority. LangGraph does not
-grant the agent approval or export rights.
+Deterministic tools and the verifier remain the authority. The runtime pauses
+for human approval where configured, but it cannot mark a package verified or
+bypass the snapshot/review gate.
 
 ## What the agent can do
 
@@ -143,10 +157,28 @@ The model is given a bounded tool registry, not a raw host shell:
 - `measure_limits` (run the accepted references on every test and write measured
   time/memory limits)
 - `verify_package`, `read_report`, `export_package`
+- `search_workspace`, `read_file` with `start_line`/`end_line`, `list_tests`,
+  `report_summary` for bounded evidence gathering
+- `write_todos`, `update_brief`, `record_decision`, `set_focus` for durable
+  working memory
+- `review_package`, an independent read-only reviewer agent that returns
+  proposal-only findings and is blocked from secret tests/answers
 
 All tool calls go through the same workspace and verifier code used by the UI.
 The model cannot mark a report verified or export a package; only the
 deterministic verifier and an explicit user click can do that.
+
+## Context, modes and approvals
+
+- Pick **Author**, **Debug** or **Review** in the chat header. The mode changes
+  the pinned operating instructions for the next turn.
+- Use **+ context** to explicitly include workspace files. Selected files are
+  injected into the pinned context (bounded) and persisted with the chat.
+- `export_package` always pauses for approval. Enable **Review every file
+  write/delete** in Settings to gate risky edits too. Approve or reject in the
+  chat; the pending approval is stored per chat and survives reload.
+- Token usage is shown per turn when the provider reports it. Missing usage is
+  labelled as unreported, never invented.
 
 ## The workflow
 
@@ -207,18 +239,37 @@ this MVP; the verifier will not pretend they are.
 - The left, center and right panes have draggable splitters. Double-click a
   splitter to reset it; widths are remembered in the browser.
 
+## Evaluation
+
+`eval/run_eval.py` runs a real-provider authoring baseline against a fixture,
+runs the deterministic verifier, and sends concrete verifier errors back for up
+to `--turns` repair turns. It writes JSON results under `eval/results/`:
+
+```
+python eval/run_eval.py --fixture sum --turns 3 --max-rounds 24
+```
+
+The `sum` baseline is verified. The first authoring turn hit the per-turn model
+call cap while trying to replace a negative solution that was actually correct
+for the stated constraints; the repair turn removed it, then verification went
+green. That case is now covered by a system-prompt rule and the eval repair
+loop. Eval runs use your configured key and cost provider usage; results and
+generated workspaces are not committed.
+
 ## Reduced from the full design
 
 This keeps the essential author-assistant loop from
 `platform-prototype/tooling/omp/AUTHOR-AGENT.md` and the seven-stage workflow in
 `docs/research/2026-11-05-interactive-coding/WORKFLOW.md`:
 
-Kept: selected workspace context, typed tool registry, human-reviewed diffs,
-literal tests vs generators, reference/wrong-solution evidence, statement
-compilation, real subprocess execution, explicit verification, export gating.
+Kept and expanded: durable SQLite checkpoints, pinned working memory, todo
+lists, context compaction, explicit file context, modes, human approval,
+typed tool registry, human-reviewed diffs, literal tests vs generators,
+reference/wrong-solution evidence, statement compilation, real subprocess
+execution, explicit verification, export gating and a real-provider eval loop.
 
 Deliberately dropped for now: multi-user auth/RBAC, the full contest platform,
-live DOMjudge adapters, MCP transport, managed AI usage accounting, container
+live DOMjudge adapters, MCP transport, managed cost accounting, container
 sandboxes, a full Monaco/IDE session, interactive/custom-checker problems, and
 the Keycloak/Postgres stack. This is a single-user localhost tool, not the
 production platform.
@@ -232,6 +283,13 @@ production platform.
 - Limits are measured from the reference runtime and memory; they are not
   manually chosen at problem creation.
 - One local user; no accounts, RBAC, audit trail or multi-tenant isolation.
+- Summary compaction is provider-dependent; pinned brief/decisions/todos carry
+  the facts that matter. The summary itself is not deterministic.
+- Token counts are shown when the provider reports them; there is no cost meter.
+- `review_package` is a nested read-only reviewer agent, not a separate graph
+  subgraph. Its findings are proposals; it cannot approve or export.
+- The eval harness requires a real provider key and is intentionally excluded
+  from CI.
 - Reference/negative languages: C++/C, Python, Java (toolchains must be on PATH).
 - The statement uses the local `icpcproblem.cls`; replace it with the official
   ICPC class if your contest toolchain provides one.
@@ -246,18 +304,21 @@ execute. It is not a hostile-tenant sandbox.
 ## Files
 
 ```
-server.py        loopback HTTP API, static UI, background jobs
-graph_agent.py   LangGraph state graph, streaming events, plan tool
-agent.py         bounded tool implementations + system prompt
-verify.py        deterministic package checks and ZIP export
-workspace.py     path safety, scaffold, chats, changes, diffs, revert
-config.py        local provider configuration
-winutil.py       headless Windows process execution
-sandbox/         sitecustomize for headless child Python processes
-templates/       ICPC statement class and DOMjudge scaffold
-web/             chat timeline, chats/files/changes sidebar, inspector
-web/vendor/      locally bundled highlight.js
-docs/            LangGraph diagram (PNG + Mermaid source)
-scripts/         reliable WSL Docker up/down wrappers
-workspaces/      one directory per problem (gitignored)
+server.py            loopback HTTP API, static UI, background jobs
+graph_agent.py       create_agent runtime, middleware, checkpoints, streaming
+agent_state.py       typed AuthorState + bounded working-memory helpers
+agent_middleware.py  pinned context and tool-error middleware
+agent.py             bounded tool dispatch + system prompt
+verify.py            deterministic package checks and ZIP export
+workspace.py         path safety, scaffold, chats, plans, changes, diffs, revert
+config.py            local provider configuration
+winutil.py           headless Windows process execution
+sandbox/             sitecustomize for headless child Python processes
+templates/           ICPC statement class and DOMjudge scaffold
+web/                 chat timeline, chats/files/changes sidebar, inspector
+web/vendor/          locally bundled highlight.js
+docs/                research/decision docs + LangGraph diagram
+eval/                real-provider authoring eval harness + fixtures
+scripts/             reliable WSL Docker up/down wrappers
+workspaces/          one directory per problem (gitignored)
 ```

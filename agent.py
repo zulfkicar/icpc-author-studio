@@ -49,6 +49,12 @@ A good turn is: inspect the workspace, write or patch files, build answers, run 
 Narrate your work for the author. Before each batch of tool calls, write 1-3 short sentences saying what you are about to do and why. After tool results, say what you learned, what failed, and what you will do next. This is a working explanation, not a hidden chain-of-thought dump: be concrete, mention file names and commands, and keep moving. Never claim something passed unless the tool result says so.
 
 LIMITS: never choose time or memory limits when creating the problem. The workspace starts with provisional defaults. Only after the reference solution and tests are ready, build answers, then call measure_limits. It runs the accepted references on every test and writes measured limits to problem.yaml, domjudge-problem.ini and the statement. Verification will not pass until limits are measured.
+
+PLANNING AND MEMORY: use write_todos for the current operational task list. Use update_brief for a concise durable brief, record_decision for setter interpretations, and set_focus for the current one-line objective. Use search_workspace and read_file with optional start_line/end_line to keep context small; use list_tests and report_summary for compact evidence. Keep the todo list current. Use review_package for an independent, proposal-only review when useful; it cannot read secret tests or answers and cannot approve or export.
+
+APPROVAL: export_package is human-gated. If review mode is enabled, write_file and delete_file are also human-gated. Approval is handled by the runtime; never claim an action was approved, and never try to bypass the gate. The deterministic verifier and snapshot/review gates remain the authority.
+
+NEGATIVE SOLUTIONS: a negative solution must be genuinely wrong for the stated constraints. If the verifier says a negative solution survives because it is actually correct for those constraints, remove it or replace it with a different genuinely wrong solution. Never weaken tests or constraints just to kill a solution. Use the verifier's exact error and report as the next check.
 """
 
 TOOLS = [
@@ -233,7 +239,65 @@ def _dispatch(slug: str, name: str, args: dict, emit) -> dict:
         rows = [row for row in workspace.tree(slug) if row["path"].startswith(prefix)]
         return {"path": rel, "entries": rows[:800], "count": len(rows)}
     if name == "read_file":
-        return workspace.read_text(slug, args["path"])
+        result = workspace.read_text(slug, args["path"])
+        if result.get("text"):
+            start = args.get("start_line")
+            end = args.get("end_line")
+            if start is not None or end is not None:
+                lines = result.get("content", "").splitlines(keepends=True)
+                try:
+                    first = max(1, int(start or 1))
+                    last = min(len(lines), int(end or len(lines)))
+                except (TypeError, ValueError):
+                    raise ValueError("start_line and end_line must be integers")
+                if first > last:
+                    raise ValueError("start_line must not exceed end_line")
+                result["content"] = "".join(lines[first - 1:last])
+                result["range"] = {"start": first, "end": last, "totalLines": len(lines)}
+        return result
+    if name == "search_workspace":
+        query = str(args.get("query") or "").strip()
+        if not query:
+            raise ValueError("A search query is required")
+        pattern = str(args.get("glob") or "*")
+        try:
+            max_results = max(1, min(100, int(args.get("max_results", 40))))
+        except (TypeError, ValueError):
+            max_results = 40
+        matches = []
+        import fnmatch
+        for row in workspace.tree(slug):
+            if row["type"] != "file" or not row.get("text"):
+                continue
+            if not fnmatch.fnmatch(row["path"], pattern):
+                continue
+            try:
+                text = workspace.read_text(slug, row["path"]).get("content") or ""
+            except Exception:
+                continue
+            for number, line in enumerate(text.splitlines(), 1):
+                if query.lower() in line.lower():
+                    matches.append({"path": row["path"], "line": number, "text": line.strip()[:240]})
+                    if len(matches) >= max_results:
+                        break
+            if len(matches) >= max_results:
+                break
+        return {"query": query, "matches": matches, "count": len(matches), "truncated": len(matches) >= max_results}
+    if name == "list_tests":
+        rows = workspace.tree(slug)
+        sample = [r["path"] for r in rows if r["type"] == "file" and r["path"].startswith("data/sample/") and r["path"].endswith(".in")]
+        secret = [r["path"] for r in rows if r["type"] == "file" and r["path"].startswith("data/secret/") and r["path"].endswith(".in")]
+        return {"sample": sample, "secret": secret, "sampleCount": len(sample), "secretCount": len(secret)}
+    if name == "report_summary":
+        report = workspace.state(slug).get("lastReport") or {"status": "none"}
+        return {
+            "status": report.get("status", "none"),
+            "errors": (report.get("errors") or [])[:12],
+            "warnings": (report.get("warnings") or [])[:8],
+            "counts": report.get("counts") or {},
+            "limits": report.get("limits") or {},
+            "checks": [{"name": c.get("name"), "status": c.get("status"), "detail": str(c.get("detail"))[:300]} for c in (report.get("checks") or [])],
+        }
     if name == "write_file":
         result = workspace.write_text(slug, args["path"], args.get("content", ""), source="agent")
         if result.get("diff"):

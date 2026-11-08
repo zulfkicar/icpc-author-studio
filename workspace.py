@@ -439,6 +439,36 @@ def mark_reviewed(slug: str) -> dict:
     return {"reviewed": sum(1 for c in items if c.get("reviewed") and not c.get("reverted")), "at": st["lastReview"]}
 
 
+def checkpoint_path(slug: str) -> pathlib.Path:
+    path = _state_dir(slug) / "checkpoints.sqlite"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _pending_file(slug: str, chat_id: str) -> pathlib.Path:
+    if not re.fullmatch(r"[a-f0-9]{12}", str(chat_id or "")):
+        raise ValueError("Invalid chat id")
+    path = _state_dir(slug) / "pending"
+    path.mkdir(parents=True, exist_ok=True)
+    return path / f"{chat_id}.json"
+
+
+def get_pending(slug: str, chat_id: str) -> list[dict]:
+    value = _read_json(_pending_file(slug, chat_id), [])
+    return value if isinstance(value, list) else []
+
+
+def save_pending(slug: str, chat_id: str, approvals: list[dict]) -> None:
+    _write_json(_pending_file(slug, chat_id), approvals)
+
+
+def clear_pending(slug: str, chat_id: str) -> None:
+    try:
+        _pending_file(slug, chat_id).unlink()
+    except FileNotFoundError:
+        pass
+
+
 def _chats_root(slug: str) -> pathlib.Path:
     path = _state_dir(slug) / "chats"
     path.mkdir(parents=True, exist_ok=True)
@@ -579,7 +609,7 @@ def get_chat(slug: str, chat_id: str) -> dict:
     messages = _read_json(_chat_file(slug, chat_id), [])
     if not isinstance(messages, list):
         messages = []
-    return {**meta, "messages": messages, "plan": get_plan(slug, chat_id)}
+    return {**meta, "messages": messages, "plan": get_plan(slug, chat_id), "pending": get_pending(slug, chat_id)}
 
 
 def save_chat_messages(slug: str, chat_id: str, messages: list[dict]) -> dict:

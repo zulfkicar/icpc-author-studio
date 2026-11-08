@@ -69,6 +69,8 @@ def start_job(title: str, slug: str | None, fn, chat_id: str | None = None) -> d
             with JOB_LOCK:
                 if job.get("cancelRequested"):
                     job["state"] = "cancelled"
+                elif isinstance(result, dict) and result.get("paused"):
+                    job["state"] = "paused"
                 else:
                     job["state"] = "done"
                 job["result"] = result
@@ -286,7 +288,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/settings":
                 body = self.read_json()
                 update = {}
-                for key in ("baseUrl", "model", "temperature", "maxToolRounds"):
+                for key in ("baseUrl", "model", "temperature", "maxToolRounds", "reviewWrites"):
                     if key in body:
                         update[key] = body[key]
                 if body.get("clearKey"):
@@ -325,6 +327,8 @@ class Handler(BaseHTTPRequestHandler):
                         chat_id = workspace.list_chats(slug).get("activeChat")
                     workspace.get_chat(slug, chat_id)
                     workspace.set_active_chat(slug, chat_id)
+                    mode = str(body.get("mode") or "author")
+                    selected_context = body.get("context") if isinstance(body.get("context"), list) else []
                     with CHAT_LOCK:
                         if slug in ACTIVE_CHATS:
                             raise ValueError("A chat turn is already running for this problem")
@@ -332,12 +336,35 @@ class Handler(BaseHTTPRequestHandler):
 
                     def run_chat(emit, cancelled):
                         try:
-                            return graph_agent.run_turn(slug, chat_id, message, emit, cancelled)
+                            return graph_agent.run_turn(
+                                slug, chat_id, message, emit, cancelled,
+                                mode=mode, selected_context=selected_context,
+                            )
                         finally:
                             with CHAT_LOCK:
                                 ACTIVE_CHATS.discard(slug)
 
                     return self.send_json(start_job("Agent turn", slug, run_chat, chat_id=chat_id))
+                if len(parts) == 6 and parts[3] == "chats" and parts[5] == "resume":
+                    body = self.read_json()
+                    chat_id = parts[4]
+                    decisions = body.get("decisions")
+                    if not decisions:
+                        raise ValueError("Approval decisions are required")
+                    workspace.get_chat(slug, chat_id)
+                    with CHAT_LOCK:
+                        if slug in ACTIVE_CHATS:
+                            raise ValueError("A chat turn is already running for this problem")
+                        ACTIVE_CHATS.add(slug)
+
+                    def run_resume(emit, cancelled):
+                        try:
+                            return graph_agent.resume_turn(slug, chat_id, decisions, emit, cancelled)
+                        finally:
+                            with CHAT_LOCK:
+                                ACTIVE_CHATS.discard(slug)
+
+                    return self.send_json(start_job("Resume approval", slug, run_resume, chat_id=chat_id))
                 if len(parts) == 5 and parts[3] == "chat" and parts[4] == "reset":
                     return self.send_json(workspace.create_chat(slug), 201)
                 if len(parts) == 4 and parts[3] == "verify":
