@@ -517,7 +517,7 @@
   "J1": {
     "category": "ui",
     "test": "qa/cdp_workflow.ps1",
-    "status": "partial"
+    "status": "automated"
   },
   "J2": {
     "category": "ui",
@@ -526,13 +526,13 @@
   },
   "J3": {
     "category": "ui",
-    "test": "qa/cdp_workflow.ps1",
-    "status": "partial"
+    "test": "qa/test_ui_contracts.py",
+    "status": "automated"
   },
   "J4": {
     "category": "ui",
-    "test": "qa/cdp_workflow.ps1",
-    "status": "partial"
+    "test": "qa/test_ui_contracts.py",
+    "status": "automated"
   },
   "J5": {
     "category": "ui",
@@ -542,7 +542,7 @@
   "J6": {
     "category": "ui",
     "test": "qa/cdp_workflow.ps1",
-    "status": "partial"
+    "status": "automated"
   },
   "J7": {
     "category": "ui",
@@ -571,13 +571,13 @@
   },
   "J12": {
     "category": "ui",
-    "test": "qa/cdp_workflow.ps1",
-    "status": "partial"
+    "test": "qa/test_event_ledger.py",
+    "status": "automated"
   },
   "J13": {
     "category": "ui",
     "test": "qa/cdp_workflow.ps1",
-    "status": "partial"
+    "status": "automated"
   },
   "J14": {
     "category": "ui",
@@ -586,8 +586,8 @@
   },
   "J15": {
     "category": "ui",
-    "test": "qa/cdp_workflow.ps1",
-    "status": "partial"
+    "test": "qa/test_ui_contracts.py",
+    "status": "automated"
   },
   "K1": {
     "category": "provider",
@@ -606,18 +606,18 @@
   },
   "K4": {
     "category": "provider",
-    "test": "qa/test_phase1.py",
-    "status": "partial"
+    "test": "qa/stress_agent.py",
+    "status": "automated"
   },
   "K5": {
     "category": "provider",
     "test": "qa/test_phase1.py",
-    "status": "partial"
+    "status": "automated"
   },
   "K6": {
     "category": "provider",
     "test": "qa/test_phase1.py",
-    "status": "partial"
+    "status": "automated"
   },
   "K7": {
     "category": "provider",
@@ -637,7 +637,7 @@
   "K10": {
     "category": "provider",
     "test": "qa/test_phase1.py",
-    "status": "partial"
+    "status": "automated"
   },
   "L1": {
     "category": "concurrency/chaos",
@@ -661,13 +661,13 @@
   },
   "L5": {
     "category": "concurrency/chaos",
-    "test": "qa/stress_agent.py",
-    "status": "partial"
+    "test": "qa/test_disk_db_failure.py",
+    "status": "automated"
   },
   "L6": {
     "category": "concurrency/chaos",
-    "test": "qa/stress_agent.py",
-    "status": "partial"
+    "test": "qa/test_disk_db_failure.py",
+    "status": "automated"
   },
   "L7": {
     "category": "concurrency/chaos",
@@ -676,13 +676,13 @@
   },
   "L8": {
     "category": "concurrency/chaos",
-    "test": "qa/stress_agent.py",
-    "status": "partial"
+    "test": "qa/test_event_ledger.py",
+    "status": "automated"
   },
   "L9": {
     "category": "concurrency/chaos",
-    "test": "qa/stress_agent.py",
-    "status": "partial"
+    "test": "qa/test_event_ledger.py",
+    "status": "automated"
   },
   "L10": {
     "category": "concurrency/chaos",

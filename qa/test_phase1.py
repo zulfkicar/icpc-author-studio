@@ -7,7 +7,9 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from langchain.agents.middleware import ModelRequest, ModelRetryMiddleware
+from langchain.agents.middleware import ModelRefusalMiddleware, ModelRequest, ModelResponse, ModelRetryMiddleware
+from langchain_core.exceptions import ModelRefusalError
+from langchain_core.messages import AIMessage
 from langchain_core.messages import HumanMessage
 
 import agent
@@ -64,6 +66,8 @@ def main() -> int:
     fallbacks = graph_agent._fallback_models(fallback_cfg)
     check("fallback model constructed", len(fallbacks) == 1 and fallbacks[0].model_name == "fallback-model", fallbacks)
     check("no fallback by default", graph_agent._fallback_models({**cfg, "fallbackModel": ""}) == [])
+    check("fallback smaller context", graph_agent._context_window({**cfg, "fallbackModelWindowTokens": 100000}) == 100000, graph_agent._context_window({**cfg, "fallbackModelWindowTokens": 100000}))
+    check("fallback supports tool binding", hasattr(fallbacks[0], "bind_tools"), fallbacks[0])
     check("system treats output as untrusted", "untrusted data" in agent.SYSTEM, agent.SYSTEM[:200])
     key = cfg.get("apiKey") or "xpl_1234567890abcdef"
     redacted = config.redact(f"prefix {key} suffix xpl_abcdef1234567890")
@@ -83,6 +87,15 @@ def main() -> int:
         return "ok"
     retry = ModelRetryMiddleware(max_retries=1, initial_delay=0.0, retry_on=(RuntimeError,))
     check("model retry", retry.wrap_model_call(object(), flaky) == "ok" and attempts["n"] == 2, attempts)
+
+    refusal = ModelRefusalMiddleware()
+    response = ModelResponse(result=[AIMessage(content=[{"type": "refusal", "refusal": "not allowed"}])])
+    try:
+        refusal.wrap_model_call(object(), lambda _request: response)
+    except ModelRefusalError:
+        check("provider refusal surfaced", True)
+    else:
+        check("provider refusal surfaced", False)
 
     print("PHASE 1 TESTS PASSED")
     return 0

@@ -24,7 +24,8 @@ jobs:
             eval/run_eval.py qa/stress_agent.py qa/test_phase1.py qa/test_skills.py \
             qa/test_verification_modes.py qa/test_interactive.py qa/test_hunks.py qa/test_snapshots.py qa/test_mcp.py \
             qa/test_groups_float.py qa/test_security.py qa/test_stale_export.py \
-            qa/test_context_500k.py qa/test_adversarial_manifest.py qa/probe_long_context.py qa/test_stale_export.py qa/test_accessibility.py
+            qa/test_context_500k.py qa/test_adversarial_manifest.py qa/probe_long_context.py qa/test_stale_export.py qa/test_accessibility.py \
+            qa/test_event_ledger.py qa/test_ui_contracts.py qa/test_disk_db_failure.py
       - name: Check UI JavaScript
         run: node --check web/app.js
       - name: Run Phase 1 tests
@@ -55,5 +56,11 @@ jobs:
         run: python qa/test_accessibility.py
       - name: Run stale export tests
         run: python qa/test_stale_export.py
+      - name: Run event ledger tests
+        run: python qa/test_event_ledger.py
+      - name: Run UI contract tests
+        run: python qa/test_ui_contracts.py
+      - name: Run disk/db failure tests
+        run: python qa/test_disk_db_failure.py
       - name: Run deterministic stress suite
         run: python qa/stress_agent.py

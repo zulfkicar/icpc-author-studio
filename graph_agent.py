@@ -20,6 +20,7 @@ from langchain.agents.middleware import (
     HumanInTheLoopMiddleware,
     ModelCallLimitMiddleware,
     ModelFallbackMiddleware,
+    ModelRefusalMiddleware,
     ModelRetryMiddleware,
     SummarizationMiddleware,
     TodoListMiddleware,
@@ -871,6 +872,12 @@ async def _run_turn_async(
         return final_text, rounds, usage, interrupts, values
 
 
+def _context_window(cfg: dict) -> int:
+    primary = int(cfg.get("modelWindowTokens", 1_048_576))
+    fallback = int(cfg.get("fallbackModelWindowTokens", 0) or 0)
+    return min(primary, fallback) if fallback > 0 else primary
+
+
 def _graph(cfg: dict, saver):
     model = _model(cfg)
     fallback_models = _fallback_models(cfg)
@@ -887,7 +894,7 @@ def _graph(cfg: dict, saver):
         middleware=[
             PinnedContextMiddleware(),
             ContextBudgetMiddleware(
-                model_window_tokens=int(cfg.get("modelWindowTokens", 1_048_576)),
+                model_window_tokens=_context_window(cfg),
                 max_output_tokens=int(cfg.get("maxOutputTokens", 393_216)),
             ),
             SummarizationMiddleware(
@@ -905,6 +912,7 @@ def _graph(cfg: dict, saver):
                 on_failure="error",
             ),
             *([ModelFallbackMiddleware(*fallback_models)] if fallback_models else []),
+            ModelRefusalMiddleware(),
             ToolRetryMiddleware(
                 max_retries=max(0, int(cfg.get("maxRetries", 2))),
                 tools=[

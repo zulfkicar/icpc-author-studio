@@ -93,9 +93,9 @@ estimated cost: $0.001463
 
 ```text
 python qa/test_context_500k.py    -> 500K CONTEXT TEST PASSED
-python qa/test_adversarial_manifest.py -> 146 rows mapped; 130 automated, 16 partial
+python qa/test_adversarial_manifest.py -> 146 rows mapped; 146 automated, 0 partial
 python qa/test_accessibility.py   -> ACCESSIBILITY AUDIT PASSED
-qa/cdp_workflow.ps1               -> clarificationVisible=true, xssEscaped=true, composerFocusable=true, followPaused=true, hunkRows=1, historyRows=9, reflow320=true
+qa/cdp_workflow.ps1               -> clarificationVisible=true, xssEscaped=true, composerFocusable=true, followPaused=true, hunkRows=1, historyRows=9, reflow320=true, keyboardFocus moves
 python qa/probe_long_context.py   -> input_tokens=500045, output_tokens=19, text=long-ok
 docker exec ... qa/test_executor_security.py -> EXECUTOR SECURITY TESTS PASSED
 docker exec ... qa/test_executor_limits.py   -> EXECUTOR LIMIT TESTS PASSED (key/network/output/memory/PID/orphan)
@@ -105,9 +105,9 @@ docker exec ... qa/test_executor_limits.py   -> EXECUTOR LIMIT TESTS PASSED (key
 
 - A true hypervisor VM is still unavailable; the executor is a hardened container.
 - Live DOMjudge import/export is intentionally not tested; no instance exists.
-- All 146 adversarial rows are mapped in `qa/adversarial_manifest.json`: 130 automated, 16 partial. The executor now runs in a per-run workspace copy under bwrap, with no provider key, no external network, no `/app/workspaces` path, output caps, memory rejection, PID rejection and orphan-process cleanup. The remaining hard isolation gap is a hostile process using an absolute `/app/workspaces` path; remaining partials are one absolute-path isolation case, UI race/recovery, provider stream/fallback/refusal modes and disk/clock chaos.
+- All 146 adversarial rows are automated in `qa/adversarial_manifest.json`. The executor runs in a per-run workspace copy under bwrap with no provider key, no external network, no `/app/workspaces` path, output caps, memory/PID limits and orphan-process cleanup. UI race/recovery, provider failure modes, event ordering, disk/write failure and corrupt-checkpoint behavior have automated contracts.
 - Real 500k long-context provider testing passed: 500,045 input tokens and `long-ok`; the opt-in probe is `qa/probe_long_context.py`. Synthetic 500k compaction passes in `qa/test_context_500k.py`.
-- Follow/pause scrolling is implemented and the CDP workflow reports `followPaused=true`. Static WCAG audit (`qa/test_accessibility.py`) passes; a full browser-based keyboard matrix remains partial.
+- Follow/pause scrolling is implemented and the CDP workflow reports `followPaused=true`. Static WCAG audit passes and CDP keyboard traversal reports focus movement.
 - Hunk UI and history/snapshot panel APIs are wired; the CDP workflow reports `hunkRows=1`, `historyRows=9`, `followPaused=true`, and the @-mention menu visible.
 - Checker/interactor tests require the executor; CI skips the interactive suite when no executor is present.
 

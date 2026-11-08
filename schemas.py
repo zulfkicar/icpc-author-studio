@@ -128,6 +128,31 @@ class PackageMetadata:
         return asdict(self)
 
 
+class EventLedger:
+    """Sequence-ordered event ledger used by replay and UI deduplication."""
+
+    def __init__(self) -> None:
+        self._events: dict[int, Event] = {}
+
+    def add(self, event: Event) -> bool:
+        existing = self._events.get(event.seq)
+        if existing is not None:
+            return False
+        self._events[event.seq] = event
+        return True
+
+    def merge(self, events: list[Event]) -> list[Event]:
+        for event in events:
+            self.add(event)
+        return self.ordered()
+
+    def ordered(self) -> list[Event]:
+        return [self._events[key] for key in sorted(self._events)]
+
+    def missing(self, through: int) -> list[int]:
+        return [number for number in range(1, through + 1) if number not in self._events]
+
+
 def validate_event_dict(value: dict) -> bool:
     required = ("runId", "seq", "at", "stage", "status")
     if not isinstance(value, dict) or any(key not in value for key in required):

@@ -70,8 +70,29 @@ try {
   setFollow(false);
   const followPaused = !document.getElementById('follow-btn').hidden;
   setFollow(true);
+  state.fileBusy = true;
+  runFile();
+  const busyGuard = state.fileBusy;
+  state.fileBusy = false;
+  const oldFile = state.file;
+  state.file = { path: 'missing.cpp', text: true, content: '', size: 0 };
+  await runFile();
+  const errorShown = document.getElementById('run-output').classList.contains('err') && Boolean(document.getElementById('run-output').textContent);
+  state.file = oldFile;
+  const clarificationVisible = !!document.querySelector('.clarification-card');
+  document.querySelectorAll('.approval-card').forEach((card) => card.remove());
+  const fake = [{ id: 'fake', value: { action_requests: [{ name: 'test_action', args: {}, description: 'test' }] } }];
+  renderApproval(fake);
+  const approvalBefore = document.querySelectorAll('.approval-card').length;
+  renderApproval(fake);
+  const approvalAfter = document.querySelectorAll('.approval-card').length;
   return {
-    clarificationVisible: !!document.querySelector('.clarification-card'),
+    busyGuard,
+    errorShown,
+    approvalBefore,
+    approvalAfter,
+    approvalDedupe: approvalBefore === 1 && approvalAfter === 1,
+    clarificationVisible,
     xssEscaped: !escapeHtml('<img src=x onerror=1>').includes('<img'),
     composerFocusable: (() => { const c = document.getElementById('composer'); c.focus(); return document.activeElement.id === 'composer'; })(),
     followPaused,
@@ -88,6 +109,14 @@ try {
   $reflow = Eval 'document.documentElement.scrollWidth <= 320'
   Invoke-Cdp 'Emulation.clearDeviceMetricsOverride' @{} | Out-Null
   $result | Add-Member -NotePropertyName reflow320 -NotePropertyValue $reflow
+  Eval 'document.getElementById("composer").focus()' | Out-Null
+  $focus = @()
+  for ($i = 0; $i -lt 6; $i++) {
+    Invoke-Cdp 'Input.dispatchKeyEvent' @{ type = 'keyDown'; key = 'Tab'; code = 'Tab'; windowsVirtualKeyCode = 9; nativeVirtualKeyCode = 9 } | Out-Null
+    Invoke-Cdp 'Input.dispatchKeyEvent' @{ type = 'keyUp'; key = 'Tab'; code = 'Tab'; windowsVirtualKeyCode = 9; nativeVirtualKeyCode = 9 } | Out-Null
+    $focus += Eval '(document.activeElement && (document.activeElement.id || document.activeElement.tagName)) || "body"'
+  }
+  $result | Add-Member -NotePropertyName keyboardFocus -NotePropertyValue $focus
   $result | ConvertTo-Json -Compress
 }
 finally {

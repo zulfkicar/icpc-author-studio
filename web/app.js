@@ -30,6 +30,8 @@ const state = {
   openTabs: [],
   mentionQuery: null,
   follow: true,
+  fileBusy: false,
+  approvalRendered: false,
   renderedChangeIds: new Set(),
   fileMode: "view",
   streaming: { assistantEl: null, assistantText: "", reasoningEl: null, reasoningText: "" },
@@ -1013,6 +1015,10 @@ async function selectTest(result) {
 
 async function runSamples() {
   if (!state.slug || !state.file || !isRunnablePath(state.file.path)) return;
+  if (state.fileBusy) return;
+  state.fileBusy = true;
+  $("run-file").disabled = true;
+  $("run-tests").disabled = true;
   if (state.dirty) await saveFile();
   const samples = sampleTests();
   if (!samples.length) { toast("Add data/sample/*.in and *.ans first", true); return; }
@@ -1052,6 +1058,10 @@ async function runSamples() {
   } catch (error) {
     $("test-results").hidden = true;
     toast(error.message, true);
+  } finally {
+    state.fileBusy = false;
+    $("run-file").disabled = false;
+    $("run-tests").disabled = false;
   }
 }
 
@@ -1168,6 +1178,10 @@ async function loadSampleInput(samplePath = null) {
 
 async function runFile() {
   if (!state.slug || !state.file || !isRunnablePath(state.file.path)) return;
+  if (state.fileBusy) return;
+  state.fileBusy = true;
+  $("run-file").disabled = true;
+  $("run-tests").disabled = true;
   if (state.dirty) await saveFile();
   state.samples = sampleTests();
   renderTestTabs();
@@ -1197,6 +1211,10 @@ async function runFile() {
   } catch (error) {
     output.className = "run-output err";
     output.textContent = error.message;
+  } finally {
+    state.fileBusy = false;
+    $("run-file").disabled = false;
+    $("run-tests").disabled = false;
   }
 }
 
@@ -1563,6 +1581,8 @@ async function loadConversation() {
   host.innerHTML = "";
   resetStreaming();
   setFollow(true);
+  state.approvalRendered = false;
+  state.pendingApproval = null;
   state.renderedChangeIds = new Set();
   state.plan = { steps: [] };
   if (!state.slug || !state.chatId) {
@@ -2370,7 +2390,9 @@ function renderApproval(interrupts) {
     renderClarification(clarifications);
     return;
   }
+  if (state.approvalRendered || document.querySelector(".approval-card")) return;
   state.pendingApproval = interrupts;
+  state.approvalRendered = true;
   const card = document.createElement("div");
   card.className = "approval-card";
   const title = document.createElement("div");

@@ -39,6 +39,14 @@ def check(name: str, condition: bool, detail: str = "") -> None:
         print(f"  FAIL {name} {detail}")
 
 
+class FailingChat(BaseChatModel):
+    @property
+    def _llm_type(self): return 'failing'
+    def bind_tools(self, tools, **kwargs): return self
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs): raise ConnectionError('stream disconnected')
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs): raise ConnectionError('stream disconnected')
+
+
 class FakeChat(BaseChatModel):
     responses: List[AIMessage] = []
     delay: float = 0.0
@@ -157,6 +165,23 @@ def run_clarification() -> None:
         resumed = graph_agent.resume_turn(slug, chat_id, None, lambda *_: None, clarification={"answers": ["a+b"]})
         check("clarification resumed", not resumed["paused"] and resumed["text"] == "clarified", resumed)
         check("clarification recorded", bool(workspace.get_chat(slug, chat_id).get("clarifications")), workspace.get_chat(slug, chat_id).get("clarifications"))
+    finally:
+        cleanup(slug)
+
+
+def run_provider_failure() -> None:
+    print("provider failure")
+    slug, chat_id = make_workspace("QA Provider Failure")
+    try:
+        use_model(FailingChat())
+        error = None
+        try:
+            graph_agent.run_turn(slug, chat_id, "fail", lambda *_: None)
+        except Exception as exc:
+            error = exc
+        check("provider failure surfaced", error is not None, error)
+        messages = workspace.get_chat(slug, chat_id)["messages"]
+        check("failed user turn preserved", messages and messages[-1].get("role") == "user", messages)
     finally:
         cleanup(slug)
 
@@ -407,6 +432,7 @@ def main() -> int:
         run_durability,
         run_hitl,
         run_clarification,
+        run_provider_failure,
         run_history_restore,
         run_review_write,
         run_checkpoint_repair,
