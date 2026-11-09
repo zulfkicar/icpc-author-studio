@@ -160,13 +160,14 @@ Use `docs/TECHNICAL-DEEP-DIVE.md` as the spine:
 
 1. Claims and non-claims (2 min)
 2. System map and container topology (4 min)
-3. One agent turn, end to end (4 min)
-4. Verification, end to end (5 min)
-5. Export gate and review (3 min)
-6. Decision log: LangGraph, Isolate, Judge0, files-not-DB, context guard (5 min)
-7. “What covers what” matrix (3 min)
-8. Failure modes and security boundaries (2 min)
-9. Q&A bank (remaining)
+3. Module map: what does what (4 min)
+4. One agent turn, end to end (4 min)
+5. Verification, end to end (5 min)
+6. Export gate and review (3 min)
+7. Decision log: LangGraph, Isolate, Judge0, files-not-DB, context guard (4 min)
+8. "What covers what" matrix (3 min)
+9. Failure modes and security boundaries (2 min)
+10. Q&A bank (remaining)
 
 Do not read the document on screen. Use it as a question bank and keep the live
 UI or a code editor open.

@@ -6,6 +6,10 @@ covers, and the follow-up questions a technical audience is likely to ask.
 
 It is written to be defensible. Where something is not covered, it says so.
 
+If your question is "what does what?", jump to section 12 (Module map). If your
+question is "is X covered, and by which test?", jump to section 7 (What is
+covered by what).
+
 ---
 
 ## 0. The one-slide version
@@ -730,9 +734,86 @@ that boundary is what makes the product trustworthy.
 
 ---
 
-## 12. Code tour
+## 12. Module map: what does what
 
-If someone wants to read the implementation, this is the shortest path:
+This is the "what does what" reference. Read 12.1 top to bottom for the
+layering, then use the two call graphs in 12.2 and 12.3 to see the actual
+runtime paths. If you only read one row, read `verify.py`.
+
+### 12.1 Layer and responsibility map
+
+| Layer | Module | Responsibility | Key entry points | Called by |
+|---|---|---|---|---|
+| HTTP / API | `server.py` | Loopback HTTP server, JSON routes, background jobs and event polling, per-workspace locks, static UI | `Handler.do_GET/do_POST/do_PATCH/do_DELETE`, `start_job`, `workspace_lock`, `mcp_probe`, `main` | The browser |
+| UI | `web/index.html`, `web/app.js`, `web/dialogs.js`, `web/machines.js`, `web/theme.js`, `web/style.css` | Five-region shell, editor, run panel, evidence/review, dialogs, state machines | `app.js`, `dialogs.js`, `machines.js` | The browser |
+| Contracts | `schemas.py` | Event, clarification, approval and metadata schemas; `EventLedger` | `Event`, `ClarificationRequest`, `ApprovalRequest`, `EventLedger` | `server.py`, tests |
+| Agent runtime | `graph_agent.py` | Builds the LangGraph `create_agent` graph, wires middleware, runs turns, repairs checkpoints, mirrors history | `_graph`, `run_turn`, `resume_turn`, `cancel_turn`, `_run_turn_async`, `_repair_checkpoint`, `list_history`, `restore_history` | `server.py` |
+| Agent tools | `agent.py` | Implements every tool, enforces the command allowlist, bounds output, holds the system prompt | `_dispatch`, `_clean_command`, `_tool_text`, `_state_note`, `SYSTEM` | `graph_agent.py` (via `_run`) |
+| Middleware | `agent_middleware.py` | Pinned context, conservative token counter and hard trim, stream/refusal/tool-error guards | `PinnedContextMiddleware`, `ContextBudgetMiddleware`, `conservative_token_count`, `StreamIntegrityMiddleware`, `ProviderRefusalMiddleware`, `ToolErrorMiddleware` | `graph_agent.py` |
+| Agent state | `agent_state.py` | Typed graph state | `AuthorState`, `MAX_CONTEXT_FILES` | `graph_agent.py`, `agent_middleware.py` |
+| Prompts | `prompt_loader.py`, `prompts/` | Composes the system prompt from base/workflow/tools/spec/mode files | `compose_system`, `mode_text` | `graph_agent.py`, `agent_middleware.py` |
+| Skills | `skill_registry.py`, `skills/` | Curated CP skills, progressive disclosure, max two active | `Skill`, `index_text`, `pinned_text` | `graph_agent.py`, `agent_middleware.py` |
+| Settings | `config.py` | Provider settings, key storage, redaction | `load`, `save`, `public`, `redact` | `server.py`, `graph_agent.py` |
+| Workspace | `workspace.py` | Path safety, scaffold, file I/O, reviewable changes/diffs, chats/plans, state/report, snapshots, pending approvals | `resolve`, `create`, `read_text`, `write_text`, `changes`, `revert`, `apply_hunks`, `get_chat`, `save_chat_messages`, `set_report`, `snapshot_turn`, `snapshot_hash` | `server.py`, `graph_agent.py`, `agent.py`, `agent_middleware.py`, `verify.py` |
+| Package model | `package_model.py` | Discovers the package: tests, validators, groups, interactive flag; validates groups | `load`, `Package`, `group_errors` | `verify.py`, `verification_modes.py`, `scoring.py` |
+| Spec audit | `icpc_spec.py` | ICPC Problem Package Format audit | `audit` | `verify.py` |
+| Scoring | `scoring.py` | Group points and dependencies | `evaluate`, `GroupResult` | `verify.py` |
+| Verification modes | `verification_modes.py` | Checker self-test and interactive harness | `checker_selftest`, `interactive_selftest`, `_build_program`, `_run_checker` | `verify.py` |
+| Verifier | `verify.py` | The deterministic verifier: structure, validator, references, negatives, limits, statement PDF, export ZIP | `verify`, `build_answers`, `measure_limits`, `export_package`, `run_source` | `server.py`, `agent.py`, `graph_agent.py` |
+| Local exec + client | `winutil.py` | Local process execution and the remote executor client | `prepare`, `run_captured`, `run_measured`, `python_env`, `diagnostic` | `verify.py`, `agent.py`, `server.py` |
+| bwrap executor | `executor_server.py` | bwrap-isolated worker for LaTeX/PDF and fallback | `run`, `isolate_run`, `run_interactive`, `_safe_argv`, `_safe_cwd` | `winutil.py` over HTTP (executor container) |
+| Isolate worker | `isolate_worker.py` | Real Isolate 1.8.1 box lifecycle and limits | `run_argv`, `_new_box`, `_run_box`, `_isolate_args` | `winutil.py` / `isolate_client.py` over HTTP (isolate-worker container) |
+| Isolate client | `isolate_client.py` | App-side client to the Isolate worker | `run`, `run_file`, `health` | `server.py`, `agent.py` |
+| Judge0 | `judge0_adapter.py` | Optional quick-run backend; blocks secret tests | `run_file`, `quick_run`, `is_blocked_path` | `server.py` |
+| MCP | `mcp_server.py`, `mcp_consent.py` | Scoped MCP stdio server and per-tool consent | `call`, `handle`, `state`, `update`, `allowed` | `server.py`, external MCP clients |
+| Tests | `qa/` | Every automated evidence path | `test_*.py`, `*.ps1`, `test_state_machines.mjs` | CI and the demo preflight |
+
+### 12.2 One agent turn: who calls whom
+
+```text
+Browser
+  -> server.Handler.do_POST   POST /api/workspaces/<slug>/chat
+     -> server.start_job
+        -> graph_agent.run_turn
+           -> graph_agent._run_turn_async
+              -> graph_agent._graph   (create_agent, TOOLS, AuthorState, middleware)
+                 -> agent_middleware.PinnedContextMiddleware
+                 -> agent_middleware.ContextBudgetMiddleware
+                 -> provider (ChatOpenAI stream)
+                 -> graph_agent tool wrapper -> agent._dispatch
+                       -> workspace.*        read/write/change/chat/plan
+                       -> verify.*           build_answers/measure_limits/verify/export
+                       -> winutil / isolate_client   run_command
+              -> workspace.save_chat_messages / save_plan / snapshot_turn
+     <- job events polled at /api/jobs/<id>/events
+```
+
+### 12.3 Verification and export: who calls whom
+
+```text
+Browser
+  -> server.Handler.do_POST   POST /api/workspaces/<slug>/verify | /export
+     -> server.start_job
+        -> verify.verify
+           -> package_model.load
+           -> verify._structure
+           -> verification_modes.checker_selftest
+           -> verify._compile -> winutil.run_captured -> isolate_worker.run_argv
+           -> verify._run     -> winutil.run_captured -> isolate_worker.run_argv
+           -> verification_modes._run_checker
+           -> verify._statement -> winutil -> executor_server (pdflatex)
+           -> icpc_spec.audit
+           -> scoring.evaluate
+           -> workspace.set_report
+        -> verify.export_package
+           -> workspace.state / summary / snapshot_hash
+           -> zipfile (LF-normalized payloads + manifest)
+     <- report / export events
+```
+
+### 12.4 Shortest reading path
+
+If you want to read the implementation rather than the map, this is the order:
 
 | File | Read it for |
 |---|---|
