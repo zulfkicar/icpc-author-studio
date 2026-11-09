@@ -147,6 +147,8 @@ Commands:
     noHorizontalOverflow=true`
   - rail: `railEvidence=true, railHistory=true, railRun=true,
     railFiles=true, railChats=true`
+  - shortcuts: `shortcutRunToggle=true, shortcutEditorFocus=true,
+    shortcutNavFocus=true, shortcutAgentFocus=true`
   - widths `1440/1100/768/320`: `overflow=false`, `editorVisible=true`;
     `1440/1100` keep the agent visible; `768` is navigator + agent drawer;
     `320` offers both drawers.
@@ -199,7 +201,9 @@ Screenshots:
 Manual checks:
 - Keyboard: Tab reaches skip links, top bar, rail, navigator, editor tabs,
   editor, run panel, agent header, transcript and composer; arrow keys move
-  editor tabs and side tabs; splitter arrows resize.
+  editor tabs, side tabs and splitters; `Ctrl+S` saves a dirty file,
+  Ctrl+backtick toggles the run panel, `Alt+1/2/3` focus
+  navigator/editor/agent, and `F8`/`Shift+F8` cycle problems.
 - Reflow: no horizontal document overflow at 1440/1100/768/320.
 - Drawers: Escape closes and returns focus to the toggle.
 

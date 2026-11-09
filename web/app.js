@@ -1711,6 +1711,31 @@ function runSelectedBackend() {
   return runFile();
 }
 
+function focusRegion(key) {
+  const selector = { 1: "#navigator", 2: "#editor-group", 3: "#agent-panel" }[key];
+  const panel = selector && document.querySelector(selector);
+  if (!panel) return;
+  if (key === "1" && isNavSheet()) setDrawer("nav", true);
+  if (key === "3" && isAgentDrawer()) setDrawer("agent", true);
+  const target = panel.querySelector("button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])");
+  if (target) target.focus();
+}
+
+function toggleRunPanel() {
+  if (!state.file || !state.file.text || !isRunnablePath(state.file.path)) return;
+  const panel = $("run-panel");
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) $("run-backend").focus();
+}
+
+function cycleWorkspace(delta) {
+  const select = $("workspace-select");
+  if (!select || select.options.length < 2) return;
+  const next = (select.selectedIndex + delta + select.options.length) % select.options.length;
+  select.selectedIndex = next;
+  select.dispatchEvent(new Event("change"));
+}
+
 function initRunTabs() {
   const tabs = [...document.querySelectorAll("#run-output-tabs [data-run-tab]")];
   tabs.forEach((tab, index) => {
@@ -3678,6 +3703,29 @@ function wire() {
   });
   drawerScrim().addEventListener("click", closeDrawers);
   document.addEventListener("keydown", (event) => {
+    const mod = event.ctrlKey || event.metaKey;
+    if (mod && !event.shiftKey && event.key.toLowerCase() === "s") {
+      if (state.dirty) {
+        event.preventDefault();
+        saveFile();
+      }
+      return;
+    }
+    if (mod && event.key === "`") {
+      event.preventDefault();
+      toggleRunPanel();
+      return;
+    }
+    if (event.altKey && ["1", "2", "3"].includes(event.key)) {
+      event.preventDefault();
+      focusRegion(event.key);
+      return;
+    }
+    if (event.key === "F8") {
+      event.preventDefault();
+      cycleWorkspace(event.shiftKey ? -1 : 1);
+      return;
+    }
     if (event.key === "Escape") {
       if (window.AuthorDialogs.topOpen()) return;
       if (document.body.classList.contains("agent-open") || document.body.classList.contains("nav-open")) {

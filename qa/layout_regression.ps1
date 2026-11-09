@@ -115,6 +115,19 @@ try {
   results.railFiles = (await clickRail('files')) === 'page' && document.getElementById('side-files').classList.contains('active');
   results.railChats = (await clickRail('chats')) === 'page' && document.getElementById('side-chats').classList.contains('active');
 
+  const runPanel = document.getElementById('run-panel');
+  const runVisible = !runPanel.hidden;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: '`', ctrlKey: true, bubbles: true }));
+  const runHidden = runPanel.hidden;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: '`', ctrlKey: true, bubbles: true }));
+  results.shortcutRunToggle = runVisible && runHidden && !runPanel.hidden;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: '2', altKey: true, bubbles: true }));
+  results.shortcutEditorFocus = Boolean(document.activeElement.closest('#editor-group'));
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: '1', altKey: true, bubbles: true }));
+  results.shortcutNavFocus = Boolean(document.activeElement.closest('#navigator'));
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: '3', altKey: true, bubbles: true }));
+  results.shortcutAgentFocus = Boolean(document.activeElement.closest('#agent-panel'));
+
   const invoker = document.getElementById('verify-btn');
   invoker.focus();
   const pending = actionDialog({
@@ -312,6 +325,10 @@ JSON.stringify((() => {
     railRun = $true
     railFiles = $true
     railChats = $true
+    shortcutRunToggle = $true
+    shortcutEditorFocus = $true
+    shortcutNavFocus = $true
+    shortcutAgentFocus = $true
     dialogOpen = $true
     dialogLabelled = $true
     dialogFocusInside = $true
