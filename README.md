@@ -153,15 +153,17 @@ second verification authority; see
 A pinned local DOMjudge 9.0.1 + MariaDB stack is provided for import testing:
 
 ```powershell
-.\scripts\domjudge-up.ps1
+.\scripts\domjudge-up.ps1 -WithJudgehost
 # http://127.0.0.1:18080/  (admin password is printed)
 powershell -NoProfile -ExecutionPolicy Bypass -File .\qa\test_domjudge_import.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\qa\test_domjudge_judging.ps1
 .\scripts\domjudge-down.ps1
 ```
 
-The test exports the verified `sum-test` package, imports it into the local
-`demo` contest and verifies the problem, test count and statement through the
-DOMjudge API. It currently proves **import**, not judging submissions. See
+The import test exports the verified `sum-test` package, imports it into the
+local `demo` contest and verifies the problem, test count and statement. The
+judging test then submits accepted, wrong and slow C++ solutions and asserts
+**AC / WA / TLE** from a real `judgehost:9.0.1`. See
 [`docs/DOMJUDGE-LOCAL.md`](docs/DOMJUDGE-LOCAL.md).
 
 For a literal separate VM, run the executor on that VM and point the app at it
@@ -405,8 +407,8 @@ production platform.
 - `data/sample` and `data/secret` are flat; DOMjudge test groups are not modelled.
 - Default comparison is whitespace-token based. Float tolerance is explicit;
   custom checkers and interactive problems use the verification-mode harness.
-  Import into local DOMjudge 9.0.1 is tested; a judgehost/submission-judging
-  loop is not yet tested.
+  Import into local DOMjudge 9.0.1 and a real judgehost round-trip
+  (AC/WA/TLE) are tested; a multi-team contest under load is not.
 - Memory limits are measured but not enforced on Windows.
 - Limits are measured from the reference runtime and memory; they are not
   manually chosen at problem creation.

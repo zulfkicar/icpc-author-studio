@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$Reset
+    [switch]$Reset,
+    [switch]$WithJudgehost
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,6 +19,9 @@ for ($i = 0; $i -lt 90; $i++) {
             Write-Host 'DOMjudge is ready: http://127.0.0.1:18080/'
             Write-Host "Admin user: admin"
             Write-Host "Admin password: $password"
+            if ($WithJudgehost) {
+                & (Join-Path $PSScriptRoot 'domjudge-judgehost-up.ps1')
+            }
             Write-Host 'Stop with scripts\domjudge-down.ps1 (add -Reset to delete the DOMjudge database).'
             exit 0
         }

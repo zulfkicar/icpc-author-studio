@@ -42,6 +42,27 @@ services:
     networks:
       - domjudge
 
+  judgehost:
+    image: domjudge/judgehost:9.0.1
+    container_name: icpc-domjudge-judgehost
+    hostname: judgedaemon-0
+    profiles: ["judging"]
+    restart: unless-stopped
+    privileged: true
+    cgroup: host
+    depends_on:
+      - domserver
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    environment:
+      DOMSERVER_BASEURL: http://domserver/
+      JUDGEDAEMON_USERNAME: judgehost
+      JUDGEDAEMON_PASSWORD: ${JUDGEDAEMON_PASSWORD:-}
+      DAEMON_ID: "0"
+      CONTAINER_TIMEZONE: UTC
+    networks:
+      - domjudge
+
 volumes:
   icpc-domjudge-db:
 

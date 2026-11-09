@@ -39,6 +39,71 @@ To remove the DOMjudge database and start fresh:
 That deletes **DOMjudge** data only. It does not touch `workspaces/` or
 `.author-agent/`.
 
+## Judgehost and full judging
+
+The default `domjudge-up.ps1` starts only the server. To judge submissions, start
+the privileged judgehost too:
+
+```powershell
+.\scripts\domjudge-judgehost-up.ps1
+# or
+.\scripts\domjudge-up.ps1 -WithJudgehost
+```
+
+The script reads the judgehost credentials from the domserver
+`restapi.secret`, starts `domjudge/judgehost:9.0.1` with `cgroup: host`, and
+waits for `judgedaemon-0-0` to appear as an enabled judgehost.
+
+On this Windows/WSL host the judgehost needs:
+
+```yaml
+privileged: true
+cgroup: host
+volumes:
+  - /sys/fs/cgroup:/sys/fs/cgroup:rw
+```
+
+Without `cgroup: host` the judgehost fails with “missing cgroup hierarchy
+prefix under /proc/self/cgroup”. The judgehost is privileged and must remain
+loopback/local only.
+
+`DOMJUDGE_CREATE_WRITABLE_TEMP_DIR` is intentionally not set: on this
+DOMjudge 9.0.1/Judgehost image the optional `write_tmp` cleanup fails under the
+chroot. Normal programs that do not need a writable temp directory judge
+correctly. Add a writable temp directory only if you have a problem that needs
+one and can validate the fix.
+
+### Full judging test
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\qa\test_domjudge_judging.ps1
+```
+
+Actual result:
+
+```json
+{
+  "stack": "domjudge/domserver:9.0.1 + judgehost:9.0.1 + mariadb:11.4",
+  "contest": "demo",
+  "problem": "sum-test-qa",
+  "team": "exteam",
+  "accepted": {"id": "13", "verdict": "AC", "maxRunTime": 0.002},
+  "wrongAnswer": {"id": "14", "verdict": "WA", "maxRunTime": 0.001},
+  "timeLimit": {"id": "15", "verdict": "TLE", "maxRunTime": 1.875}
+}
+```
+
+`DOMJUDGE JUDGING TEST PASSED`
+
+This proves the complete local loop:
+
+1. export a verified package,
+2. import it into DOMjudge,
+3. compile and judge a submission on a real judgehost,
+4. return AC for the accepted solution,
+5. return WA for the wrong solution,
+6. return TLE for the slow solution.
+
 ## Import test
 
 ```powershell
@@ -95,13 +160,13 @@ The import test fails if any `.ans` file still contains CRLF.
 
 ## What this does not prove
 
-- **Judging** a submission. That requires a `judgehost`, which needs privileged
-  containers, cgroups and a registered judgehost user. It is the next step if
-  you want a full local judging loop.
-- A real contest or team workflow.
-- DOMjudge under load or a multi-user deployment.
+- A real multi-team contest workflow, scoreboard behaviour or contest timing.
+- DOMjudge under load, multiple parallel judgehosts or resource pressure.
 - Importing every possible ICPC package variant; only the verified `sum-test`
   fixture is exercised here.
+- A judgment of every language/toolchain; the test uses C++.
+- A writable temporary directory for programs that need one (see the judgehost
+  note above).
 
 ## API notes
 

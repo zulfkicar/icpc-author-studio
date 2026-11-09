@@ -103,3 +103,4 @@ $summary = [ordered]@{
 }
 Write-Output ($summary | ConvertTo-Json -Compress)
 Write-Output 'DOMJUDGE IMPORT TEST PASSED'
+exit 0
