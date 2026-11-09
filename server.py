@@ -180,7 +180,10 @@ class Handler(BaseHTTPRequestHandler):
         return origin in allowed
 
     def end_headers(self):
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'")
+        # Monaco's AMD loader compiles module factories with the Function
+        # constructor. Keep the policy same-origin only; do not add remote
+        # script hosts. The worker is a same-origin script, not a blob.
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
@@ -288,7 +291,13 @@ class Handler(BaseHTTPRequestHandler):
                         body = "(change reverted)"
                     else:
                         body = workspace.diff(entry.get("before") or "", entry.get("after") or "", entry["path"])
-                    return self.send_json({"id": entry["id"], "path": entry["path"], "diff": body})
+                    return self.send_json({
+                        "id": entry["id"],
+                        "path": entry["path"],
+                        "diff": body,
+                        "before": entry.get("before") or "",
+                        "after": entry.get("after") or "",
+                    })
                 if len(parts) == 4 and parts[3] == "chats":
                     return self.send_json(workspace.list_chats(slug))
                 if len(parts) == 5 and parts[3] == "chats":

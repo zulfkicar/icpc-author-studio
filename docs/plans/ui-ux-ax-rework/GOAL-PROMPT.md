@@ -39,13 +39,15 @@ Docker Compose; Judge0 CE 1.13.1 quick-run stack; real Isolate 1.8.1 verifier
 executor; bwrap executor for the LaTeX statement PDF; highlight.js and axe-core
 vendored locally.
 
-Current baseline: commit 03714a6 or later. Phase 0, Phase 0.5, Phase 1 and the
-Phase 3 run-panel slice are complete: grid/scroll/composer/run-panel fixes, one
-dialog controller with cancel/Escape/backdrop parity and a dirty guard, the
-five-region shell (rail, navigator, editor, agent, status bar), 18
-transition-tested state machines, native run backends with per-file stdin,
-output tabs, history, cancel and the Judge0 secret guard. Phase 2 (Monaco and
-per-file editor tabs) is the next slice.
+Current baseline: commit 11886d5 or later. Phase 0, Phase 0.5, Phase 1,
+Phase 2 and the Phase 3 run-panel slice are complete: grid/scroll/composer/
+run-panel fixes, one dialog controller with cancel/Escape/backdrop parity and a
+dirty guard, the five-region shell (rail, navigator, editor, agent, status
+bar), Monaco with per-file models/tabs and a textarea fallback, a Monaco
+side-by-side diff, file-tree keyboard semantics, 18 transition-tested state
+machines, native run backends with per-file stdin, output tabs, history, cancel
+and the Judge0 secret guard. Phase 4 (evidence/review/state migration) is the
+next slice.
 
 Authoritative documents, read in this order before editing:
 1. docs/plans/ui-ux-ax-rework/00-CONSTITUTION.md

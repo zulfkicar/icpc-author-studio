@@ -4,7 +4,7 @@ Dependency-ordered work. `[P]` means it can run in parallel with other `[P]`
 tasks in the same phase. Every task has an acceptance check; “implemented” without
 the check is not done.
 
-Status: Phase 0, Phase 0.5, Phase 1 and the Phase 3 run-panel slice are complete. Phase 2 (Monaco/tabs) is next.
+Status: Phase 0, Phase 0.5, Phase 1, Phase 2 and the Phase 3 run-panel slice are complete. Phase 4 (evidence/review/state/AX) is next.
 
 ## Conventions
 
@@ -163,56 +163,56 @@ Status: Phase 0, Phase 0.5, Phase 1 and the Phase 3 run-panel slice are complete
 
 ## Phase 2 — editor (4–6 days)
 
-- [ ] **E-1** Vendor Monaco lazily.
+- [x] **E-1** Vendor Monaco lazily.
   - Files: `web/vendor/monaco/**`, `web/index.html`, `web/app.js`.
   - AMD loader; no bundler.
   - Verify: editor loads; network tab shows one lazy load.
   - Est: 1d.
 
-- [ ] **E-2** Model per tab.
+- [x] **E-2** Model per tab.
   - Map path → model + view state.
   - Verify: switch tabs preserves cursor/scroll.
   - Depends: E-1.
   - Est: 0.8d.
 
-- [ ] **E-3** Tab bar.
+- [x] **E-3** Tab bar.
   - Dirty dot, close, middle-click, `Ctrl+Tab`, `Ctrl+W`.
   - Verify: open 3 files, close middle, dirty guard.
   - Depends: E-2.
   - Est: 0.5d.
 
-- [ ] **E-4** Breadcrumbs.
+- [x] **E-4** Breadcrumbs.
   - Workspace-relative path segments.
   - Verify: long paths truncate without overflow.
   - Est: 0.3d.
 
-- [ ] **E-5** Save/reload/dirty state.
+- [x] **E-5** Save/reload/dirty state.
   - Save uses existing API; dirty flag from machine.
   - Verify: save toast, stale file reload, failed save returns to editing.
   - Est: 0.4d.
 
-- [ ] **E-6** Diff editor.
+- [x] **E-6** Diff editor.
   - `monaco.editor.createDiffEditor`.
   - Verify: change card opens diff tab; inline/side-by-side toggle.
   - Depends: E-1.
   - Est: 0.8d.
 
-- [ ] **E-7** File-tree keyboard semantics.
+- [x] **E-7** File-tree keyboard semantics.
   - `role="tree"`, arrows, Enter, changed-file labels.
   - Verify: keyboard-only open/expand.
   - Est: 0.5d.
 
-- [ ] **E-8** Monaco fallback.
+- [x] **E-8** Monaco fallback.
   - If load fails, show textarea + highlight.js with the same tab contract.
   - Verify: forced failure test.
   - Est: 0.4d.
 
-- [ ] **E-9** Editor performance guard.
+- [x] **E-9** Editor performance guard.
   - No layout shift; interactive < 2 s warm.
   - Verify: timing in CDP.
   - Est: 0.3d.
 
-- [ ] **E-10** Editor tests.
+- [x] **E-10** Editor tests.
   - open/save/reload, binary/read-only, dirty switch, diff, fallback.
   - Est: 0.5d.
 

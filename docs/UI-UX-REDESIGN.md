@@ -1,9 +1,11 @@
 # Workbench UI/UX/AX redesign
 
-Status: Phase 0.5 (dialog controller), Phase 1 (five-region shell) and the
-Phase 3 run-panel slice are implemented and gate-tested. Monaco and per-file
-editor tabs remain the next slice. The four reported defects are fixed and
-covered by a browser regression test; the full IDE rework is phased below.
+Status: Phase 0.5 (dialog controller), Phase 1 (five-region shell), Phase 2
+(Monaco, per-file tabs, Monaco diff, file-tree keyboard) and the Phase 3
+run-panel slice are implemented and gate-tested. Phase 4 (evidence/review/state
+migration) and Phase 5 (palette/polish) remain. The four reported defects are
+fixed and covered by a browser regression test; the full IDE rework is phased
+below.
 Companion documents: [`VISUAL-AUDIT.md`](VISUAL-AUDIT.md),
 [`STATE-MACHINES.md`](STATE-MACHINES.md),
 [`IMPLEMENTATION-STATUS.md`](IMPLEMENTATION-STATUS.md).

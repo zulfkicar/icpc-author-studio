@@ -135,6 +135,15 @@ fallback:
   one accessible action dialog with labels, inline validation, danger styling
   and focus return. Chat actions and titles are keyboard reachable with
   object-specific names. Covered by `qa/layout_regression.ps1`.
+- **Monaco editor and per-file tabs (Phase 2):** `monaco-editor@0.44.0` is
+  vendored under `web/vendor/monaco/` and loaded lazily through the AMD loader
+  on the first edit. One model and view state is kept per workspace path;
+  `#editor-tabs` shows open files, dirty dots, close buttons, `Ctrl+Tab`/
+  `Ctrl+W`, and dirty-close/dirty-switch confirmation. The inline diff gained a
+  native Monaco side-by-side mode. If the loader or worker fails, or
+  `?editor=textarea` is set, the existing textarea + highlight.js editor is used
+  without losing the tab/dirty/save contract. The file tree is a `role=tree`
+  with arrow-key navigation, expand/collapse and Enter/Space activation.
 - **Five-region IDE shell (Phase 1):** activity rail, navigator, central editor
   group, right agent panel and status bar. The old three-column DOM was moved,
   not rewritten: existing IDs, routes and handlers are preserved. Widths persist

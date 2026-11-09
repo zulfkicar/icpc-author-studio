@@ -79,7 +79,7 @@
         <button id="new-folder" class="icon-btn" title="New folder" aria-label="New folder">&#9633;</button>
         <button id="refresh-tree" class="icon-btn" title="Refresh files" aria-label="Refresh files">&#8635;</button>
       </div>
-      <div id="file-tree" class="tree"></div>
+      <div id="file-tree" class="tree" role="tree" aria-label="Workspace files"></div>
     </div>
 
     <div id="side-changes" class="side-panel" role="tabpanel" aria-label="Review changes">
@@ -120,6 +120,7 @@
     </div>
 
     <div id="panel-file" class="panel" role="tabpanel" aria-labelledby="tab-file">
+      <div id="editor-tabs" class="editor-tabs" role="tablist" aria-label="Open files" hidden></div>
       <div class="file-head">
         <span id="file-name">No file selected</span>
         <span id="file-meta" class="muted small"></span>
@@ -130,10 +131,11 @@
         <button id="reload-file" class="quiet small" hidden>Reload</button>
       </div>
       <div class="editor-shell">
-        <div id="line-numbers" class="line-numbers" hidden></div>
+        <div id="line-numbers" class="editor-gutter" hidden></div>
         <div class="editor-main">
           <pre id="file-view" class="file-view" hidden><code id="file-code" class="hljs"></code></pre>
           <textarea id="file-editor" class="file-editor" spellcheck="false" placeholder="Select a file in the Files tab." disabled aria-label="File editor"></textarea>
+          <div id="monaco-host" class="monaco-host" hidden aria-label="Rich code editor"></div>
         </div>
       </div>
       <div class="editor-status">
@@ -185,7 +187,13 @@
     </div>
 
     <div id="panel-diff" class="panel" role="tabpanel" aria-labelledby="tab-diff">
+      <div class="diff-toolbar">
+        <span id="diff-title" class="muted small">Change diff</span>
+        <span class="spacer"></span>
+        <button id="diff-mode" class="quiet small" aria-pressed="false" hidden>Side by side</button>
+      </div>
       <div id="diff-body" class="diff-view" tabindex="0" role="region" aria-label="Change diff"><div class="pad muted">Select a change to inspect its diff.</div></div>
+      <div id="monaco-diff" class="monaco-diff" hidden aria-label="Side-by-side change diff"></div>
     </div>
 
     <div id="panel-history" class="panel" role="tabpanel" aria-labelledby="tab-history">

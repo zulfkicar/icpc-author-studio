@@ -46,6 +46,16 @@ const state = {
   approvalRendered: false,
   renderedChangeIds: new Set(),
   fileMode: "view",
+  editorEngine: "textarea",
+  monaco: null,
+  monacoPath: null,
+  monacoApplying: false,
+  monacoFailed: false,
+  editorTabs: [],
+  tabFiles: new Map(),
+  tabView: new Map(),
+  diffData: null,
+  diffMonaco: false,
   runAbort: null,
   runResult: null,
   runHistory: [],
@@ -1121,8 +1131,13 @@ function renderTree() {
       const rowEl = document.createElement("div");
       rowEl.className = "tree-row" + (isDir ? " tree-dir-row" : "") + (state.file && state.file.path === node.path ? " active" : "");
       rowEl.style.paddingLeft = (8 + depth * 13) + "px";
-      rowEl.tabIndex = 0;
-      rowEl.setAttribute("role", "button");
+      rowEl.tabIndex = state.file && state.file.path === node.path ? 0 : -1;
+      rowEl.setAttribute("role", "treeitem");
+      rowEl.setAttribute("aria-level", String(depth + 1));
+      rowEl.setAttribute("aria-selected", state.file && state.file.path === node.path ? "true" : "false");
+      rowEl.dataset.path = node.path;
+      rowEl.dataset.kind = node.type;
+      rowEl.dataset.parent = treeParent(node.path);
       if (isDir) rowEl.setAttribute("aria-expanded", expanded ? "true" : "false");
       const toggle = document.createElement("span");
       toggle.className = "tree-toggle";
@@ -1188,6 +1203,45 @@ function renderTree() {
     }
   };
   renderNode(treeNodes(), 0);
+  const rows = [...host.querySelectorAll(".tree-row")];
+  if (rows.length && !rows.some((row) => row.tabIndex === 0)) rows[0].tabIndex = 0;
+}
+
+function handleTreeKeydown(event) {
+  const row = event.target.closest(".tree-row");
+  if (!row) return;
+  const rows = [...$("file-tree").querySelectorAll(".tree-row")];
+  const index = rows.indexOf(row);
+  const focusRow = (target) => {
+    if (!target) return;
+    for (const item of rows) item.tabIndex = -1;
+    target.tabIndex = 0;
+    target.focus();
+  };
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    focusRow(rows[Math.min(index + 1, rows.length - 1)]);
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    focusRow(rows[Math.max(index - 1, 0)]);
+  } else if (event.key === "ArrowRight") {
+    if (row.dataset.kind === "dir" && row.getAttribute("aria-expanded") === "false") {
+      event.preventDefault();
+      row.click();
+    }
+  } else if (event.key === "ArrowLeft") {
+    if (row.dataset.kind === "dir" && row.getAttribute("aria-expanded") === "true") {
+      event.preventDefault();
+      row.click();
+    } else {
+      const parent = row.dataset.parent;
+      const parentRow = parent ? rows.find((item) => item.dataset.path === parent) : null;
+      if (parentRow) {
+        event.preventDefault();
+        focusRow(parentRow);
+      }
+    }
+  }
 }
 
 function treeParent(path) {
@@ -1288,10 +1342,10 @@ function updateEditorChrome() {
   const language = state.file ? languageForPath(state.file.path) : "text";
   $("editor-language").textContent = language;
   $("run-language").textContent = language;
-  const text = editor.value || "";
+  const text = currentEditorText();
   const lines = text.split("\n").length;
   $("editor-lines").textContent = `${lines} lines`;
-  const before = text.slice(0, editor.selectionStart || 0);
+  const before = text.slice(0, currentCursorOffset());
   const line = before.split("\n").length;
   const column = before.length - before.lastIndexOf("\n");
   $("editor-cursor").textContent = `Ln ${line}, Col ${column}`;
@@ -1421,6 +1475,433 @@ async function runSamples() {
   }
 }
 
+// ---------- editor engine (Monaco, lazy) ----------
+
+const MONACO_LANGUAGE = {
+  cpp: "cpp", cc: "cpp", cxx: "cpp", c: "c", h: "cpp", hpp: "cpp",
+  py: "python", java: "java", kt: "kotlin",
+  tex: "latex", sty: "latex", cls: "latex",
+  yaml: "yaml", yml: "yaml", json: "json", ini: "ini",
+  md: "markdown", sh: "shell", js: "javascript", css: "css", html: "html", htm: "html",
+};
+
+function monacoAllowed() {
+  if (state.monacoFailed) return false;
+  try {
+    return new URLSearchParams(location.search).get("editor") !== "textarea";
+  } catch { return true; }
+}
+
+function monacoLanguage(path) {
+  const ext = String(path || "").split(".").pop().toLowerCase();
+  return MONACO_LANGUAGE[ext] || "plaintext";
+}
+
+let monacoLoadPromise = null;
+
+function ensureMonaco() {
+  if (window.monaco) return Promise.resolve(window.monaco);
+  if (monacoLoadPromise) return monacoLoadPromise;
+  if (!monacoAllowed()) return Promise.reject(new Error("Monaco is disabled"));
+  monacoLoadPromise = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Monaco load timed out")), 15000);
+    const script = document.createElement("script");
+    script.src = "/vendor/monaco/vs/loader.js";
+    script.onload = () => {
+      try {
+        window.MonacoEnvironment = { getWorkerUrl: () => "/monaco-worker.js" };
+        window.require.config({ paths: { vs: "/vendor/monaco/vs" } });
+        window.require(["vs/editor/editor.main"], () => {
+          clearTimeout(timeout);
+          resolve(window.monaco);
+        }, (error) => {
+          clearTimeout(timeout);
+          reject(error || new Error("Monaco module failed to load"));
+        });
+      } catch (error) {
+        clearTimeout(timeout);
+        reject(error);
+      }
+    };
+    script.onerror = () => {
+      clearTimeout(timeout);
+      reject(new Error("Monaco loader failed"));
+    };
+    document.head.appendChild(script);
+  }).catch((error) => {
+    state.monacoFailed = true;
+    monacoLoadPromise = null;
+    throw error;
+  });
+  return monacoLoadPromise;
+}
+
+async function ensureMonacoEditor() {
+  if (state.monaco) return state.monaco;
+  const monaco = await ensureMonaco();
+  const host = $("monaco-host");
+  host.textContent = "";
+  const editor = monaco.editor.create(host, {
+    value: "",
+    language: "plaintext",
+    theme: "vs-dark",
+    automaticLayout: true,
+    minimap: { enabled: false },
+    fontSize: 12,
+    lineHeight: 19,
+    fontFamily: '"Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas, monospace',
+    scrollBeyondLastLine: false,
+    renderWhitespace: "selection",
+    tabSize: 4,
+    readOnly: true,
+    ariaLabel: "Rich code editor",
+  });
+  const bundle = { monaco, editor, models: new Map(), diffEditor: null, diffModels: null };
+  state.monaco = bundle;
+  state.editorEngine = "monaco";
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveFile());
+  editor.onDidChangeModelContent(() => {
+    if (state.monacoApplying) return;
+    state.dirty = true;
+    $("save-file").hidden = false;
+    renderEditorTabs();
+    updateEditorChrome();
+  });
+  editor.onDidChangeCursorPosition(() => updateEditorChrome());
+  editor.onDidScrollChange(() => saveTabView());
+  return bundle;
+}
+
+function monacoModelPath() {
+  const model = state.monaco && state.monaco.editor.getModel();
+  return model ? model.__authorPath || null : null;
+}
+
+function getMonacoModel(bundle, file) {
+  let model = bundle.models.get(file.path);
+  if (!model) {
+    const uri = bundle.monaco.Uri.parse(
+      `author:///${encodeURIComponent(state.slug || "workspace")}/${encodeURI(file.path)}`
+    );
+    model = bundle.monaco.editor.createModel(file.content || "", monacoLanguage(file.path), uri);
+    model.__authorPath = file.path;
+    bundle.models.set(file.path, model);
+  }
+  return model;
+}
+
+async function showMonacoFile(file) {
+  const bundle = await ensureMonacoEditor();
+  const model = getMonacoModel(bundle, file);
+  state.monacoApplying = true;
+  bundle.editor.setModel(model);
+  state.monacoApplying = false;
+  state.monacoPath = file.path;
+  bundle.editor.updateOptions({ readOnly: state.fileMode !== "edit" });
+  $("monaco-host").hidden = false;
+  $("file-view").hidden = true;
+  $("file-editor").hidden = true;
+  bundle.editor.layout();
+  const saved = state.tabView.get(file.path);
+  if (saved && saved.monaco) {
+    bundle.editor.restoreViewState(saved.monaco);
+  } else {
+    bundle.editor.setPosition({ lineNumber: 1, column: 1 });
+    bundle.editor.setScrollLeft(0);
+    bundle.editor.setScrollTop(0);
+  }
+  if (state.fileMode === "edit") bundle.editor.focus();
+  updateEditorChrome();
+}
+
+function enterTextareaEdit() {
+  state.editorEngine = "textarea";
+  $("monaco-host").hidden = true;
+  $("file-view").hidden = true;
+  $("file-editor").hidden = false;
+  $("file-editor").disabled = false;
+  $("file-editor").value = state.file && state.file.text ? state.file.content : "";
+  $("file-editor").focus();
+  updateEditorChrome();
+}
+
+function currentEditorText() {
+  if (state.monaco && state.monacoPath && state.file && state.monacoPath === state.file.path) {
+    return state.monaco.editor.getValue();
+  }
+  return $("file-editor").value || "";
+}
+
+function currentCursorOffset() {
+  if (state.monaco && state.monacoPath && state.file && state.monacoPath === state.file.path) {
+    const model = state.monaco.editor.getModel();
+    const position = state.monaco.editor.getPosition();
+    return model && position ? model.getOffsetAt(position) : 0;
+  }
+  return $("file-editor").selectionStart || 0;
+}
+
+function discardCurrentEdits() {
+  if (!state.file) return;
+  if (state.monaco && state.monacoPath === state.file.path) {
+    const model = state.monaco.editor.getModel();
+    if (model) {
+      state.monacoApplying = true;
+      model.setValue(state.file.content || "");
+      state.monacoApplying = false;
+    }
+  }
+  $("file-editor").value = state.file.content || "";
+  state.dirty = false;
+  $("save-file").hidden = true;
+  renderEditorTabs();
+}
+
+function saveTabView() {
+  if (!state.file) return;
+  const view = state.tabView.get(state.file.path) || {};
+  view.mode = state.fileMode;
+  view.scrollTop = ($("file-view").hidden ? $("file-editor") : $("file-view")).scrollTop || 0;
+  if (state.fileMode === "edit" && state.monaco && state.monacoPath === state.file.path) {
+    const model = state.monaco.editor.getModel();
+    if (model) {
+      view.monaco = state.monaco.editor.saveViewState();
+      const position = state.monaco.editor.getPosition();
+      if (position) view.cursor = model.getOffsetAt(position);
+    }
+  } else {
+    view.cursor = $("file-editor").selectionStart || 0;
+  }
+  state.tabView.set(state.file.path, view);
+}
+
+function restoreTabView(path) {
+  const view = state.tabView.get(path);
+  if (!view) return;
+  if (state.fileMode === "edit" && state.monaco && state.monacoPath === path) {
+    const model = state.monaco.editor.getModel();
+    if (view.monaco) state.monaco.editor.restoreViewState(view.monaco);
+    else if (model && view.cursor != null) state.monaco.editor.setPosition(model.getPositionAt(view.cursor));
+    return;
+  }
+  const scroller = $("file-view").hidden ? $("file-editor") : $("file-view");
+  scroller.scrollTop = view.scrollTop || 0;
+  if (view.cursor != null) {
+    try {
+      $("file-editor").selectionStart = view.cursor;
+      $("file-editor").selectionEnd = view.cursor;
+    } catch { /* ignore */ }
+  }
+}
+
+function renderEditorTabs() {
+  const host = $("editor-tabs");
+  if (!host) return;
+  host.innerHTML = "";
+  if (!state.editorTabs.length) {
+    host.hidden = true;
+    return;
+  }
+  host.hidden = false;
+  state.editorTabs.forEach((path) => {
+    const active = Boolean(state.file && state.file.path === path);
+    const wrap = document.createElement("div");
+    wrap.className = "editor-tab" + (active ? " active" : "");
+    wrap.setAttribute("role", "presentation");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "editor-tab-button";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", active ? "true" : "false");
+    button.title = path;
+    button.textContent = path.split("/").pop();
+    button.tabIndex = active ? 0 : -1;
+    button.dataset.path = path;
+    if (active && state.dirty) {
+      const dot = document.createElement("span");
+      dot.className = "editor-tab-dirty";
+      dot.setAttribute("aria-label", "Unsaved changes");
+      button.appendChild(dot);
+    }
+    button.addEventListener("click", () => switchEditorTab(path));
+    button.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowRight" && event.key !== "ArrowLeft" && event.key !== "Home" && event.key !== "End") return;
+      event.preventDefault();
+      const buttons = [...host.querySelectorAll(".editor-tab-button")];
+      const index = buttons.indexOf(button);
+      let next = index;
+      if (event.key === "ArrowRight") next = (index + 1) % buttons.length;
+      else if (event.key === "ArrowLeft") next = (index - 1 + buttons.length) % buttons.length;
+      else if (event.key === "Home") next = 0;
+      else next = buttons.length - 1;
+      buttons[next].focus();
+      switchEditorTab(buttons[next].dataset.path);
+    });
+    wrap.appendChild(button);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "editor-tab-close";
+    close.textContent = "\u00d7";
+    close.setAttribute("aria-label", `Close ${path.split("/").pop()}`);
+    close.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeEditorTab(path);
+    });
+    wrap.appendChild(close);
+    wrap.addEventListener("auxclick", (event) => {
+      if (event.button === 1) closeEditorTab(path);
+    });
+    host.appendChild(wrap);
+  });
+}
+
+function cycleEditorTab(delta) {
+  if (state.editorTabs.length < 2) return;
+  const current = state.file ? state.editorTabs.indexOf(state.file.path) : 0;
+  const index = Math.max(0, current);
+  const next = (index + delta + state.editorTabs.length) % state.editorTabs.length;
+  return switchEditorTab(state.editorTabs[next]);
+}
+
+async function switchEditorTab(path) {
+  if (!state.slug || !path) return;
+  if (state.file && state.file.path === path) return;
+  abortRun(true);
+  setRunBusy(false);
+  if (state.dirty && state.file) {
+    const discard = await actionDialog({
+      kicker: "Editor",
+      title: "Discard unsaved changes?",
+      description: `The edits to "${state.file.path}" have not been saved.`,
+      confirmLabel: "Discard and switch",
+      danger: true,
+    });
+    if (!discard) return;
+    discardCurrentEdits();
+  }
+  saveTabView();
+  const file = state.tabFiles.get(path);
+  if (!file) {
+    await openFile(path);
+    return;
+  }
+  const targetMode = (state.tabView.get(path) || {}).mode || "view";
+  await applyFile(file, { mode: targetMode });
+  switchTab("file");
+  renderTree();
+}
+
+async function closeEditorTab(path) {
+  const index = state.editorTabs.indexOf(path);
+  if (index < 0) return;
+  const isCurrent = Boolean(state.file && state.file.path === path);
+  if (isCurrent && state.dirty) {
+    const discard = await actionDialog({
+      kicker: "Editor",
+      title: "Discard unsaved changes?",
+      description: `The edits to "${path}" have not been saved. Closing the tab discards them.`,
+      confirmLabel: "Discard and close",
+      danger: true,
+    });
+    if (!discard) return;
+    discardCurrentEdits();
+  }
+  if (isCurrent) saveTabView();
+  state.editorTabs.splice(index, 1);
+  state.tabFiles.delete(path);
+  state.tabView.delete(path);
+  if (state.monaco && state.monaco.models.has(path)) {
+    const model = state.monaco.models.get(path);
+    if (state.monacoPath === path) {
+      state.monaco.editor.setModel(null);
+      state.monacoPath = null;
+    }
+    model.dispose();
+    state.monaco.models.delete(path);
+  }
+  if (isCurrent) {
+    const next = state.editorTabs[index] || state.editorTabs[index - 1] || null;
+    state.file = null;
+    state.dirty = false;
+    if (next) await switchEditorTab(next);
+    else clearEditor();
+  }
+  renderEditorTabs();
+}
+
+function clearEditor() {
+  state.file = null;
+  state.dirty = false;
+  state.fileMode = "view";
+  machineSet("editor", "empty", "close file");
+  machineSet("run", "hidden", "close file");
+  $("file-name").textContent = "No file selected";
+  $("file-meta").textContent = "";
+  $("file-editor").value = "";
+  $("file-editor").disabled = true;
+  $("file-editor").hidden = true;
+  $("file-view").hidden = true;
+  $("monaco-host").hidden = true;
+  $("run-panel").hidden = true;
+  $("edit-file").hidden = true;
+  $("view-file").hidden = true;
+  $("save-file").hidden = true;
+  $("reload-file").hidden = true;
+  updateBreadcrumbs();
+  updateEditorChrome();
+  renderEditorTabs();
+}
+
+function resetRunOutput() {
+  for (const id of ["run-output", "run-stdout", "run-stderr", "run-compile"]) {
+    const el = $(id);
+    if (!el) continue;
+    el.hidden = true;
+    el.textContent = "";
+    el.className = "run-output";
+  }
+  $("run-status").hidden = true;
+}
+
+async function applyFile(file, options = {}) {
+  const mode = options.mode === "edit" ? "edit" : "view";
+  if (state.file && state.file.path !== file.path) saveTabView();
+  if (options.reload && state.monaco && state.monaco.models.has(file.path)) {
+    const model = state.monaco.models.get(file.path);
+    if (model.getValue() !== (file.content || "")) {
+      state.monacoApplying = true;
+      model.setValue(file.content || "");
+      state.monacoApplying = false;
+    }
+  }
+  state.file = file;
+  state.tabFiles.set(file.path, file);
+  if (!state.editorTabs.includes(file.path)) state.editorTabs.push(file.path);
+  state.dirty = false;
+  state.fileMode = mode;
+  machineSet("editor", file.text ? (mode === "edit" ? "editing" : "view") : "binary", "open file");
+  state.testResults = [];
+  state.activeSample = null;
+  state.samples = file.text ? sampleTests() : [];
+  $("file-name").textContent = file.path;
+  $("file-meta").textContent = file.text ? `${file.size} bytes · ${languageForPath(file.path)}` : "binary";
+  const editor = $("file-editor");
+  editor.disabled = !file.text;
+  editor.value = file.text ? file.content : "";
+  $("reload-file").hidden = false;
+  resetRunOutput();
+  const prefs = loadRunPrefs(file.path);
+  syncRunBackends();
+  $("run-stdin").value = prefs.stdin;
+  $("run-backend").value = prefs.backend;
+  syncRunBackends();
+  loadRunHistory(file.path);
+  renderFileView();
+  renderEditorTabs();
+  if (mode === "edit") await enterEditMode();
+  restoreTabView(file.path);
+}
+
 function renderFileView() {
   if (!state.file) return;
   const file = state.file;
@@ -1428,6 +1909,7 @@ function renderFileView() {
   const code = $("file-code");
   view.hidden = false;
   $("file-editor").hidden = true;
+  $("monaco-host").hidden = true;
   $("edit-file").hidden = !file.text;
   $("view-file").hidden = true;
   $("save-file").hidden = true;
@@ -1448,17 +1930,28 @@ function renderFileView() {
   }
 }
 
-function enterEditMode() {
+async function enterEditMode() {
   if (!state.file || !state.file.text) return;
   machineSend("editor", "EDIT");
   state.fileMode = "edit";
-  $("file-view").hidden = true;
-  $("file-editor").hidden = false;
   $("edit-file").hidden = true;
   $("view-file").hidden = false;
   $("save-file").hidden = !state.dirty;
+  $("file-view").hidden = true;
+  $("file-editor").hidden = true;
+  $("monaco-host").hidden = false;
+  if (!monacoAllowed()) {
+    enterTextareaEdit();
+    return;
+  }
+  try {
+    await showMonacoFile(state.file);
+  } catch (error) {
+    state.monacoFailed = true;
+    enterTextareaEdit();
+    toast("Rich editor unavailable; using the text editor", true);
+  }
   updateEditorChrome();
-  $("file-editor").focus();
 }
 
 async function enterViewMode() {
@@ -1472,14 +1965,13 @@ async function enterViewMode() {
       danger: true,
     });
     if (!discard) return;
+    discardCurrentEdits();
   }
-  if (state.dirty) {
-    $("file-editor").value = state.file.content;
-    state.dirty = false;
-  }
+  saveTabView();
   state.fileMode = "view";
   machineSend("editor", "CANCEL");
   renderFileView();
+  restoreTabView(state.file.path);
 }
 
 async function openFile(path) {
@@ -1495,39 +1987,15 @@ async function openFile(path) {
       danger: true,
     });
     if (!discard) return;
+    discardCurrentEdits();
   }
+  saveTabView();
   try {
     const file = await api(`/api/workspaces/${state.slug}/file?path=${encodeURIComponent(path)}`);
-    state.file = file;
-    state.dirty = false;
-    state.fileMode = "view";
-    machineSet("editor", file.text ? "view" : "binary", "open file");
-    state.testResults = [];
-    state.activeSample = null;
-    state.samples = file.text ? sampleTests() : [];
-    $("file-name").textContent = file.path;
-    $("file-meta").textContent = file.text ? `${file.size} bytes · ${languageForPath(file.path)}` : "binary";
-    const editor = $("file-editor");
-    editor.disabled = !file.text;
-    editor.value = file.text ? file.content : "";
-    $("reload-file").hidden = false;
-    $("run-output").hidden = true;
-    $("run-output").textContent = "";
-    $("run-output").className = "run-output";
-    $("run-stdout").textContent = "";
-    $("run-stderr").textContent = "";
-    $("run-compile").textContent = "";
-    $("run-status").hidden = true;
+    await applyFile(file, { mode: "view", reload: true });
     $("test-results").hidden = true;
     $("test-results").innerHTML = "";
     $("line-numbers").hidden = true;
-    const prefs = loadRunPrefs(file.path);
-    syncRunBackends();
-    $("run-stdin").value = prefs.stdin;
-    $("run-backend").value = prefs.backend;
-    syncRunBackends();
-    loadRunHistory(file.path);
-    renderFileView();
     showRunPane("stdin");
     switchSide("files");
     switchTab("file");
@@ -1539,19 +2007,30 @@ async function saveFile() {
   if (!state.slug || !state.file) return;
   machineSend("editor", "SAVE");
   try {
-    const content = $("file-editor").value;
+    const content = currentEditorText();
     await api(`/api/workspaces/${state.slug}/file`, {
       method: "POST",
       body: { path: state.file.path, content },
     });
     state.file.content = content;
     state.file.size = new Blob([content]).size;
+    state.tabFiles.set(state.file.path, state.file);
+    if (state.monaco && state.monacoPath === state.file.path) {
+      const model = state.monaco.editor.getModel();
+      if (model && model.getValue() !== content) {
+        state.monacoApplying = true;
+        model.setValue(content);
+        state.monacoApplying = false;
+      }
+    }
     state.dirty = false;
+    state.fileMode = "view";
     $("save-file").hidden = true;
     machineSend("editor", "SAVED");
     toast("Saved");
     await refreshWorkspace();
     renderFileView();
+    renderEditorTabs();
     $("file-meta").textContent = `${state.file.size} bytes · ${languageForPath(state.file.path)}`;
   } catch (error) {
     machineSend("editor", "FAIL");
@@ -1810,8 +2289,16 @@ async function openChangeDiff(changeId) {
       api(`/api/workspaces/${state.slug}/changes/${changeId}/hunks`),
     ]);
     state.selectedChange = changeId;
+    state.diffData = data;
+    state.diffMonaco = false;
     switchTab("diff");
     const body = $("diff-body");
+    body.hidden = false;
+    $("monaco-diff").hidden = true;
+    $("diff-title").textContent = data.path || "Change diff";
+    $("diff-mode").hidden = !monacoAllowed();
+    $("diff-mode").textContent = "Side by side";
+    $("diff-mode").setAttribute("aria-pressed", "false");
     body.innerHTML = "";
     const pre = document.createElement("pre");
     for (const line of (data.diff || "(no diff)").split("\n")) {
@@ -1864,6 +2351,59 @@ async function openChangeDiff(changeId) {
       body.appendChild(tools);
     }
   } catch (error) { toast(error.message, true); }
+}
+
+async function toggleDiffMode() {
+  if (!state.diffData) return;
+  if (state.diffMonaco) {
+    state.diffMonaco = false;
+    $("monaco-diff").hidden = true;
+    $("diff-body").hidden = false;
+    $("diff-mode").textContent = "Side by side";
+    $("diff-mode").setAttribute("aria-pressed", "false");
+    return;
+  }
+  try {
+    const bundle = await ensureMonacoEditor();
+    const monaco = bundle.monaco;
+    const host = $("monaco-diff");
+    $("diff-body").hidden = true;
+    host.hidden = false;
+    if (!bundle.diffEditor) {
+      bundle.diffEditor = monaco.editor.createDiffEditor(host, {
+        theme: "vs-dark",
+        automaticLayout: true,
+        readOnly: true,
+        renderSideBySide: true,
+        minimap: { enabled: false },
+        fontSize: 12,
+        scrollBeyondLastLine: false,
+        ariaLabel: "Side-by-side change diff",
+      });
+    }
+    if (bundle.diffModels) {
+      bundle.diffModels.original.dispose();
+      bundle.diffModels.modified.dispose();
+    }
+    const stamp = Date.now();
+    const original = monaco.editor.createModel(
+      state.diffData.before || "", "plaintext", monaco.Uri.parse(`diff:///original/${stamp}`)
+    );
+    const modified = monaco.editor.createModel(
+      state.diffData.after || "", "plaintext", monaco.Uri.parse(`diff:///modified/${stamp}`)
+    );
+    bundle.diffModels = { original, modified };
+    bundle.diffEditor.setModel({ original, modified });
+    bundle.diffEditor.layout();
+    state.diffMonaco = true;
+    $("diff-mode").textContent = "Inline diff";
+    $("diff-mode").setAttribute("aria-pressed", "true");
+  } catch (error) {
+    state.diffMonaco = false;
+    $("monaco-diff").hidden = true;
+    $("diff-body").hidden = false;
+    toast("Side-by-side diff unavailable; using the inline diff", true);
+  }
 }
 
 async function revertAllUnreviewed() {
@@ -2459,6 +2999,37 @@ async function selectWorkspace(slug) {
   state.plan = { steps: [] };
   state.file = null;
   state.dirty = false;
+  state.editorTabs = [];
+  state.tabFiles.clear();
+  state.tabView.clear();
+  state.monacoPath = null;
+  state.diffData = null;
+  state.diffMonaco = false;
+  if (state.monaco) {
+    for (const model of state.monaco.models.values()) {
+      try { model.dispose(); } catch { /* ignore */ }
+    }
+    if (state.monaco.diffModels) {
+      for (const model of Object.values(state.monaco.diffModels)) {
+        try { model.dispose(); } catch { /* ignore */ }
+      }
+    }
+    try { state.monaco.editor.dispose(); } catch { /* ignore */ }
+    if (state.monaco.diffEditor) {
+      try { state.monaco.diffEditor.dispose(); } catch { /* ignore */ }
+    }
+    state.monaco = null;
+  }
+  state.editorEngine = "textarea";
+  const monacoHost = $("monaco-host");
+  if (monacoHost) {
+    monacoHost.innerHTML = "";
+    monacoHost.hidden = true;
+  }
+  $("monaco-diff").hidden = true;
+  $("diff-mode").hidden = true;
+  $("diff-body").hidden = false;
+  renderEditorTabs();
   state.pendingApproval = null;
   state.selectedContext = [];
   state.jobId = null;
@@ -3608,6 +4179,7 @@ function wire() {
   $("settings-btn").addEventListener("click", openSettings);
   $("settings-form").addEventListener("submit", saveSettings);
   $("refresh-tree").addEventListener("click", async () => { await refreshWorkspace(); toast("Refreshed"); });
+  $("file-tree").addEventListener("keydown", handleTreeKeydown);
   $("new-file").addEventListener("click", () => newEntry("file", ""));
   $("new-folder").addEventListener("click", () => newEntry("dir", ""));
   $("send-btn").addEventListener("click", () => sendMessage());
@@ -3668,6 +4240,7 @@ function wire() {
   $("reload-file").addEventListener("click", () => state.file && openFile(state.file.path));
   $("edit-file").addEventListener("click", enterEditMode);
   $("view-file").addEventListener("click", enterViewMode);
+  $("diff-mode").addEventListener("click", toggleDiffMode);
   $("run-file").addEventListener("click", runSelectedBackend);
   $("judge0-run").addEventListener("click", runJudge0);
   $("isolate-run").addEventListener("click", runIsolate);
@@ -3714,6 +4287,16 @@ function wire() {
     if (mod && event.key === "`") {
       event.preventDefault();
       toggleRunPanel();
+      return;
+    }
+    if (mod && event.key === "Tab") {
+      event.preventDefault();
+      cycleEditorTab(event.shiftKey ? -1 : 1);
+      return;
+    }
+    if (mod && event.key.toLowerCase() === "w") {
+      event.preventDefault();
+      if (state.file) closeEditorTab(state.file.path);
       return;
     }
     if (event.altKey && ["1", "2", "3"].includes(event.key)) {

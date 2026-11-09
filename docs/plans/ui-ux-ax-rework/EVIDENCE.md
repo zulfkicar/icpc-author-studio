@@ -9,6 +9,7 @@ summary without the command that produced it.
 |---|---|---|
 | Five regions at 1440/1100/768/320, no horizontal overflow | `layout_regression` regions and widths output above | pass |
 | Chat is the right panel; editor centre; navigator left | `agentIsChat=true`, `editorIsCentre=true`, region boxes | pass |
+| Monaco lazy-loads; per-file tabs keep cursor/scroll; textarea fallback | `qa/phase2_editor.ps1` → `PHASE 2 EDITOR TESTS PASSED` | pass |
 | Judge0 embedded natively in the run panel; Isolate is verifier | `backendOptions`, `quickRunWarning`, `test_judge0_adapter`, `test_live_judge0` | pass |
 | Every dialog cancels by button, Escape, backdrop; focus returns | `newEscape`, `settingsEscape`, `contextEscape`, `actionEscapeClosed`, focus return checks | pass |
 | Every in-scope state machine has a transition test | `node qa/test_state_machines.mjs` → 18 machines | pass |
@@ -215,19 +216,65 @@ Residual risks:
 
 ---
 
-## Phase 2 — editor
+## Phase 2 — editor (Monaco, tabs, diff, file tree)
 
-Date:
-Commit:
+Date: 2026-11-09
+Commit: phase commit (see `git log --oneline`)
+
 Commands:
-- `...` → `...`
+- `qa/phase2_editor.ps1` → `PHASE 2 EDITOR TESTS PASSED`
+  - `engine="monaco"`, `monacoLoaded=true`, `hostVisible=true`,
+    `hostHeight=370`, `textareaHidden=true`
+  - `loadMs=359` (budget < 2000 ms)
+  - `tabsAfterOpen=1`, `tabsAfterSwitch=2`, `activeTab="ref.cpp"`,
+    `tabAfterCycle="NOTES.md"`, `tabRestored=true`
+  - `cursorBefore="Ln 2, Col 3"`, `restoredCursor="Ln 2, Col 3"`
+  - `diffVisible=true`, `diffModel=true`, `inlineRestored=true`
+  - `dirtyDot=true`, `dialogOpen=true`, `stayed=true`, `savedClean=true`,
+    `savedContent="line one\nline two changed\n"` via Ctrl+S
+  - `discardOpen=true`, `switched=true`
+  - `binary=true`, `binaryStaysOut=true`
+  - tree: `moved=true`, `expanded=true`, `role="tree"`
+  - fallback: `engine="textarea"`, `textareaVisible=true`,
+    `monacoHidden=true`, `valueLength=122`
+- `qa/layout_regression.ps1` → `LAYOUT REGRESSION PASSED`
+- `qa/accessibility_axe.ps1` → `AXE ACCESSIBILITY AUDIT PASSED`, `blocking=0`
+- `qa/accessibility_tree.ps1` → `ACCESSIBILITY TREE AUDIT PASSED`
+- `qa/cdp_workflow.ps1` → all prior checks still pass
+  (`composerFocusable=true`, `reflow320=true`, `runOutputTabs=5`, …)
+- `qa/soak_cdp.ps1` → `CDP SOAK PASSED`
+- `node qa/test_state_machines.mjs` → `STATE MACHINE TESTS PASSED`
+- container: `UI CONTRACT TESTS PASSED`, `ACCESSIBILITY AUDIT PASSED`,
+  `SECURITY TESTS PASSED`, `ISOLATE WORKER TESTS PASSED`,
+  `TESTLIB FIXTURE TESTS PASSED`, `INTERACTIVE TESTS PASSED`,
+  `LIVE JUDGE0 TESTS PASSED`, `EXECUTOR LIMIT TESTS PASSED`,
+  `EXECUTOR SECURITY TESTS PASSED`, `JUDGE0 ADAPTER TESTS PASSED`,
+  `VERIFICATION TIMING TESTS PASSED`.
+
 Screenshots:
-- `...`
+- `qa/screenshots/02-file-editor.png` → Monaco, line numbers, dirty/save chrome
+- `qa/screenshots/16-editor-tabs.png` → ref.cpp + NOTES.md tabs, Monaco active
+- `qa/screenshots/15-diff-side-by-side.png` → Monaco diff editor with
+  original/modified panes and the inline/back toggle
+
 Manual checks:
-- dirty tab switch → result
-- Monaco failure fallback → result
+- Opening a second file creates a tab; clicking or `Ctrl+Tab` switches,
+  `Ctrl+W` closes, and cursor/scroll/mode restore per path.
+- Dirty tab switch and dirty close both use the action dialog; Cancel keeps
+  the buffer, confirm discards it.
+- Ctrl+S saves the Monaco model and clears the dirty dot.
+- Binary/read-only files never enter edit mode.
+- `?editor=textarea` and a Monaco loader failure both leave the textarea
+  editor fully usable.
+- File tree: arrow keys move, Right expands, Left collapses/moves to parent,
+  Enter/Space activate.
+
 Residual risks:
-- ...
+- Monaco adds ~12 MB of vendored assets; it is lazy-loaded only on edit.
+- Monaco's AMD loader requires CSP `script-src 'self' 'unsafe-eval'`; the
+  policy remains same-origin only and the worker is a same-origin script.
+- The TypeScript worker itself contains an eval path; it is never used for the
+  C/C++/Python/Java/Kotlin authoring flow.
 
 ---
 

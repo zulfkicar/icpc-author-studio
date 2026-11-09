@@ -191,14 +191,22 @@ This is the automation contract. Do not rename it without a migration note.
 
 ### Monaco
 
-- Vendor `monaco-editor` under `web/vendor/monaco/` using the AMD loader, as
-  Judge0 IDE does.
-- Load lazily when the first text file opens; show a lightweight skeleton.
-- Keep one model per open tab, keyed by workspace path.
-- Preserve view state (`cursor`, `scrollTop`, `selection`) per path.
-- Dispose models when the workspace changes.
-- Use `monaco.editor.createDiffEditor` for diff tabs.
-- Use a worker-safe configuration; if workers fail, fall back.
+- Vendor `monaco-editor@0.44.0` under `web/vendor/monaco/vs` using the AMD
+  loader, as Judge0 IDE does.
+- Inject `loader.js` on the first edit (view mode stays highlight.js and does
+  not pay the 12 MB cost); show a lightweight skeleton while loading.
+- Keep one model per open tab, keyed by workspace path, and an `#editor-tabs`
+  bar with dirty dots, close buttons and `Ctrl+Tab`/`Ctrl+W`.
+- Preserve view state (`cursor`, `scrollTop`, `selection`, mode) per path.
+- Dispose models/editors when the workspace changes.
+- Use `monaco.editor.createDiffEditor` for the side-by-side diff; keep the
+  inline diff and hunk tools as the default.
+- Use the same-origin `web/monaco-worker.js` entry point and
+  `MonacoEnvironment.getWorkerUrl`. The CSP is
+  `script-src 'self' 'unsafe-eval'; worker-src 'self'` because the AMD loader
+  compiles module factories; no remote script host is allowed.
+- If workers fail, Monaco may fall back internally; if the loader/module
+  fails, use the textarea fallback (`?editor=textarea` forces it).
 
 ### Fallback
 

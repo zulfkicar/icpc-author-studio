@@ -56,12 +56,23 @@ try {
   Eval @'
 (async () => {
   await openFile('submissions/accepted/ref.cpp');
-  enterEditMode();
+  await enterEditMode();
+  await new Promise((resolve) => setTimeout(resolve, 700));
   return true;
 })()
 '@ | Out-Null
   Start-Sleep -Milliseconds 400
   Shot '02-file-editor.png'
+  Eval @'
+(async () => {
+  await openFile('NOTES.md');
+  await switchEditorTab('submissions/accepted/ref.cpp');
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  return true;
+})()
+'@ | Out-Null
+  Start-Sleep -Milliseconds 300
+  Shot '16-editor-tabs.png'
   Eval @'
 (async () => {
   switchTab('report');
@@ -80,6 +91,25 @@ try {
 '@ | Out-Null
   Start-Sleep -Milliseconds 400
   Shot '04-diff.png'
+  Eval @'
+(async () => {
+  const change = state.changes.find((item) => !item.reverted);
+  if (change) await openChangeDiff(change.id);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const toggle = document.getElementById('diff-mode');
+  if (!toggle.hidden) toggle.click();
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  return true;
+})()
+'@ | Out-Null
+  Shot '15-diff-side-by-side.png'
+  Eval @'
+(() => {
+  const toggle = document.getElementById('diff-mode');
+  if (state.diffMonaco) toggle.click();
+  return true;
+})()
+'@ | Out-Null
   Eval @'
 (async () => {
   switchTab('mcp');

@@ -29,6 +29,7 @@ wsl -e sh -c "cd /mnt/e/ICPC/author-agent && docker compose up -d --build author
 & 'C:\Projects\author-agent\qa\accessibility_tree.ps1'
 & 'C:\Projects\author-agent\qa\cdp_workflow.ps1'
 & 'C:\Projects\author-agent\qa\soak_cdp.ps1'
+& 'C:\Projects\author-agent\qa\phase2_editor.ps1'
 node 'C:\Projects\author-agent\qa\test_state_machines.mjs'
 ```
 
@@ -95,15 +96,16 @@ python -m py_compile isolate_worker.py server.py verify.py winutil.py
 
 | Gate | Check |
 |---|---|
-| Monaco | loads lazily; one model per tab |
-| Tabs | open/close/cycle/dirty dot |
-| View state | cursor/scroll preserved |
-| Dirty guard | action dialog; cancel keeps buffer |
-| Binary/read-only | no edit mode |
-| Diff | change opens diff tab; toggle works |
-| Fallback | forced Monaco failure still edits |
-| Performance | interactive < 2 s warm |
-| Keyboard | file tree arrows/Enter |
+| Monaco | `qa/phase2_editor.ps1`: `engine="monaco"`, `monacoLoaded=true`, host visible |
+| Tabs | `tabsAfterSwitch=2`, `activeTab` returns, `Ctrl+Tab` cycle, `Ctrl+W` close |
+| View state | `cursorBefore` equals `restoredCursor` |
+| Dirty guard | `dialogOpen=true`, Cancel keeps buffer, confirm discards |
+| Save | Ctrl+S clears the dirty dot and writes `line two changed` |
+| Binary/read-only | `binary=true`, `binaryStaysOut=true` |
+| Diff | `diffVisible=true`, `diffModel=true`, inline restores |
+| Fallback | `?editor=textarea` → `engine="textarea"`, textarea editable |
+| Performance | `loadMs < 2000` |
+| Keyboard | file tree `moved=true`, `expanded=true`, `role="tree"` |
 
 ### Phase 3 — run/Judge0
 
@@ -228,6 +230,10 @@ qa/screenshots/09-shell-1440.png
 qa/screenshots/10-shell-1100.png
 qa/screenshots/11-shell-768.png
 qa/screenshots/12-shell-320.png
+qa/screenshots/13-shell-320-agent.png
+qa/screenshots/14-shell-320-navigator.png
+qa/screenshots/15-diff-side-by-side.png
+qa/screenshots/16-editor-tabs.png
 ```
 
 `EVIDENCE.md` entry format:
