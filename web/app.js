@@ -32,7 +32,7 @@ const state = {
   activeTab: "plan",
   activeSide: "chats",
   activeActivity: "chats",
-  selectedChange: null,
+  showReverted: false,
   pendingMessage: null,
   pendingApproval: null,
   selectedContext: [],
@@ -43,7 +43,6 @@ const state = {
   mentionQuery: null,
   follow: true,
   fileBusy: false,
-  approvalRendered: false,
   renderedChangeIds: new Set(),
   fileMode: "view",
   editorEngine: "textarea",
@@ -453,6 +452,7 @@ function scrollMessages() {
 
 function setFollow(value) {
   state.follow = Boolean(value);
+  machineSet("follow", state.follow ? "following" : "paused", "set follow");
   const button = $("follow-btn");
   if (button) button.hidden = state.follow;
   if (state.follow) scrollMessages();
@@ -945,6 +945,9 @@ function renderVerificationEvent(data) {
   const result = data.result || {};
   const node = document.createElement("div");
   const status = result.status || (result.ok ? "ok" : "failed");
+  if (data.stage === "verification" || data.stage === "verify") {
+    machineSet("verification", status === "verified" || result.ok ? "verified" : "failed", "verification event");
+  }
   node.className = "event-verify " + (status === "verified" || result.ok ? "ok" : "bad");
   const errors = (result.errors || []).slice(0, 6).map((e) => `<div>${escapeHtml(e)}</div>`).join("");
   node.innerHTML = `<b>${escapeHtml(data.stage || "verification")}: ${escapeHtml(status)}</b>${errors ? `<div class="muted" style="margin-top:6px">${errors}</div>` : ""}`;
@@ -960,12 +963,19 @@ function renderErrorEvent(data) {
 
 // ---------- status / problem ----------
 
-function updateExportButton() {
+function exportPredicate() {
   const summary = state.summary;
-  const verified = summary && summary.lastStatus === "verified" && !summary.stale;
+  const verified = Boolean(summary && summary.lastStatus === "verified" && !summary.stale);
   const reviewed = !summary || (summary.unreviewed || 0) === 0;
-  $("export-btn").disabled = !(verified && reviewed);
-  $("export-btn").title = !verified
+  return { enabled: verified && reviewed, verified, reviewed };
+}
+
+function updateExportButton() {
+  const { enabled, verified, reviewed } = exportPredicate();
+  const button = $("export-btn");
+  button.disabled = !enabled;
+  button.setAttribute("aria-disabled", enabled ? "false" : "true");
+  button.title = !verified
     ? "Verify the package before exporting"
     : !reviewed ? "Mark changes reviewed before exporting" : "Download the verified DOMjudge package";
 }
@@ -975,6 +985,7 @@ function setStatus(status) {
   const value = status || "unverified";
   pill.className = "pill " + (["verified", "failed", "unverified", "stale"].includes(value) ? value : "unverified");
   pill.textContent = value;
+  machineSet("verification", ["verified", "failed", "stale", "unverified"].includes(value) ? value : "unverified", "status");
   updateStatusBar();
   updateExportButton();
 }
@@ -1408,6 +1419,7 @@ function renderTestResults() {
 }
 
 async function selectTest(result) {
+  machineSet("tests", result.pass ? "pass" : "fail", "select test");
   state.activeSample = result.name;
   $("run-stdin").value = result.stdin || "";
   showRunPane("result");
@@ -1425,6 +1437,7 @@ async function selectTest(result) {
 async function runSamples() {
   if (!state.slug || !state.file || !isRunnablePath(state.file.path)) return;
   if (state.fileBusy) return;
+  machineSend("tests", "RUN");
   setRunBusy(true);
   if (state.dirty) await saveFile();
   const samples = sampleTests();
@@ -1466,8 +1479,10 @@ async function runSamples() {
     $("run-output").hidden = false;
     $("run-output").className = "run-output" + (passed === state.testResults.length ? "" : " err");
     $("run-output").textContent = `${passed}/${state.testResults.length} sample tests passed`;
+    machineSend("tests", passed === state.testResults.length ? "PASS" : "FAIL");
     toast(`${passed}/${state.testResults.length} sample tests passed`, passed !== state.testResults.length);
   } catch (error) {
+    machineSend("tests", "FAIL");
     $("test-results").hidden = true;
     toast(error.message, true);
   } finally {
@@ -1787,6 +1802,7 @@ async function switchEditorTab(path) {
   }
   const targetMode = (state.tabView.get(path) || {}).mode || "view";
   await applyFile(file, { mode: targetMode });
+  machineSet("fileLoad", "loaded", "tab switch");
   switchTab("file");
   renderTree();
 }
@@ -1990,9 +2006,11 @@ async function openFile(path) {
     discardCurrentEdits();
   }
   saveTabView();
+  machineSend("fileLoad", "LOAD");
   try {
     const file = await api(`/api/workspaces/${state.slug}/file?path=${encodeURIComponent(path)}`);
     await applyFile(file, { mode: "view", reload: true });
+    machineSend("fileLoad", "READY");
     $("test-results").hidden = true;
     $("test-results").innerHTML = "";
     $("line-numbers").hidden = true;
@@ -2000,7 +2018,10 @@ async function openFile(path) {
     switchSide("files");
     switchTab("file");
     renderTree();
-  } catch (error) { toast(error.message, true); }
+  } catch (error) {
+    machineSend("fileLoad", "ERROR");
+    toast(error.message, true);
+  }
 }
 
 async function saveFile() {
@@ -2244,12 +2265,14 @@ function renderChanges() {
   $("unreviewed-count").className = "badge" + (unreviewed.length ? "" : " zero");
   $("approve-btn").disabled = !unreviewed.length;
   $("revert-unreviewed").disabled = !unreviewed.length;
+  machineSet("changes", unreviewed.length ? "unreviewed" : "clean", "render changes");
   updateExportButton();
-  if (!state.changes.length) {
+  const visibleChanges = state.changes.filter((change) => state.showReverted || !change.reverted);
+  if (!visibleChanges.length) {
     host.innerHTML = '<div class="pad muted">No changes yet.</div>';
     return;
   }
-  for (const change of [...state.changes].reverse()) {
+  for (const change of [...visibleChanges].reverse()) {
     const row = document.createElement("div");
     row.className = "change-row" + (change.reverted ? " reverted" : "");
     const source = change.source === "agent" ? "agent" : change.source === "verify" ? "verify" : "you";
@@ -2288,9 +2311,9 @@ async function openChangeDiff(changeId) {
       api(`/api/workspaces/${state.slug}/changes/${changeId}/diff`),
       api(`/api/workspaces/${state.slug}/changes/${changeId}/hunks`),
     ]);
-    state.selectedChange = changeId;
     state.diffData = data;
     state.diffMonaco = false;
+    machineSend("changes", "REVIEW");
     switchTab("diff");
     const body = $("diff-body");
     body.hidden = false;
@@ -2417,6 +2440,7 @@ async function revertAllUnreviewed() {
     danger: true,
   });
   if (!ok) return;
+  machineSend("changes", "REVERT");
   let failed = 0;
   for (const change of [...state.changes].reverse()) {
     if (change.reverted || change.reviewed) continue;
@@ -2501,6 +2525,8 @@ function hideMentions() {
   state.mentionQuery = null;
   const menu = $("mention-menu");
   if (menu) menu.hidden = true;
+  const mentions = window.AuthorMachines && window.AuthorMachines.machines.mentions;
+  if (mentions && mentions.can("CLOSE")) mentions.send("CLOSE");
 }
 
 function renderMentions() {
@@ -2531,10 +2557,13 @@ function renderMentions() {
         saveContext();
         renderContextChips();
       }
+      machineSend("mentions", "PICK");
       hideMentions();
     });
     menu.appendChild(button);
   }
+  machineSend("mentions", "TRIGGER");
+  machineSend("mentions", "FILTER");
   menu.hidden = false;
 }
 
@@ -2604,24 +2633,38 @@ function renderChatList() {
 }
 
 async function loadChats(preferredId) {
-  if (!state.slug) { state.chats = []; state.chatId = null; renderChatList(); return null; }
-  const data = await api(`/api/workspaces/${state.slug}/chats`);
-  state.chats = data.chats || [];
-  const remembered = localStorage.getItem(`author-agent-chat-${state.slug}`);
-  const candidates = [preferredId, state.chatId, remembered, data.activeChat, state.chats[0] && state.chats[0].id];
-  const id = candidates.find((value) => value && state.chats.some((chat) => chat.id === value));
-  state.chatId = id || null;
-  if (state.chatId) localStorage.setItem(`author-agent-chat-${state.slug}`, state.chatId);
-  loadChatTabs();
-  if (state.chatId) openChatTab(state.chatId);
-  renderChatList();
-  renderChatTabs();
-  return state.chatId;
+  if (!state.slug) {
+    state.chats = [];
+    state.chatId = null;
+    machineSet("chat", "no-chat", "workspace");
+    renderChatList();
+    return null;
+  }
+  machineSet("chat", "loading", "load chats");
+  try {
+    const data = await api(`/api/workspaces/${state.slug}/chats`);
+    state.chats = data.chats || [];
+    const remembered = localStorage.getItem(`author-agent-chat-${state.slug}`);
+    const candidates = [preferredId, state.chatId, remembered, data.activeChat, state.chats[0] && state.chats[0].id];
+    const id = candidates.find((value) => value && state.chats.some((chat) => chat.id === value));
+    state.chatId = id || null;
+    if (state.chatId) localStorage.setItem(`author-agent-chat-${state.slug}`, state.chatId);
+    else machineSet("chat", "no-chat", "no chats");
+    loadChatTabs();
+    if (state.chatId) openChatTab(state.chatId);
+    renderChatList();
+    renderChatTabs();
+    return state.chatId;
+  } catch (error) {
+    machineSend("chat", "ERROR");
+    throw error;
+  }
 }
 
 async function selectChat(chatId) {
   if (state.jobId) { toast("Wait for the current turn before switching chats", true); return; }
   if (!chatId || chatId === state.chatId) return;
+  machineSend("chat", "SELECT");
   state.chatId = chatId;
   localStorage.setItem(`author-agent-chat-${state.slug}`, chatId);
   openChatTab(chatId);
@@ -2647,6 +2690,8 @@ async function renameChat(chatId) {
   if (!title || title === chatTitle(chat)) return;
   try {
     await api(`/api/workspaces/${state.slug}/chats/${chatId}`, { method: "PATCH", body: { title: title.trim() } });
+    machineSet("chat", "loaded", "rename");
+    machineSend("chat", "RENAME");
     await loadChats(chatId);
     toast("Chat renamed");
   } catch (error) { toast(error.message, true); }
@@ -2666,6 +2711,8 @@ async function deleteChat(chatId) {
   if (!ok) return;
   try {
     const data = await api(`/api/workspaces/${state.slug}/chats/${chatId}`, { method: "DELETE" });
+    machineSet("chat", "loaded", "delete");
+    machineSend("chat", "DELETE");
     state.chats = data.chats || [];
     state.chatId = data.activeChat || null;
     if (state.chatId) localStorage.setItem(`author-agent-chat-${state.slug}`, state.chatId);
@@ -2679,6 +2726,7 @@ async function newChat() {
   if (!state.slug) { toast("Create or select a problem first", true); return; }
   if (state.jobId) { toast("Wait for the current turn before starting a new chat", true); return; }
   try {
+    machineSend("chat", "NEW");
     const chat = await api(`/api/workspaces/${state.slug}/chats`, { method: "POST", body: {} });
     await loadChats(chat.id);
     await loadConversation();
@@ -2691,11 +2739,11 @@ async function loadConversation() {
   host.innerHTML = "";
   resetStreaming();
   setFollow(true);
-  state.approvalRendered = false;
   state.pendingApproval = null;
   state.renderedChangeIds = new Set();
   state.plan = { steps: [] };
   if (!state.slug || !state.chatId) {
+    machineSet("chat", "no-chat", "no conversation");
     host.innerHTML = '<div class="empty"><h2>No conversation</h2><p>Create a chat to begin.</p></div>';
     renderChatList();
     renderPlan();
@@ -2736,9 +2784,11 @@ async function loadConversation() {
     state.pendingApproval = pending.length ? pending : null;
     if (pending.length) renderApproval(pending);
     $("send-btn").disabled = Boolean(state.jobId || state.pendingApproval);
+    machineSend("chat", "LOAD");
     renderChatList();
     renderPlan();
   } catch (error) {
+    machineSend("chat", "ERROR");
     host.innerHTML = `<div class="pad muted">Could not load conversation: ${escapeHtml(error.message)}</div>`;
   }
 }
@@ -2894,6 +2944,15 @@ function renderReport(report) {
   const counts = report.counts || {};
   const limits = report.limits || {};
   const stale = state.summary && state.summary.stale;
+  const changed = state.changes.filter((change) => !change.reverted);
+  const limitSeconds = limits.timeSeconds || (state.summary && state.summary.measuredLimits && state.summary.measuredLimits.timeLimitSeconds) || "-";
+  const limitMemory = limits.memoryMb || (state.summary && state.summary.measuredLimits && state.summary.measuredLimits.memoryMb) || "not set";
+  const staleBanner = stale
+    ? '<div class="stale-banner" role="status">Workspace changed since this verification. Re-run verification before export.</div>'
+    : "";
+  const changedButtons = changed.slice(0, 24).map((change) => (
+    `<button class="quiet small" data-open-diff="${escapeHtml(change.id)}">${escapeHtml(change.path)}</button>`
+  )).join("");
   const checkRows = checks.map((check) => `
     <tr><td>${escapeHtml(check.name)}</td><td class="status-${check.status}">${escapeHtml(check.status)}</td><td>${escapeHtml(check.detail)}</td></tr>
   `).join("");
@@ -2911,10 +2970,13 @@ function renderReport(report) {
       <span class="big">${status === "verified" ? "Package verified" : "Verification failed"}</span>
     </div>
     <div class="report-sub">${escapeHtml(report.at || "")}${stale ? " · workspace changed since this run" : ""}</div>
+    ${staleBanner}
+    <div class="report-limits">Limits: <b>${escapeHtml(String(limitSeconds))} s</b> · <b>${escapeHtml(String(limitMemory))} MiB</b></div>
     <div class="report-actions">
       <button class="primary small" data-action="verify">Verify again</button>
       ${errors.length ? '<button class="quiet small" data-action="fix">Fix with agent</button>' : ""}
     </div>
+    ${changed.length ? `<h3>Changed files</h3><div class="report-actions">${changedButtons}</div>` : ""}
     ${errors.length ? `<h3>Errors</h3><ul class="report-list status-fail">${errors.map((e) => `<li>${escapeHtml(e)}</li>`).join("")}</ul>` : ""}
     ${warnings.length ? `<h3>Warnings</h3><ul class="report-list status-warn">${warnings.map((e) => `<li>${escapeHtml(e)}</li>`).join("")}</ul>` : ""}
     <h3>Evidence</h3>
@@ -2943,6 +3005,9 @@ function renderReport(report) {
   if (fix) fix.addEventListener("click", () => {
     const message = `Verification failed. Fix these concrete issues, then re-run verify_package until the package is verified:\n\n${errors.map((e) => `- ${e}`).join("\n")}`;
     sendMessage(message);
+  });
+  host.querySelectorAll("[data-open-diff]").forEach((button) => {
+    button.addEventListener("click", () => openChangeDiff(button.dataset.openDiff));
   });
 }
 
@@ -2991,6 +3056,16 @@ async function selectWorkspace(slug) {
   machineSet("run", "hidden", "workspace switch");
   machineSet("turn", "idle", "workspace switch");
   machineSet("approval", "none", "workspace switch");
+  machineSet("fileLoad", "none", "workspace switch");
+  machineSet("chat", "no-chat", "workspace switch");
+  machineSet("verification", "unverified", "workspace switch");
+  machineSet("changes", "clean", "workspace switch");
+  machineSet("mcp", "disabled", "workspace switch");
+  machineSet("settings", "clean", "workspace switch");
+  machineSet("mentions", "hidden", "workspace switch");
+  machineSet("follow", "following", "workspace switch");
+  machineSet("tests", "empty", "workspace switch");
+  machineSet("restore", "idle", "workspace switch");
   state.summary = null;
   state.tree = [];
   state.changes = [];
@@ -3155,6 +3230,9 @@ function processJobEvents(job) {
       addEventCard(node);
       $("agent-state").textContent = "stopping…";
     } else if (event.kind === "report") {
+      if (data && data.status) {
+        machineSet("verification", data.status === "verified" ? "verified" : data.status === "failed" ? "failed" : "unverified", "report event");
+      }
       if (job.state !== "running") renderReport(data);
     } else if (event.kind === "export") {
       toast(`Exported ${data.files || 0} files`);
@@ -3308,6 +3386,7 @@ async function runToolJob(kind, body) {
     state.jobChatId = null;
     state.jobEvents = 0;
     machineSend("turn", "START");
+    if (kind === "verify") machineSend("verification", "VERIFY");
     $("send-btn").disabled = true;
     $("agent-state").textContent = kind === "verify" ? "verifying…"
       : kind === "answers" ? "building answers…"
@@ -3350,22 +3429,26 @@ async function loadHistory() {
 }
 
 async function restoreCheckpoint(checkpointId) {
+  machineSend("restore", "ASK");
   const ok = await actionDialog({
     kicker: "History",
     title: "Restore conversation?",
     description: "The current checkpoint thread will be replaced by this checkpoint.",
     confirmLabel: "Restore chat",
   });
-  if (!ok) return;
+  if (!ok) { machineSend("restore", "CLEAR"); return; }
+  machineSend("restore", "RESTORE");
   try {
     await api(`/api/workspaces/${state.slug}/chats/${state.chatId}/history/${encodeURIComponent(checkpointId)}/restore`, { method: "POST", body: {} });
     await loadConversation();
     await loadHistory();
+    machineSend("restore", "DONE");
     toast("Conversation restored");
-  } catch (error) { toast(error.message, true); }
+  } catch (error) { machineSend("restore", "ERROR"); toast(error.message, true); }
 }
 
 async function restoreFiles(snapshotId) {
+  machineSend("restore", "ASK");
   const ok = await actionDialog({
     kicker: "History",
     title: "Restore workspace files?",
@@ -3373,23 +3456,30 @@ async function restoreFiles(snapshotId) {
     confirmLabel: "Restore files",
     danger: true,
   });
-  if (!ok) return;
+  if (!ok) { machineSend("restore", "CLEAR"); return; }
+  machineSend("restore", "RESTORE");
   try {
     await api(`/api/workspaces/${state.slug}/snapshots/restore`, { method: "POST", body: { chatId: state.chatId, snapshotId } });
     await refreshWorkspace();
     if (state.file) await openFile(state.file.path);
+    machineSend("restore", "DONE");
     toast("Workspace files restored");
-  } catch (error) { toast(error.message, true); }
+  } catch (error) { machineSend("restore", "ERROR"); toast(error.message, true); }
 }
 
 async function loadMcp() {
   const host = $("mcp-body");
   if (!host) return;
-  if (!state.slug) { host.innerHTML = '<div class="pad muted">Open a workspace first.</div>'; return; }
+  if (!state.slug) {
+    machineSet("mcp", "disabled", "no workspace");
+    host.innerHTML = '<div class="pad muted">Open a workspace first.</div>';
+    return;
+  }
   host.innerHTML = '<div class="pad muted">Loading MCP consent…</div>';
   try {
     const data = await api(`/api/workspaces/${state.slug}/mcp`);
     const consent = data.consent || {};
+    machineSet("mcp", consent.enabled ? "enabled" : "disabled", "load mcp");
     const tools = data.tools || [];
     const rows = tools.map((tool) => {
       const granted = Boolean((consent.tools || {})[tool.name]);
@@ -3427,7 +3517,10 @@ async function loadMcp() {
       <p class="muted small">Protocol ${escapeHtml(data.protocol || "")} \u00b7 ${escapeHtml(data.server || "")}. Secret test data is never exposed.</p>`;
     $("mcp-save").addEventListener("click", saveMcp);
     host.querySelectorAll("[data-mcp-test]").forEach((button) => button.addEventListener("click", () => testMcpTool(button.dataset.mcpTest)));
-  } catch (error) { host.innerHTML = `<div class="pad status-fail">${escapeHtml(error.message)}</div>`; }
+  } catch (error) {
+    machineSet("mcp", "error", "load mcp");
+    host.innerHTML = `<div class="pad status-fail">${escapeHtml(error.message)}</div>`;
+  }
 }
 
 async function saveMcp() {
@@ -3435,22 +3528,28 @@ async function saveMcp() {
   const tools = {};
   document.querySelectorAll("[data-mcp-tool]").forEach((box) => { tools[box.dataset.mcpTool] = box.checked; });
   const roots = ($("mcp-roots").value || ".").split(",").map((item) => item.trim()).filter(Boolean);
+  machineSend("mcp", "SAVE");
   try {
     await api(`/api/workspaces/${state.slug}/mcp`, { method: "POST", body: { enabled: $("mcp-enabled").checked, tools, roots } });
+    machineSend("mcp", "SAVED");
     toast("MCP consent saved");
     await loadMcp();
-  } catch (error) { toast(error.message, true); }
+  } catch (error) { machineSend("mcp", "ERROR"); toast(error.message, true); }
 }
 
 async function testMcpTool(tool) {
   if (!state.slug) return;
   const output = $("mcp-test-result");
   if (output) output.textContent = "Testing…";
+  machineSend("mcp", "PROBE");
   try {
     const result = await api(`/api/workspaces/${state.slug}/mcp/test`, { method: "POST", body: { tool, arguments: {} } });
     const text = JSON.stringify(result.response || result).slice(0, 400);
     if (output) output.textContent = (result.ok ? "OK " : "DENIED ") + text;
+    const enabled = Boolean($("mcp-enabled") && $("mcp-enabled").checked);
+    machineSet("mcp", enabled ? "enabled" : "disabled", "probe done");
   } catch (error) {
+    machineSend("mcp", "ERROR");
     if (output) output.textContent = error.message;
   }
 }
@@ -3515,6 +3614,104 @@ function switchActivity(section) {
     setDrawer("nav", true);
   }
   if (section === "run" && isAgentDrawer()) setDrawer("agent", false);
+}
+
+// ---------- command palette / quick open ----------
+
+let paletteMode = "commands";
+let paletteItems = [];
+let paletteIndex = 0;
+
+function paletteCommands() {
+  const commands = [
+    { label: "Show plan", hint: "view", run: () => switchTab("plan") },
+    { label: "Show current file", hint: "view", run: () => switchTab("file") },
+    { label: "Show verification report", hint: "evidence", run: () => switchTab("report") },
+    { label: "Show diff", hint: "review", run: () => switchTab("diff") },
+    { label: "Show history", hint: "restore", run: () => switchTab("history") },
+    { label: "Show MCP consent", hint: "tools", run: () => switchTab("mcp") },
+    { label: "Open review queue", hint: "navigator", run: () => switchActivity("changes") },
+    { label: "Open conversations", hint: "navigator", run: () => switchActivity("chats") },
+    { label: "Open workspace files", hint: "navigator", run: () => switchActivity("files") },
+    { label: "Focus navigator", hint: "Alt+1", run: () => focusRegion("1") },
+    { label: "Focus editor", hint: "Alt+2", run: () => focusRegion("2") },
+    { label: "Focus agent", hint: "Alt+3", run: () => focusRegion("3") },
+    { label: "Toggle run panel", hint: "Ctrl+`", run: () => toggleRunPanel() },
+    { label: "Run current file", hint: "quick run", run: () => runSelectedBackend() },
+    { label: "Verify package", hint: "deterministic", run: () => runToolJob("verify", { writeAnswers: false }) },
+    { label: "Measure limits", hint: "verifier", run: () => runToolJob("measure-limits", {}) },
+    { label: "Build answers", hint: "verifier", run: () => runToolJob("answers", {}) },
+    { label: "Export package", hint: "verified only", run: () => { if (!$("export-btn").disabled) runToolJob("export", {}); else toast($("export-btn").title, true); } },
+    { label: "New problem", hint: "workspace", run: () => $("new-problem").click() },
+    { label: "Provider settings", hint: "runtime", run: () => openSettings() },
+  ];
+  return commands;
+}
+
+function paletteFiles() {
+  return state.tree
+    .filter((row) => row.type === "file" && !row.path.startsWith("data/secret/") && !row.path.endsWith(".ans"))
+    .map((row) => ({
+      label: row.path,
+      hint: "file",
+      run: () => openFile(row.path),
+    }));
+}
+
+function renderPalette(query = "") {
+  const q = String(query || "").toLowerCase();
+  const source = paletteMode === "files" ? paletteFiles() : paletteCommands();
+  paletteItems = source.filter((item) => !q || item.label.toLowerCase().includes(q) || (item.hint || "").toLowerCase().includes(q));
+  paletteIndex = 0;
+  const host = $("palette-list");
+  host.innerHTML = "";
+  if (!paletteItems.length) {
+    host.innerHTML = '<div class="palette-empty">No matches.</div>';
+    $("palette-input").removeAttribute("aria-activedescendant");
+    return;
+  }
+  paletteItems.forEach((item, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "palette-item";
+    button.id = `palette-option-${index}`;
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", index === 0 ? "true" : "false");
+    button.innerHTML = `<span>${escapeHtml(item.label)}</span>${item.hint ? `<span class="palette-hint">${escapeHtml(item.hint)}</span>` : ""}`;
+    button.addEventListener("mouseenter", () => selectPalette(index));
+    button.addEventListener("click", () => runPalette(index));
+    host.appendChild(button);
+  });
+  $("palette-input").setAttribute("aria-activedescendant", "palette-option-0");
+}
+
+function selectPalette(index) {
+  if (!paletteItems.length) return;
+  paletteIndex = Math.max(0, Math.min(index, paletteItems.length - 1));
+  [...$("palette-list").querySelectorAll(".palette-item")].forEach((button, itemIndex) => {
+    button.setAttribute("aria-selected", itemIndex === paletteIndex ? "true" : "false");
+    if (itemIndex === paletteIndex) button.scrollIntoView({ block: "nearest" });
+  });
+  $("palette-input").setAttribute("aria-activedescendant", `palette-option-${paletteIndex}`);
+}
+
+function openPalette(mode = "commands") {
+  if (window.AuthorDialogs.topOpen()) return;
+  paletteMode = mode === "files" ? "files" : "commands";
+  const files = paletteMode === "files";
+  $("palette-kicker").textContent = files ? "Go to" : "Command";
+  $("palette-title").textContent = files ? "Quick open" : "Command palette";
+  $("palette-input").value = "";
+  $("palette-input").placeholder = files ? "Filter workspace files" : "Type a command";
+  renderPalette("");
+  window.AuthorDialogs.open("palette-dialog", { focus: "#palette-input" });
+}
+
+function runPalette(index = paletteIndex) {
+  const item = paletteItems[index];
+  if (!item) return;
+  window.AuthorDialogs.submit("palette-dialog", "select");
+  setTimeout(() => item.run(), 0);
 }
 
 // ---------- dialogs ----------
@@ -3603,6 +3800,7 @@ function settingsDirty() {
 }
 
 function openSettings() {
+  machineSet("settings", "clean", "open settings");
   const form = $("settings-form");
   const settings = state.settings || {};
   form.baseUrl.value = settings.baseUrl || "";
@@ -3659,14 +3857,19 @@ async function saveSettings(event) {
   if (form.apiKey.value.trim()) body.apiKey = form.apiKey.value.trim();
   if (form.fallbackApiKey.value.trim()) body.fallbackApiKey = form.fallbackApiKey.value.trim();
   if (form.judge0Token.value.trim()) body.judge0Token = form.judge0Token.value.trim();
+  machineSend("settings", "SAVE");
   try {
     state.settings = await api("/api/settings", { method: "POST", body });
+    machineSend("settings", "SAVED");
     settingsSnapshot = null;
     window.AuthorDialogs.submit("settings-dialog", "save");
     syncRunBackends();
     toast("Settings saved");
     updateStatusBar();
-  } catch (error) { toast(error.message, true); }
+  } catch (error) {
+    machineSend("settings", "ERROR");
+    toast(error.message, true);
+  }
 }
 
 async function createProblem(event) {
@@ -3796,9 +3999,10 @@ function renderApproval(interrupts) {
     renderClarification(clarifications);
     return;
   }
-  if (state.approvalRendered || document.querySelector(".approval-card")) return;
+  const approval = window.AuthorMachines && window.AuthorMachines.machines.approval;
+  if (document.querySelector(".approval-card")) return;
   state.pendingApproval = interrupts;
-  state.approvalRendered = true;
+  if (approval && approval.can("ASK")) machineSend("approval", "ASK");
   const card = document.createElement("div");
   card.className = "approval-card";
   const title = document.createElement("div");
@@ -4166,6 +4370,10 @@ function registerDialogs() {
     cancelId: "context-cancel",
     fallbackFocus: "#context-btn",
   });
+  window.AuthorDialogs.register("palette-dialog", {
+    cancelId: "palette-cancel",
+    fallbackFocus: "#composer",
+  });
 }
 
 function wire() {
@@ -4178,6 +4386,24 @@ function wire() {
   $("new-form").addEventListener("submit", createProblem);
   $("settings-btn").addEventListener("click", openSettings);
   $("settings-form").addEventListener("submit", saveSettings);
+  $("settings-form").addEventListener("input", () => machineSend("settings", "EDIT"));
+  $("palette-input").addEventListener("input", (event) => renderPalette(event.target.value));
+  $("palette-input").addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      selectPalette(paletteIndex + 1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      selectPalette(paletteIndex - 1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      runPalette();
+    }
+  });
+  $("palette-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    runPalette();
+  });
   $("refresh-tree").addEventListener("click", async () => { await refreshWorkspace(); toast("Refreshed"); });
   $("file-tree").addEventListener("keydown", handleTreeKeydown);
   $("new-file").addEventListener("click", () => newEntry("file", ""));
@@ -4195,10 +4421,16 @@ function wire() {
   $("export-btn").addEventListener("click", () => runToolJob("export", {}));
   $("approve-btn").addEventListener("click", async () => {
     if (!state.slug) return;
+    machineSend("changes", "REVIEW");
     try { await api(`/api/workspaces/${state.slug}/review`, { method: "POST" }); await refreshWorkspace(); toast("Changes marked reviewed"); }
     catch (error) { toast(error.message, true); }
   });
   $("revert-unreviewed").addEventListener("click", revertAllUnreviewed);
+  $("show-reverted").addEventListener("click", () => {
+    state.showReverted = !state.showReverted;
+    $("show-reverted").setAttribute("aria-pressed", state.showReverted ? "true" : "false");
+    renderChanges();
+  });
   $("new-chat").addEventListener("click", newChat);
   $("chat-search").addEventListener("input", (event) => {
     state.chatQuery = event.target.value || "";
@@ -4277,6 +4509,16 @@ function wire() {
   drawerScrim().addEventListener("click", closeDrawers);
   document.addEventListener("keydown", (event) => {
     const mod = event.ctrlKey || event.metaKey;
+    if (mod && event.shiftKey && event.key.toLowerCase() === "p") {
+      event.preventDefault();
+      openPalette("commands");
+      return;
+    }
+    if (mod && !event.shiftKey && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      openPalette("files");
+      return;
+    }
     if (mod && !event.shiftKey && event.key.toLowerCase() === "s") {
       if (state.dirty) {
         event.preventDefault();

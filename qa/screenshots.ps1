@@ -187,6 +187,55 @@ try {
 '@ | Out-Null
   Shot '14-shell-320-navigator.png'
   Eval 'document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true' | Out-Null
+
+  Invoke-Cdp 'Emulation.setDeviceMetricsOverride' @{ width = 1440; height = 900; deviceScaleFactor = 1; mobile = $false } | Out-Null
+  Start-Sleep -Milliseconds 350
+  Eval @'
+(async () => {
+  await selectWorkspace('sum-test');
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  switchTab('report');
+  await loadReport();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return true;
+})()
+'@ | Out-Null
+  Shot '18-report-changed-files.png'
+  Eval @'
+(async () => {
+  const path = 'screenshot_review.txt';
+  await api('/api/workspaces/sum-test/files', { method: 'POST', body: { path, kind: 'file' } });
+  await api('/api/workspaces/sum-test/file', { method: 'POST', body: { path, content: 'review me\n' } });
+  await refreshWorkspace();
+  switchSide('changes');
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return true;
+})()
+'@ | Out-Null
+  Shot '17-review-queue.png'
+  Eval @'
+(async () => {
+  switchTab('report');
+  await loadReport();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return true;
+})()
+'@ | Out-Null
+  Shot '19-report-stale.png'
+  Eval @'
+(async () => {
+  const path = 'screenshot_review.txt';
+  await api('/api/workspaces/sum-test/files?path=' + encodeURIComponent(path), { method: 'DELETE' });
+  const leftovers = (await api('/api/workspaces/sum-test/changes')).changes
+    .filter((change) => change.path === path && !change.reverted);
+  for (const change of leftovers.slice().reverse()) {
+    try { await api('/api/workspaces/sum-test/changes/' + change.id + '/revert', { method: 'POST' }); } catch { /* keep going */ }
+  }
+  await refreshWorkspace();
+  await selectWorkspace('sum-test');
+  return true;
+})()
+'@ | Out-Null
 }
 finally {
   try { $ws.Dispose() } catch {}

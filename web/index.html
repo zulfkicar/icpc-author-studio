@@ -84,8 +84,9 @@
 
     <div id="side-changes" class="side-panel" role="tabpanel" aria-label="Review changes">
       <div class="side-head">
-        <span>Changes</span>
+        <span>Review queue</span>
         <span id="unreviewed-count" class="badge zero">0</span>
+        <button id="show-reverted" class="quiet small" aria-pressed="false" title="Show reverted changes">Reverted</button>
       </div>
       <div id="changes-list" class="changes"></div>
       <div class="side-actions">
@@ -355,6 +356,19 @@
     <div class="dialog-actions">
       <button type="button" id="context-cancel" class="quiet" data-dialog-cancel>Cancel</button>
       <button value="apply" class="primary">Apply context</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="palette-dialog" class="palette-dialog" aria-labelledby="palette-title" aria-describedby="palette-desc">
+  <form method="dialog" id="palette-form" novalidate>
+    <div class="dialog-kicker" id="palette-kicker">Go to</div>
+    <h2 id="palette-title">Quick open</h2>
+    <p id="palette-desc" class="dialog-sub muted">Type to filter. Enter opens the first result. Escape closes.</p>
+    <input id="palette-input" autocomplete="off" spellcheck="false" aria-label="Filter commands or files" aria-controls="palette-list" aria-autocomplete="list" role="combobox" aria-expanded="true">
+    <div id="palette-list" class="palette-list" role="listbox" aria-label="Results"></div>
+    <div class="dialog-actions">
+      <button type="button" id="palette-cancel" class="quiet" data-dialog-cancel>Close</button>
     </div>
   </form>
 </dialog>

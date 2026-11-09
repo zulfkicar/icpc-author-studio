@@ -4,7 +4,7 @@ Dependency-ordered work. `[P]` means it can run in parallel with other `[P]`
 tasks in the same phase. Every task has an acceptance check; “implemented” without
 the check is not done.
 
-Status: Phase 0, Phase 0.5, Phase 1, Phase 2 and the Phase 3 run-panel slice are complete. Phase 4 (evidence/review/state/AX) is next.
+Status: Phase 0, Phase 0.5, Phase 1, Phase 2, Phase 3 and Phase 4 (except the manual A-10 screen-reader sign-off) are complete. P-1/P-2 are also done; Phase 5 polish remains.
 
 ## Conventions
 
@@ -273,39 +273,39 @@ Status: Phase 0, Phase 0.5, Phase 1, Phase 2 and the Phase 3 run-panel slice are
 
 ## Phase 4 — evidence, review, state, AX (3–4 days)
 
-- [ ] **A-1** Report as editor tab.
-- [ ] **A-2** Stale banner and limits block.
-- [ ] **A-3** Review queue in navigator.
-- [ ] **A-4** Diff tab from review/change cards.
-- [ ] **A-5** Export predicate selector.
-- [ ] **A-6** Status bar verification summary.
-- [ ] **A-7** Keyboard map implementation.
-- [ ] **A-8** Skip links and landmarks.
-- [ ] **A-9** Focus-not-obscured checks.
-- [ ] **A-10** Manual screen-reader checklist.
-- [ ] **A-11** Evidence command output capture.
-- [ ] **A-12** Screenshot set for review/export/evidence.
+- [x] **A-1** Report as editor tab.
+- [x] **A-2** Stale banner and limits block.
+- [x] **A-3** Review queue in navigator.
+- [x] **A-4** Diff tab from review/change cards.
+- [x] **A-5** Export predicate selector.
+- [x] **A-6** Status bar verification summary.
+- [x] **A-7** Keyboard map implementation.
+- [x] **A-8** Skip links and landmarks.
+- [x] **A-9** Focus-not-obscured checks.
+- [ ] **A-10** Manual screen-reader checklist. (Human verification; checklist in `SCREEN-READER-CHECKLIST.md`, not signed.)
+- [x] **A-11** Evidence command output capture.
+- [x] **A-12** Screenshot set for review/export/evidence.
 
 ### Machine migrations
 
-- [ ] **M-1** Chat machine.
+- [x] **M-1** Chat machine.
   - Remove `chats/chatId/chatQuery` ad-hoc transitions.
-- [ ] **M-2** File-load machine.
+- [x] **M-2** File-load machine.
   - Remove `file`/`fileBusy` duplication.
-- [ ] **M-3** Verification/export machine.
+- [x] **M-3** Verification/export machine.
   - Remove scattered `lastStatus/stale/unreviewed` logic.
-- [ ] **M-4** Changes/review machine.
+- [x] **M-4** Changes/review machine.
   - Remove `selectedChange`/`approvalRendered` duplication.
-- [ ] **M-5** MCP/settings/mentions/follow/tests/restore machines.
-- [ ] **M-6** Transition tests for every machine.
+- [x] **M-5** MCP/settings/mentions/follow/tests/restore machines.
+- [x] **M-6** Transition tests for every machine.
   - Illegal event is a no-op; legal event updates the visible control.
 
 **Gate A:** all of R + A + M; axe, AX-tree, keyboard, full CDP, soak.
 
 ## Phase 5 — polish (2–3 days)
 
-- [ ] **P-1** Command palette.
-- [ ] **P-2** Quick open.
+- [x] **P-1** Command palette.
+- [x] **P-2** Quick open.
 - [ ] **P-3** Notification centre / long-job status.
 - [ ] **P-4** Toast dedupe.
 - [ ] **P-5** First-run tour / empty states.

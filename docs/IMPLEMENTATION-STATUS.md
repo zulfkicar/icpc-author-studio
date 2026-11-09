@@ -153,6 +153,20 @@ fallback:
   `role=tablist` with roving tabindex and arrow keys. The status bar mirrors
   connection, Judge0/Isolate/executor health, measured limits, language, cursor
   and verification.
+- **Evidence, review and state wiring (Phase 4):** the verification report is
+  an editor tab with a stale banner, a limits block, checks/warnings and
+  changed-file buttons that open the diff tab. The navigator review queue shows
+  the unreviewed badge, hides reverted history behind a toggle, and exposes
+  Mark reviewed / Revert. Export is derived from one `exportPredicate()`
+  (verified + not stale + zero unreviewed) with a textual reason. The 18 state
+  machines are wired to real actions (chat, file load, verification, changes,
+  MCP, settings, mentions, follow, tests, restore) and mirrored to
+  `data-state-*`; `approvalRendered` and `selectedChange` duplicates were
+  removed. `qa/phase4_evidence.ps1` covers the machine transitions, review/
+  export flow, focus-not-obscured and the keyboard map.
+- **Command palette and quick open:** `Ctrl+Shift+P` and `Ctrl+K` open an
+  accessible palette dialog with filtered commands/files, arrow navigation and
+  Enter/Escape. Secret tests and `.ans` files are excluded from quick open.
 - **Dialog controller (Phase 0.5):** `web/dialogs.js` owns open, Cancel,
   Escape, backdrop, focus return and an async dirty-form guard for all four
   dialogs. The settings form refuses to close with unsaved changes until the
@@ -320,4 +334,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File qa/accessibility_axe.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File qa/accessibility_tree.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File qa/cdp_workflow.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File qa/soak_cdp.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File qa/phase2_editor.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File qa/phase4_evidence.ps1
 ```

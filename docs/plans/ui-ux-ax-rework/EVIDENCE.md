@@ -12,8 +12,10 @@ summary without the command that produced it.
 | Monaco lazy-loads; per-file tabs keep cursor/scroll; textarea fallback | `qa/phase2_editor.ps1` → `PHASE 2 EDITOR TESTS PASSED` | pass |
 | Judge0 embedded natively in the run panel; Isolate is verifier | `backendOptions`, `quickRunWarning`, `test_judge0_adapter`, `test_live_judge0` | pass |
 | Every dialog cancels by button, Escape, backdrop; focus returns | `newEscape`, `settingsEscape`, `contextEscape`, `actionEscapeClosed`, focus return checks | pass |
-| Every in-scope state machine has a transition test | `node qa/test_state_machines.mjs` → 18 machines | pass |
+| Every in-scope state machine has a transition test | `node qa/test_state_machines.mjs` → 18 machines; `phase4_evidence.ps1` browser assertions | pass |
+| Evidence/review tabs, stale banner, limits, review queue, export predicate | `phase4_evidence.ps1`, screenshots 03/17/18/19 | pass |
 | axe 0; AX tree has no unnamed controls | `accessibility_axe.ps1` `blocking=0`; `accessibility_tree.ps1` 0 empty names | pass |
+| Manual screen-reader checklist signed | `SCREEN-READER-CHECKLIST.md` | **manual / not signed** |
 | Verification timing budget guarded by a test | `test_verification_timing.py`; 834.1 s / 86 tests | pass |
 | Existing QA, CDP, soak and accessibility suites green | Phases 0.5/1/3 command lists below | pass |
 | `EVIDENCE.md` and `IMPLEMENTATION-STATUS.md` updated | this file and the status document | pass |
@@ -342,19 +344,82 @@ Residual risks:
 
 ---
 
-## Phase 4 — evidence/AX/state
+## Phase 4 — evidence, review, state, AX
 
-Date:
-Commit:
+Date: 2026-11-09
+Commit: phase commit (see `git log --oneline`)
+
 Commands:
-- `...` → `...`
+- `qa/phase4_evidence.ps1` → `PHASE 4 EVIDENCE/AX/STATE TESTS PASSED`
+  - `chatState="loaded"`, `fileLoadState="loaded"`
+  - `exportClean=true`, `exportBlocked=true`,
+    `exportBlockedTitle="Verify the package before exporting"`
+  - `reportLimits=true`, `reportChecks=true`, `staleBanner=true`
+  - `queueActive=true`, `unreviewedBefore=2`, `changesState="unreviewed"`,
+    `unreviewedAfterReview=0`
+  - `changedButton=true`, `diffTab=true`,
+    `diffTitle="problem_statement/problem.en.tex"`
+  - `staleState="stale"`, `verifiedState="verified"`
+  - `mentionsState="filtered"`, `mentionMenu=true`, `mentionsClosed=true`
+  - `followPaused="paused"`, `followButton=true`, `followLive="following"`
+  - `settingsDirty="dirty"`, `discardDialog=true`, `settingsKept=true`,
+    `settingsClosed=true`
+  - `mcpState="enabled"`, `testsState="pass"`, `restoreState="done"`
+  - `quickOpenOpen=true`, `quickOpenFocus=true`, `quickOpenItems=11`,
+    `quickOpenFiltered=1`, `quickOpenClosed=true`
+  - `commandPaletteOpen=true`, `commandItems=20`, `paletteClosed=true`
+  - `activeAfterFocus="composer"`, `composerNotObscured=true`
+- `qa/layout_regression.ps1` → `LAYOUT REGRESSION PASSED`
+- `qa/accessibility_axe.ps1` → `AXE ACCESSIBILITY AUDIT PASSED`, `blocking=0`
+- `qa/accessibility_tree.ps1` → `ACCESSIBILITY TREE AUDIT PASSED`
+- `qa/cdp_workflow.ps1` → all prior checks pass
+- `qa/soak_cdp.ps1` → `CDP SOAK PASSED`
+- `qa/phase2_editor.ps1` → `PHASE 2 EDITOR TESTS PASSED`
+- `node qa/test_state_machines.mjs` → `STATE MACHINE TESTS PASSED` (18 machines)
+- container: `UI CONTRACT TESTS PASSED`, `ACCESSIBILITY AUDIT PASSED`,
+  `SECURITY TESTS PASSED`, `ISOLATE WORKER TESTS PASSED`,
+  `TESTLIB FIXTURE TESTS PASSED`, `INTERACTIVE TESTS PASSED`,
+  `LIVE JUDGE0 TESTS PASSED`, `EXECUTOR LIMIT TESTS PASSED`,
+  `EXECUTOR SECURITY TESTS PASSED`, `JUDGE0 ADAPTER TESTS PASSED`,
+  `VERIFICATION TIMING TESTS PASSED`
+
 Screenshots:
-- `...`
+- `qa/screenshots/03-report.png` → report as an editor tab with checks,
+  warnings and limits
+- `qa/screenshots/17-review-queue.png` → review queue, unreviewed badge,
+  Mark reviewed / Revert actions, disabled Export
+- `qa/screenshots/18-report-changed-files.png` → changed-file buttons in the
+  report that open the diff tab
+- `qa/screenshots/19-report-stale.png` → stale banner, limits block, verified
+  status and disabled Export
+
 Manual checks:
-- keyboard-only flow → result
-- screen reader → result
+- Keyboard-only flow: `Ctrl+Shift+P` opens the command palette, `Ctrl+K` opens
+  quick open, `Enter` runs the first result, `Escape` closes, and `Ctrl+S`,
+  Ctrl+backtick, `Alt+1/2/3`, `F8`, `Ctrl+Tab` and `Ctrl+W` remain wired.
+- Focus: the composer is focused and its centre hit-tests to the composer, not
+  the status bar.
+- Screen reader: **not signed**. The checklist is in
+  `SCREEN-READER-CHECKLIST.md`; a human NVDA/VoiceOver pass is still required.
+
+State migration:
+- M-1 chat, M-2 fileLoad, M-3 verification/export, M-4 changes/review and M-5
+  MCP/settings/mentions/follow/tests/restore are wired to real actions and
+  mirrored through `data-state-*` and `window.__AUTHOR_AGENT__`.
+- M-6 transition tests cover all 18 machines plus the browser-level assertions
+  above.
+- `approvalRendered` and `selectedChange` were removed; server/selection data
+  fields (`chatId`, `file`, `summary`, `selectedContext`) remain as data, not
+  lifecycle flags. `fileBusy` remains as a compatibility guard around the run
+  machine pending a follow-up deletion.
+
 Residual risks:
-- ...
+- A-10 needs a human screen-reader session.
+- The command palette and quick open are implemented; the remaining Phase 5
+  polish (notification centre, toast dedupe, onboarding, light theme,
+  performance budgets) is not started.
+- Legacy data fields remain; lifecycle duplicates are removed only where the
+  machine could take over without a flag-day refactor.
 
 ---
 

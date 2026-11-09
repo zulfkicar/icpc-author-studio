@@ -131,7 +131,7 @@
     mcp: {
       initial: "disabled",
       states: {
-        disabled: { on: { GRANT: "enabled" } },
+        disabled: { on: { GRANT: "enabled", EDIT: "dirty", SAVE: "saving", PROBE: "probing" } },
         enabled: {
           on: { REVOKE: "disabled", SAVE: "saving", PROBE: "probing", EDIT: "dirty" },
         },
@@ -144,7 +144,7 @@
     settings: {
       initial: "clean",
       states: {
-        clean: { on: { EDIT: "dirty" } },
+        clean: { on: { EDIT: "dirty", SAVE: "saving" } },
         dirty: { on: { SAVE: "saving", RESET: "clean", EDIT: "dirty" } },
         saving: { on: { SAVED: "saved", ERROR: "error" } },
         saved: { on: { EDIT: "dirty", RESET: "clean" } },

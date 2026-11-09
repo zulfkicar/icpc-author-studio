@@ -640,6 +640,17 @@ button.drawer-toggle { display: none; }
 .report h3 { margin: 18px 0 7px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
 .report-head { display: flex; align-items: center; gap: 8px; }
 .report-sub { color: var(--faint); font-size: 10px; margin: 3px 0 9px; }
+.stale-banner {
+  border: 1px solid #6c5126; border-left: 3px solid var(--amber);
+  background: var(--amber-soft); color: var(--amber);
+  padding: 7px 9px; border-radius: var(--radius-xs); font-size: 11px; margin: 0 0 9px;
+}
+.report-limits {
+  display: inline-flex; gap: 6px; align-items: baseline; margin: 0 0 10px;
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px;
+  color: var(--muted); font-size: 10px; background: var(--bg-2);
+}
+.report-limits b { color: var(--text); font-weight: 650; }
 .report-actions { display: flex; gap: 6px; margin: 8px 0 14px; }
 .report-list { margin: 0; padding-left: 18px; color: var(--muted); font-size: 11.5px; }
 .report-list li { margin: 4px 0; }
@@ -728,6 +739,18 @@ dialog.action-dialog { width: min(470px, 92vw); }
 .action-dialog .dialog-sub { margin-bottom: 12px; }
 .action-dialog #action-field { margin: 0; }
 .action-dialog #action-input { width: 100%; font-family: var(--mono); font-size: 12px; }
+dialog.palette-dialog { width: min(620px, 92vw); }
+.palette-dialog #palette-input { width: 100%; font-family: var(--mono); font-size: 12px; margin: 0 0 8px; }
+.palette-list { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-xs); }
+.palette-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+  background: transparent; color: var(--muted); padding: 7px 9px; font-size: 11.5px;
+}
+.palette-item:last-child { border-bottom: 0; }
+.palette-item:hover, .palette-item[aria-selected="true"] { background: var(--accent-soft); color: var(--text); }
+.palette-hint { margin-left: auto; color: var(--faint); font-size: 9.5px; }
+.palette-empty { padding: 9px; color: var(--faint); font-size: 11px; }
 .field-error { display: block; margin-top: 6px; color: var(--red); font-size: 11px; }
 #action-confirm.danger { background: linear-gradient(180deg, #a83c4c, #7c2532); border-color: #c05262; color: #fff; }
 #action-confirm.danger:hover { background: linear-gradient(180deg, #b94859, #8c2c3a); }

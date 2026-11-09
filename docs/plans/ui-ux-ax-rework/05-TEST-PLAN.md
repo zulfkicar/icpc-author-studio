@@ -30,6 +30,7 @@ wsl -e sh -c "cd /mnt/e/ICPC/author-agent && docker compose up -d --build author
 & 'C:\Projects\author-agent\qa\cdp_workflow.ps1'
 & 'C:\Projects\author-agent\qa\soak_cdp.ps1'
 & 'C:\Projects\author-agent\qa\phase2_editor.ps1'
+& 'C:\Projects\author-agent\qa\phase4_evidence.ps1'
 node 'C:\Projects\author-agent\qa\test_state_machines.mjs'
 ```
 
@@ -129,9 +130,9 @@ python -m py_compile isolate_worker.py server.py verify.py winutil.py
 | Review queue | unreviewed count, diff, mark reviewed |
 | Export | derived predicate; reason exposed |
 | Machines | chat/file/verify/changes transitions tested |
-| Keyboard map | Ctrl+K, Ctrl+Shift+P, Ctrl+Enter, Ctrl+S, Ctrl+` |
-| Focus | not obscured by sticky UI |
-| Screen reader | manual checklist signed |
+| Keyboard map | Ctrl+K, Ctrl+Shift+P, Ctrl+Tab/W, Ctrl+Enter, Ctrl+S, Ctrl+` |
+| Focus | `composerNotObscured=true` |
+| Screen reader | manual checklist in `SCREEN-READER-CHECKLIST.md`; human sign-off pending |
 | AX tree | clean |
 | Soak | 30 iterations, no growth/errors |
 

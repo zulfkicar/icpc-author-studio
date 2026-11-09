@@ -13,7 +13,7 @@ HTML = (ROOT / "web" / "index.html").read_text("utf-8")
 JS = (ROOT / "web" / "app.js").read_text("utf-8")
 CSS = (ROOT / "web" / "style.css").read_text("utf-8")
 
-DIALOGS = ["new-dialog", "settings-dialog", "context-dialog", "action-dialog"]
+DIALOGS = ["new-dialog", "settings-dialog", "context-dialog", "action-dialog", "palette-dialog"]
 NATIVE_DIALOG = re.compile(r"(?<![\w.$-])(?:window\.)?(prompt|confirm|alert)\s*\(")
 
 
@@ -56,6 +56,7 @@ def check_dialog_controller():
         check(f"{dialog} is labelled", 'aria-labelledby' in block.group(0))
         check(f"{dialog} is described", 'aria-describedby' in block.group(0))
     check("dialog controller owns cancel", "requestClose" in (ROOT / "web" / "dialogs.js").read_text("utf-8"))
+    check("quick open and command palette wired", "openPalette" in JS and 'key.toLowerCase() === "k"' in JS and 'key.toLowerCase() === "p"' in JS)
 
 
 def main():
