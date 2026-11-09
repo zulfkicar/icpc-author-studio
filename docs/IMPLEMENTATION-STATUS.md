@@ -52,6 +52,12 @@ Isolate backend: [`ISOLATE-BACKEND.md`](ISOLATE-BACKEND.md)
   `docker-compose.judge0.yml`. The app calls it at
   `/api/workspaces/<slug>/judge0/run`; the Run panel has a **Judge0** button.
   See [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md).
+- **Native run panel:** backend selector (Local/Isolate/Judge0), per-file
+  stdin and backend persistence, stdin/stdout/stderr/compile/result tabs,
+  status/time/memory text, last-10 history, abort-on-file-change and a visible
+  "Quick run is not verification" warning. Judge0 and Isolate remain quick-run
+  only. `judge0_adapter.is_blocked_path` refuses `data/secret/**` and `**/*.ans`
+  server-side; the client refuses them before the request.
 - The bwrap worker remains reachable at `AUTHOR_AGENT_BWRAP_EXECUTOR_URL` and
 exposes an Isolate-style `POST /isolate/run` contract for the statement PDF and
 fallback:
@@ -129,9 +135,26 @@ fallback:
   one accessible action dialog with labels, inline validation, danger styling
   and focus return. Chat actions and titles are keyboard reachable with
   object-specific names. Covered by `qa/layout_regression.ps1`.
-- **Explicit state machines:** `web/machines.js` defines and mirrors connection,
-  session, turn, approval, editor, run and modal states to `data-state-*` and
-  `window.__AUTHOR_AGENT__`; see [`STATE-MACHINES.md`](STATE-MACHINES.md).
+- **Five-region IDE shell (Phase 1):** activity rail, navigator, central editor
+  group, right agent panel and status bar. The old three-column DOM was moved,
+  not rewritten: existing IDs, routes and handlers are preserved. Widths persist
+  per region (`--nav-width`, `--agent-width`), splitters support drag and arrow
+  keys, and the `< 1100` agent drawer / `< 760` navigator sheet trap focus,
+  close on Escape and return focus to their toggle. Editor tabs use
+  `role=tablist` with roving tabindex and arrow keys. The status bar mirrors
+  connection, Judge0/Isolate/executor health, measured limits, language, cursor
+  and verification.
+- **Dialog controller (Phase 0.5):** `web/dialogs.js` owns open, Cancel,
+  Escape, backdrop, focus return and an async dirty-form guard for all four
+  dialogs. The settings form refuses to close with unsaved changes until the
+  discard action is confirmed. A static contract fails on any native
+  `prompt`/`confirm`/`alert`.
+- **Explicit state machines:** `web/machines.js` defines and mirrors 18
+  machines to `data-state-*` and `window.__AUTHOR_AGENT__`: connection, session,
+  turn, approval, editor, run, modal, fileLoad, chat, verification, changes,
+  mcp, settings, mentions, follow, tree, tests and restore. Every machine has a
+  legal-path, illegal-event and hydration test in
+  `qa/test_state_machines.mjs`; see [`STATE-MACHINES.md`](STATE-MACHINES.md).
 - **IDE redesign plan:** Cline/VS Code/Judge0-informed five-region layout,
   native Judge0 quick-run embedding, AX keyboard/landmark contract, phased
   delivery and acceptance gates; see [`UI-UX-REDESIGN.md`](UI-UX-REDESIGN.md).
@@ -252,11 +275,16 @@ sum:   verified, 29 tests, 3 negatives, 1,325,603 input tokens
 - **Verifier performance:** the first Isolate-backed 2-turn eval exceeded its
   15-minute budget because each verifier run copied the full 23 MB workspace.
   The worker now copies `data/` only when argv references it (checkers and
-  interactors). A re-run of the 86-test `eval-claim-or-concede-2` workspace
-  completed in **650.8 s**, under the budget. It reported `failed` solely
-  because that package never ran **Measure limits**; the verifier itself
-  completed all 86 tests. The earlier bwrap-backed eval passed; this is a
-  performance/packaging note, not a UI claim.
+  interactors). The 86-test `eval-claim-or-concede-2` workspace was re-measured
+  after **Measure limits**: verification completed in **834.1 s** (13.9 min,
+  under the 900 s budget) and returned **verified** with 86 tests, 2 accepted
+  references and 4 negative solutions. Measure-limits is a separate 229.8 s
+  step; total wall time was 1063.9 s. `qa/test_verification_timing.py` guards
+  the recorded artifact.
+- **Verifier concurrency:** two verifier runs against the same workspace must
+  not overlap. The isolate worker's box-to-workspace sync is not yet locked per
+  workspace; run one verification at a time (the app already serializes agent
+  turns per workspace, but not quick runs).
 - **Adversarial depth:** all 146 rows have automated owners, but some use
   deterministic contract tests rather than live third-party fault injection
   (for example an actual disk-full filesystem rather than `RLIMIT_FSIZE`, or a
@@ -274,4 +302,13 @@ python -m py_compile server.py agent.py agent_state.py agent_middleware.py graph
   qa/test_groups_float.py qa/test_security.py qa/test_testlib.py qa/test_group_scoring.py `
   qa/test_provider_faults.py qa/test_chaos.py qa/test_isolate_contract.py qa/test_isolate_worker.py qa/test_live_judge0.py
 node --check web/app.js
+node --check web/dialogs.js
+node --check web/machines.js
+node qa/test_state_machines.mjs
+python qa/test_verification_timing.py
+powershell -NoProfile -ExecutionPolicy Bypass -File qa/layout_regression.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File qa/accessibility_axe.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File qa/accessibility_tree.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File qa/cdp_workflow.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File qa/soak_cdp.ps1
 ```

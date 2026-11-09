@@ -31,6 +31,7 @@ const state = {
   pollTimer: null,
   activeTab: "plan",
   activeSide: "chats",
+  activeActivity: "chats",
   selectedChange: null,
   pendingMessage: null,
   pendingApproval: null,
@@ -45,6 +46,9 @@ const state = {
   approvalRendered: false,
   renderedChangeIds: new Set(),
   fileMode: "view",
+  runAbort: null,
+  runResult: null,
+  runHistory: [],
   streaming: { assistantEl: null, assistantText: "", reasoningEl: null, reasoningText: "" },
 };
 
@@ -61,9 +65,17 @@ function toast(message, isError = false) {
 function setConnection(online) {
   machineSend("connection", online ? "ONLINE" : "OFFLINE");
   const dot = $("connection-dot");
-  if (!dot) return;
-  dot.className = "conn-dot " + (online ? "online" : "offline");
-  dot.title = online ? "Connected to the author agent" : "Cannot reach the author agent";
+  if (dot) {
+    dot.className = "conn-dot " + (online ? "online" : "offline");
+    dot.title = online ? "Connected to the author agent" : "Cannot reach the author agent";
+  }
+  const label = $("status-connection");
+  if (label) label.textContent = online ? "connected" : "offline";
+  const executor = $("status-executor");
+  if (executor) {
+    executor.textContent = online ? "ready" : "off";
+    executor.className = online ? "on" : "off";
+  }
 }
 
 async function api(path, options = {}) {
@@ -72,10 +84,12 @@ async function api(path, options = {}) {
     init.headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(options.body);
   }
+  if (options.signal) init.signal = options.signal;
   let response;
   try {
     response = await fetch(path, init);
-  } catch {
+  } catch (error) {
+    if (error && error.name === "AbortError") throw error;
     setConnection(false);
     throw new Error("Cannot reach the author agent server. Is the container running?");
   }
@@ -113,6 +127,219 @@ function languageForPath(path) {
 function isRunnablePath(path) {
   const ext = String(path || "").split(".").pop().toLowerCase();
   return ["cpp", "cc", "cxx", "c", "py", "java", "kt"].includes(ext);
+}
+
+function isSecretPath(path) {
+  const normalized = String(path || "").replace(/\\/g, "/").replace(/^\.\//, "");
+  return normalized.startsWith("data/secret/") || /\.ans$/i.test(normalized);
+}
+
+// Per-file run preferences and history. Keyed by slug + path so switching files
+// restores the stdin and backend the author last used for that file.
+function runStorageKey(path) {
+  return `author-agent-run-${state.slug || "none"}-${path || "none"}`;
+}
+
+function runHistoryKey(path) {
+  return `author-agent-run-history-${state.slug || "none"}-${path || "none"}`;
+}
+
+function loadRunPrefs(path) {
+  const fallback = { stdin: "", backend: "local" };
+  if (!path) return fallback;
+  try {
+    const value = JSON.parse(localStorage.getItem(runStorageKey(path)) || "null");
+    if (value && typeof value === "object") {
+      return {
+        stdin: typeof value.stdin === "string" ? value.stdin : "",
+        backend: ["local", "isolate", "judge0"].includes(value.backend) ? value.backend : "local",
+      };
+    }
+  } catch { /* default */ }
+  return fallback;
+}
+
+function saveRunPrefs() {
+  if (!state.file) return;
+  localStorage.setItem(runStorageKey(state.file.path), JSON.stringify({
+    stdin: $("run-stdin").value,
+    backend: $("run-backend").value,
+  }));
+}
+
+function loadRunHistory(path) {
+  state.runHistory = [];
+  if (!path) return;
+  try {
+    const value = JSON.parse(localStorage.getItem(runHistoryKey(path)) || "[]");
+    if (Array.isArray(value)) state.runHistory = value.slice(0, 10);
+  } catch { state.runHistory = []; }
+  renderRunHistory();
+}
+
+function saveRunHistory() {
+  if (!state.file) return;
+  localStorage.setItem(runHistoryKey(state.file.path), JSON.stringify(state.runHistory.slice(0, 10)));
+  renderRunHistory();
+}
+
+function normalizeRunResult(result, backend) {
+  const source = result || {};
+  const ok = Boolean(source.ok && !source.timedOut);
+  let status = source.status;
+  if (!status) {
+    if (source.timedOut) status = "Timed out";
+    else if (source.stage === "compile") status = "Compile error";
+    else if (ok) status = "OK";
+    else status = "Failed";
+  }
+  let ms = source.ms;
+  if (ms == null && source.time != null) ms = Number(source.time) * 1000;
+  const memoryKb = source.memoryKb ?? source.maxRssKb ?? source.memory ?? null;
+  return {
+    backend,
+    ok,
+    status: String(status),
+    ms: ms == null || Number.isNaN(Number(ms)) ? null : Math.round(Number(ms)),
+    memoryKb: memoryKb == null || Number.isNaN(Number(memoryKb)) ? null : Math.round(Number(memoryKb)),
+    stdout: String(source.stdout || ""),
+    stderr: String(source.stderr || source.error || ""),
+    compile: String(source.compileOutput || ""),
+    message: String(source.message || source.diagnostic || ""),
+    at: Date.now(),
+  };
+}
+
+function runStatusText(entry) {
+  const parts = [entry.backend, entry.status];
+  if (entry.ms != null) parts.push(`${entry.ms} ms`);
+  if (entry.memoryKb != null) parts.push(`${entry.memoryKb} KB`);
+  return parts.join(" · ");
+}
+
+function renderRunStatus(entry) {
+  const chip = $("run-status");
+  if (!chip) return;
+  if (!entry) {
+    chip.hidden = true;
+    chip.textContent = "";
+    return;
+  }
+  chip.hidden = false;
+  chip.textContent = runStatusText(entry);
+  chip.className = "run-status " + (entry.ok ? "ok" : "bad");
+  chip.title = entry.message || "";
+}
+
+function showRunPane(name) {
+  const panes = {
+    stdin: $("run-stdin"),
+    stdout: $("run-stdout"),
+    stderr: $("run-stderr"),
+    compile: $("run-compile"),
+    result: $("run-output"),
+  };
+  for (const [key, pane] of Object.entries(panes)) {
+    if (pane) pane.hidden = key !== name;
+  }
+  document.querySelectorAll("#run-output-tabs [data-run-tab]").forEach((button) => {
+    const active = button.dataset.runTab === name;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+    button.tabIndex = active ? 0 : -1;
+  });
+}
+
+function renderRunPanes(entry, preferredPane = "result") {
+  $("run-stdout").textContent = entry.stdout || "";
+  $("run-stderr").textContent = entry.stderr || "";
+  $("run-compile").textContent = entry.compile || "";
+  const summary = [runStatusText(entry)];
+  if (entry.message) summary.push("", entry.message);
+  if (entry.stdout) summary.push("", "stdout:", entry.stdout);
+  if (entry.stderr && !entry.compile) summary.push("", "stderr:", entry.stderr);
+  $("run-output").textContent = summary.join("\n");
+  $("run-output").className = "run-output" + (entry.ok ? "" : " err");
+  let pane = preferredPane;
+  if (pane === "result") {
+    if (entry.compile) pane = "compile";
+    else if (entry.stderr) pane = "stderr";
+    else if (entry.stdout) pane = "stdout";
+  }
+  showRunPane(pane);
+}
+
+function pushRunHistory(result, backend) {
+  const entry = normalizeRunResult(result, backend);
+  if (!state.file) return entry;
+  // Keep localStorage bounded: the current pane still receives the full text.
+  const stored = {
+    ...entry,
+    stdout: entry.stdout.slice(0, 4000),
+    stderr: entry.stderr.slice(0, 4000),
+    compile: entry.compile.slice(0, 4000),
+    message: entry.message.slice(0, 1000),
+  };
+  state.runHistory = [stored, ...state.runHistory].slice(0, 10);
+  saveRunHistory();
+  renderRunPanes(entry);
+  renderRunStatus(entry);
+  return entry;
+}
+
+function renderRunHistory() {
+  const host = $("run-history");
+  if (!host) return;
+  host.innerHTML = "";
+  if (!state.runHistory.length) {
+    host.innerHTML = '<div class="run-history-empty">No runs for this file yet.</div>';
+    return;
+  }
+  state.runHistory.forEach((entry, index) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "run-history-row";
+    const time = new Date(entry.at || Date.now()).toTimeString().slice(0, 8);
+    row.innerHTML = `<span>${escapeHtml(time)}</span><span>${escapeHtml(entry.backend)}</span><span>${escapeHtml(entry.status)}</span><span class="run-history-status">${entry.ms == null ? "" : escapeHtml(String(entry.ms)) + " ms"}</span>`;
+    row.title = "Load this run's output";
+    row.addEventListener("click", () => {
+      renderRunPanes(entry);
+      renderRunStatus(entry);
+      toast(`Loaded ${entry.backend} run ${index === 0 ? "(latest)" : `#${index + 1}`}`);
+    });
+    host.appendChild(row);
+  });
+}
+
+function activeRunBackend() {
+  return ($("run-backend") && $("run-backend").value) || "local";
+}
+
+function syncRunBackends() {
+  const select = $("run-backend");
+  if (!select) return;
+  const settings = state.settings || {};
+  const secret = Boolean(state.file && isSecretPath(state.file.path));
+  for (const option of select.options) {
+    if (option.value === "isolate") option.disabled = !settings.isolateUrl;
+    if (option.value === "judge0") option.disabled = !settings.judge0Url || secret;
+  }
+  if (select.value === "isolate" && !settings.isolateUrl) select.value = "local";
+  if (select.value === "judge0" && (!settings.judge0Url || secret)) select.value = "local";
+  $("judge0-run").hidden = !(settings.judge0Url && !secret && state.file && state.file.text && isRunnablePath(state.file.path));
+  $("isolate-run").hidden = !(settings.isolateUrl && state.file && state.file.text && isRunnablePath(state.file.path));
+}
+
+function abortRun(supersede = false) {
+  const controller = state.runAbort;
+  if (!controller) {
+    if (supersede) state.runSeq = (state.runSeq || 0) + 1;
+    return false;
+  }
+  state.runAbort = null;
+  controller.abort();
+  if (supersede) state.runSeq = (state.runSeq || 0) + 1;
+  return true;
 }
 
 function highlightCodeElement(codeEl, code, language) {
@@ -738,7 +965,56 @@ function setStatus(status) {
   const value = status || "unverified";
   pill.className = "pill " + (["verified", "failed", "unverified", "stale"].includes(value) ? value : "unverified");
   pill.textContent = value;
+  updateStatusBar();
   updateExportButton();
+}
+
+function measuredLimitsText() {
+  const summary = state.summary || {};
+  const measured = summary.measuredLimits || {};
+  if (summary.limitsMeasured && measured.timeLimitSeconds) {
+    return `${measured.timeLimitSeconds}s · ${measured.memoryMb ?? "?"} MiB`;
+  }
+  return "limits not measured";
+}
+
+// The status bar is the persistent summary of the same state the top bar and
+// editor chrome already show. It never becomes the source of truth.
+function updateStatusBar() {
+  const summary = state.summary || {};
+  const verify = $("status-verify");
+  if (verify) {
+    const value = summary.stale ? "stale" : (summary.lastStatus || "unverified");
+    verify.textContent = value;
+    verify.className = "status-item verification " + (["verified", "failed", "stale", "unverified"].includes(value) ? value : "unverified");
+    verify.title = summary.stale
+      ? "The package changed after verification"
+      : summary.lastStatus === "verified" ? "Deterministic verifier passed" : "Package not verified";
+  }
+  const limits = $("status-limits");
+  if (limits) limits.textContent = measuredLimitsText();
+  const language = state.file ? languageForPath(state.file.path) : "text";
+  const lang = $("status-language");
+  if (lang) lang.textContent = language;
+  const cursor = $("status-cursor");
+  const editorCursor = $("editor-cursor");
+  if (cursor && editorCursor) cursor.textContent = editorCursor.textContent;
+
+  const settings = state.settings || {};
+  const judge = $("status-judge0");
+  if (judge) {
+    const configured = Boolean(settings.judge0Url);
+    judge.textContent = configured ? "online" : "off";
+    judge.className = configured ? "on" : "off";
+    judge.title = configured ? settings.judge0Url : "Not configured";
+  }
+  const isolate = $("status-isolate");
+  if (isolate) {
+    const configured = Boolean(settings.isolateUrl);
+    isolate.textContent = configured ? "online" : "off";
+    isolate.className = configured ? "on" : "off";
+    isolate.title = configured ? settings.isolateUrl : "Not configured";
+  }
 }
 
 function renderProblemCard() {
@@ -750,6 +1026,27 @@ function renderProblemCard() {
   const sub = document.querySelector(".problem-sub");
   sub.textContent = `${status}${state.summary && state.summary.unreviewed ? ` · ${state.summary.unreviewed} unreviewed` : ""} · ${idea}`;
   sub.title = idea;
+  updateStatusBar();
+}
+
+function updateBreadcrumbs() {
+  const host = $("breadcrumbs");
+  if (!host) return;
+  host.innerHTML = "";
+  if (!state.file || !state.file.path) return;
+  const parts = state.file.path.split("/");
+  parts.forEach((part, index) => {
+    if (index > 0) {
+      const sep = document.createElement("span");
+      sep.className = "breadcrumb-sep";
+      sep.textContent = "/";
+      host.appendChild(sep);
+    }
+    const segment = document.createElement("span");
+    segment.textContent = part;
+    if (index === parts.length - 1) segment.className = "breadcrumb-current";
+    host.appendChild(segment);
+  });
 }
 
 // ---------- tree ----------
@@ -994,6 +1291,11 @@ function updateEditorChrome() {
   const text = editor.value || "";
   const lines = text.split("\n").length;
   $("editor-lines").textContent = `${lines} lines`;
+  const before = text.slice(0, editor.selectionStart || 0);
+  const line = before.split("\n").length;
+  const column = before.length - before.lastIndexOf("\n");
+  $("editor-cursor").textContent = `Ln ${line}, Col ${column}`;
+  updateStatusBar();
   if (editor.hidden) {
     gutter.hidden = true;
     return;
@@ -1001,10 +1303,6 @@ function updateEditorChrome() {
   gutter.hidden = false;
   gutter.textContent = Array.from({ length: lines }, (_, index) => index + 1).join("\n");
   gutter.scrollTop = editor.scrollTop;
-  const before = text.slice(0, editor.selectionStart || 0);
-  const line = before.split("\n").length;
-  const column = before.length - before.lastIndexOf("\n");
-  $("editor-cursor").textContent = `Ln ${line}, Col ${column}`;
 }
 
 function normalizeOutput(value) {
@@ -1058,6 +1356,7 @@ function renderTestResults() {
 async function selectTest(result) {
   state.activeSample = result.name;
   $("run-stdin").value = result.stdin || "";
+  showRunPane("result");
   $("run-output").hidden = false;
   $("run-output").className = "run-output" + (result.pass ? "" : " err");
   const parts = [`${result.name}: ${result.pass ? "Passed" : "Failed"} ? ${Math.round(result.ms)} ms`];
@@ -1109,6 +1408,7 @@ async function runSamples() {
     renderTestTabs();
     renderTestResults();
     const passed = state.testResults.filter((item) => item.pass).length;
+    showRunPane("result");
     $("run-output").hidden = false;
     $("run-output").className = "run-output" + (passed === state.testResults.length ? "" : " err");
     $("run-output").textContent = `${passed}/${state.testResults.length} sample tests passed`;
@@ -1133,11 +1433,12 @@ function renderFileView() {
   $("save-file").hidden = true;
   $("run-panel").hidden = !(file.text && isRunnablePath(file.path));
   machineSet("run", $("run-panel").hidden ? "hidden" : "ready", "render file");
-  $("judge0-run").hidden = !(state.settings && state.settings.judge0Url && file.text && isRunnablePath(file.path));
-  $("isolate-run").hidden = !(state.settings && state.settings.isolateUrl && file.text && isRunnablePath(file.path));
+  syncRunBackends();
+  if (!$("run-panel").hidden) showRunPane("stdin");
   state.samples = file.text ? sampleTests() : [];
   renderTestTabs();
   renderTestResults();
+  updateBreadcrumbs();
   updateEditorChrome();
   if (file.text) {
     highlightCodeElement(code, file.content || "", languageForPath(file.path));
@@ -1183,6 +1484,8 @@ async function enterViewMode() {
 
 async function openFile(path) {
   if (!state.slug) return;
+  abortRun(true);
+  setRunBusy(false);
   if (state.dirty && state.file && state.file.path !== path) {
     const discard = await actionDialog({
       kicker: "Editor",
@@ -1211,10 +1514,21 @@ async function openFile(path) {
     $("run-output").hidden = true;
     $("run-output").textContent = "";
     $("run-output").className = "run-output";
+    $("run-stdout").textContent = "";
+    $("run-stderr").textContent = "";
+    $("run-compile").textContent = "";
+    $("run-status").hidden = true;
     $("test-results").hidden = true;
     $("test-results").innerHTML = "";
     $("line-numbers").hidden = true;
+    const prefs = loadRunPrefs(file.path);
+    syncRunBackends();
+    $("run-stdin").value = prefs.stdin;
+    $("run-backend").value = prefs.backend;
+    syncRunBackends();
+    loadRunHistory(file.path);
     renderFileView();
+    showRunPane("stdin");
     switchSide("files");
     switchTab("file");
     renderTree();
@@ -1257,111 +1571,162 @@ async function loadSampleInput(samplePath = null) {
     $("run-stdin").value = file.text ? file.content : "";
     state.activeSample = sample.name;
     renderTestTabs();
+    showRunPane("stdin");
+    saveRunPrefs();
     toast(`Loaded sample ${sample.name}`);
   } catch (error) { toast(error.message, true); }
 }
 
 function setRunBusy(busy) {
   state.fileBusy = busy;
-  for (const id of ["run-file", "run-tests", "judge0-run", "isolate-run"]) {
+  for (const id of ["run-file", "run-tests", "judge0-run", "isolate-run", "run-backend"]) {
     const button = $(id);
     if (button) button.disabled = busy;
   }
+  const cancel = $("run-cancel");
+  if (cancel) cancel.hidden = !busy;
+}
+
+function beginRun(label) {
+  abortRun();
+  const controller = new AbortController();
+  state.runSeq = (state.runSeq || 0) + 1;
+  controller.runId = state.runSeq;
+  state.runAbort = controller;
+  setRunBusy(true);
+  machineSend("run", "RUN");
+  renderRunStatus(null);
+  showRunPane("result");
+  const output = $("run-output");
+  output.hidden = false;
+  output.className = "run-output";
+  output.textContent = `${label}\u2026`;
+  $("test-results").hidden = true;
+  return controller;
+}
+
+function endRun(controller) {
+  if (controller.runId !== state.runSeq) return;
+  state.runAbort = null;
+  setRunBusy(false);
+}
+
+function runIsCurrent(controller) {
+  return Boolean(controller && controller.runId === state.runSeq);
+}
+
+function handleRunFailure(error, controller) {
+  if (!runIsCurrent(controller)) return;
+  if (error && error.name === "AbortError") {
+    const output = $("run-output");
+    output.className = "run-output";
+    output.textContent = "Run cancelled.";
+    machineSend("run", "CANCEL");
+    return;
+  }
+  const output = $("run-output");
+  output.className = "run-output err";
+  output.textContent = error.message;
+  machineSend("run", "FAIL");
 }
 
 async function runIsolate() {
   if (!state.slug || !state.file || !state.settings || !state.settings.isolateUrl) return;
   if (state.fileBusy) return;
-  setRunBusy(true);
-  const output = $("run-output");
-  output.hidden = false;
-  output.className = "run-output";
-  output.textContent = "Isolate\u2026";
-  machineSend("run", "RUN");
+  const controller = beginRun("Isolate");
   try {
     const result = await api(`/api/workspaces/${state.slug}/isolate/run`, {
       method: "POST",
       body: { path: state.file.path, stdin: $("run-stdin").value },
+      signal: controller.signal,
     });
-    const parts = [result.stdout, result.stderr, result.compileOutput, result.message].filter(Boolean);
-    output.className = "run-output" + (result.ok ? "" : " err");
-    output.textContent = parts.join("\n") || result.status || "No output";
+    if (!runIsCurrent(controller)) return;
+    pushRunHistory(result, "isolate");
     machineSend("run", result.ok ? "PASS" : "FAIL");
   } catch (error) {
-    output.className = "run-output err";
-    output.textContent = error.message;
-    machineSend("run", "FAIL");
+    handleRunFailure(error, controller);
   } finally {
-    setRunBusy(false);
+    endRun(controller);
   }
 }
 
 async function runJudge0() {
   if (!state.slug || !state.file || !state.settings || !state.settings.judge0Url) return;
   if (state.fileBusy) return;
-  setRunBusy(true);
-  const output = $("run-output");
-  output.hidden = false;
-  output.className = "run-output";
-  output.textContent = "Judge0\u2026";
-  machineSend("run", "RUN");
+  if (isSecretPath(state.file.path)) {
+    toast("Judge0 is blocked for secret tests and .ans files", true);
+    return;
+  }
+  const controller = beginRun("Judge0");
   try {
     const result = await api(`/api/workspaces/${state.slug}/judge0/run`, {
       method: "POST",
       body: { path: state.file.path, stdin: $("run-stdin").value },
+      signal: controller.signal,
     });
-    const parts = [result.stdout, result.stderr, result.compileOutput, result.message].filter(Boolean);
-    output.className = "run-output" + (result.ok ? "" : " err");
-    output.textContent = parts.join("\n") || result.status || "No output";
+    if (!runIsCurrent(controller)) return;
+    pushRunHistory(result, "judge0");
     machineSend("run", result.ok ? "PASS" : "FAIL");
   } catch (error) {
-    output.className = "run-output err";
-    output.textContent = error.message;
-    machineSend("run", "FAIL");
+    handleRunFailure(error, controller);
   } finally {
-    setRunBusy(false);
+    endRun(controller);
   }
 }
 
 async function runFile() {
   if (!state.slug || !state.file || !isRunnablePath(state.file.path)) return;
   if (state.fileBusy) return;
-  setRunBusy(true);
-  machineSend("run", "RUN");
+  const controller = beginRun("Running");
   if (state.dirty) await saveFile();
+  if (!runIsCurrent(controller)) return;
+  showRunPane("result");
   state.samples = sampleTests();
   renderTestTabs();
-  const output = $("run-output");
-  output.hidden = false;
-  output.className = "run-output";
-  output.textContent = "Running\u2026";
-  $("test-results").hidden = true;
   try {
     const result = await api(`/api/workspaces/${state.slug}/run`, {
       method: "POST",
       body: { path: state.file.path, stdin: $("run-stdin").value },
+      signal: controller.signal,
     });
-    const ok = result.ok && !result.timedOut;
-    output.className = "run-output" + (ok ? "" : " err");
-    const parts = [];
-    if (result.stage === "compile") {
-      parts.push("Compilation failed", "", result.error || "", result.stderr || "");
-    } else {
-      parts.push(`${result.timedOut ? "timed out" : "exit " + result.exitCode} ? ${Math.round(result.ms || 0)} ms`);
-      if ((result.stdout || "").trim()) parts.push("", "stdout:", result.stdout);
-      if ((result.stderr || "").trim()) parts.push("", "stderr:", result.stderr);
-      if (result.diagnostic) parts.push("", result.diagnostic);
-    }
-    output.textContent = parts.join("\n");
-    output.scrollTop = 0;
-    machineSend("run", ok ? "PASS" : "FAIL");
+    if (!runIsCurrent(controller)) return;
+    pushRunHistory(result, "local");
+    $("run-output").scrollTop = 0;
+    machineSend("run", result.ok && !result.timedOut ? "PASS" : "FAIL");
   } catch (error) {
-    output.className = "run-output err";
-    output.textContent = error.message;
-    machineSend("run", "FAIL");
+    handleRunFailure(error, controller);
   } finally {
-    setRunBusy(false);
+    endRun(controller);
   }
+}
+
+function runSelectedBackend() {
+  const backend = activeRunBackend();
+  if (backend === "judge0" && state.file && isSecretPath(state.file.path)) {
+    toast("Judge0 is blocked for secret tests and .ans files", true);
+    return;
+  }
+  if (backend === "judge0") return runJudge0();
+  if (backend === "isolate") return runIsolate();
+  return runFile();
+}
+
+function initRunTabs() {
+  const tabs = [...document.querySelectorAll("#run-output-tabs [data-run-tab]")];
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => showRunPane(tab.dataset.runTab));
+    tab.addEventListener("keydown", (event) => {
+      let next = index;
+      if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+      else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      else return;
+      event.preventDefault();
+      tabs[next].focus();
+      showRunPane(tabs[next].dataset.runTab);
+    });
+  });
 }
 
 // ---------- changes ----------
@@ -2052,7 +2417,11 @@ async function refreshWorkspace() {
 }
 
 async function selectWorkspace(slug) {
+  abortRun(true);
+  setRunBusy(false);
   state.slug = slug || null;
+  state.runHistory = [];
+  state.runResult = null;
   machineSet("editor", "empty", "workspace switch");
   machineSet("run", "hidden", "workspace switch");
   machineSet("turn", "idle", "workspace switch");
@@ -2089,6 +2458,8 @@ async function selectWorkspace(slug) {
   $("run-output").className = "run-output";
   $("diff-body").innerHTML = '<div class="pad muted">Select a change to inspect its diff.</div>';
   $("report-body").innerHTML = "";
+  updateBreadcrumbs();
+  updateStatusBar();
   if (!slug) {
     document.querySelector(".problem-name").textContent = "No problem";
     document.querySelector(".problem-sub").textContent = "Create a workspace to begin";
@@ -2116,6 +2487,7 @@ async function loadState(selectSlug) {
     const data = await api("/api/state");
     state.settings = data.settings;
     state.tools = data.tools;
+    syncRunBackends();
     const select = $("workspace-select");
     select.innerHTML = "";
     if (!data.workspaces.length) {
@@ -2487,19 +2859,33 @@ async function testMcpTool(tool) {
   }
 }
 
+const ACTIVITY_BY_TAB = { file: "run", report: "evidence", history: "history" };
+
+function setRailCurrent(section) {
+  state.activeActivity = section || state.activeActivity;
+  if (section) document.body.setAttribute("data-activity", section);
+  document.querySelectorAll(".activity-rail button[data-activity]").forEach((button) => {
+    if (section && button.dataset.activity === section) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+}
+
 function switchTab(tab) {
   if (tab === "history") loadHistory();
   if (tab === "mcp") loadMcp();
   state.activeTab = tab;
   document.body.setAttribute("data-panel", tab);
-  document.querySelectorAll(".inspector-tabs button").forEach((button) => {
+  const tabs = [...document.querySelectorAll(".inspector-tabs button")];
+  tabs.forEach((button) => {
     const active = button.dataset.tab === tab;
     button.classList.toggle("active", active);
     button.setAttribute("aria-selected", active ? "true" : "false");
+    button.tabIndex = active ? 0 : -1;
   });
   document.querySelectorAll(".panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === "panel-" + tab);
   });
+  setRailCurrent(ACTIVITY_BY_TAB[tab] || null);
 }
 
 function switchSide(side) {
@@ -2509,26 +2895,43 @@ function switchSide(side) {
     const active = button.dataset.side === side;
     button.classList.toggle("active", active);
     button.setAttribute("aria-selected", active ? "true" : "false");
+    button.tabIndex = active ? 0 : -1;
   });
   document.querySelectorAll(".side-panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === "side-" + side);
   });
+  setRailCurrent(side);
+}
+
+function switchActivity(section) {
+  const mapping = {
+    chats: () => switchSide("chats"),
+    files: () => switchSide("files"),
+    changes: () => switchSide("changes"),
+    run: () => { switchTab("file"); if (!$("run-panel").hidden) $("run-stdin").focus(); },
+    evidence: () => switchTab("report"),
+    history: () => switchTab("history"),
+  };
+  if (!mapping[section]) return;
+  mapping[section]();
+  setRailCurrent(section);
+  if ((section === "chats" || section === "files" || section === "changes") && isNavSheet()) {
+    setDrawer("nav", true);
+  }
+  if (section === "run" && isAgentDrawer()) setDrawer("agent", false);
 }
 
 // ---------- dialogs ----------
 
 let actionDialogResolve = null;
 let actionDialogOptions = {};
-let actionDialogInvoker = null;
 
-// Accessible replacement for window.prompt/window.confirm. Native <dialog>
-// supplies the focus trap, Escape handling and focus return; this helper adds
-// inline validation, destructive styling and a promise-based API.
+// Accessible replacement for window.prompt/window.confirm. The shared dialog
+// controller owns open/cancel/backdrop/focus; this helper owns the promised
+// result, inline validation and destructive styling.
 function actionDialog(options = {}) {
-  const dialog = $("action-dialog");
   const promptMode = options.mode === "prompt" || options.input !== undefined || options.value !== undefined || options.inputLabel !== undefined;
-  if (dialog.open) return Promise.resolve(promptMode ? null : false);
-  actionDialogInvoker = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  if (window.AuthorDialogs.isOpen("action-dialog")) return Promise.resolve(promptMode ? null : false);
   actionDialogOptions = { ...options, prompt: promptMode };
   $("action-form").reset();
   $("action-kicker").textContent = options.kicker || (promptMode ? "Edit" : "Confirm");
@@ -2549,28 +2952,25 @@ function actionDialog(options = {}) {
   confirm.textContent = options.confirmLabel || (promptMode ? "Save" : "Confirm");
   confirm.classList.toggle("danger", Boolean(options.danger));
   $("action-cancel").textContent = options.cancelLabel || "Cancel";
-  dialog.returnValue = "";
-  dialog.showModal();
+  window.AuthorDialogs.open("action-dialog", {
+    focus: promptMode ? "#action-input" : "#action-confirm",
+  });
   machineSend("modal", "OPEN");
-  if (promptMode) {
-    input.focus();
-    input.select();
-  } else {
-    confirm.focus();
-  }
+  if (promptMode) input.select();
   return new Promise((resolve) => {
     actionDialogResolve = resolve;
   });
 }
 
-$("action-cancel").addEventListener("click", () => {
-  $("action-dialog").close("cancel");
-});
-
-// Clicking the backdrop is a cancel gesture, matching native dialog expectations.
-$("action-dialog").addEventListener("click", (event) => {
-  if (event.target === $("action-dialog")) $("action-dialog").close("cancel");
-});
+function finishActionDialog() {
+  machineSend("modal", "CLOSE");
+  const resolve = actionDialogResolve;
+  actionDialogResolve = null;
+  if (!resolve) return;
+  const confirmed = $("action-dialog").returnValue === "confirm";
+  const promptMode = Boolean(actionDialogOptions.prompt);
+  resolve(confirmed ? (promptMode ? $("action-input").value.trim() : true) : (promptMode ? null : false));
+}
 
 $("action-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -2587,26 +2987,24 @@ $("action-form").addEventListener("submit", (event) => {
       return;
     }
   }
-  $("action-dialog").close("confirm");
+  window.AuthorDialogs.submit("action-dialog", "confirm");
 });
 
-$("action-dialog").addEventListener("close", () => {
-  machineSend("modal", "CLOSE");
-  const resolve = actionDialogResolve;
-  actionDialogResolve = null;
-  if (!resolve) return;
-  const confirmed = $("action-dialog").returnValue === "confirm";
-  const promptMode = Boolean(actionDialogOptions.prompt);
-  resolve(confirmed ? (promptMode ? $("action-input").value.trim() : true) : (promptMode ? null : false));
-  const invoker = actionDialogInvoker;
-  actionDialogInvoker = null;
-  const focusTarget = invoker && invoker.isConnected && invoker.offsetParent !== null
-    ? invoker
-    : document.getElementById("composer");
-  if (focusTarget && typeof focusTarget.focus === "function") {
-    focusTarget.focus({ preventScroll: true });
+let settingsSnapshot = null;
+
+function settingsFormSnapshot() {
+  const form = $("settings-form");
+  const data = {};
+  for (const field of form.elements) {
+    if (!field.name) continue;
+    data[field.name] = field.type === "checkbox" ? field.checked : field.value;
   }
-});
+  return JSON.stringify(data);
+}
+
+function settingsDirty() {
+  return Boolean(settingsSnapshot) && settingsFormSnapshot() !== settingsSnapshot;
+}
 
 function openSettings() {
   const form = $("settings-form");
@@ -2634,7 +3032,8 @@ function openSettings() {
   form.clearKey.checked = false;
   form.reviewWrites.checked = Boolean(settings.reviewWrites);
   $("key-status").textContent = settings.hasKey ? `A key ending in ${settings.keyHint} is saved.` : "No API key saved yet.";
-  $("settings-dialog").showModal();
+  settingsSnapshot = settingsFormSnapshot();
+  window.AuthorDialogs.open("settings-dialog", { focus: '[name="baseUrl"]' });
 }
 
 async function saveSettings(event) {
@@ -2666,8 +3065,11 @@ async function saveSettings(event) {
   if (form.judge0Token.value.trim()) body.judge0Token = form.judge0Token.value.trim();
   try {
     state.settings = await api("/api/settings", { method: "POST", body });
-    $("settings-dialog").close();
+    settingsSnapshot = null;
+    window.AuthorDialogs.submit("settings-dialog", "save");
+    syncRunBackends();
     toast("Settings saved");
+    updateStatusBar();
   } catch (error) { toast(error.message, true); }
 }
 
@@ -2687,7 +3089,7 @@ async function createProblem(event) {
         shortName: form.shortName.value.trim(),
       },
     });
-    $("new-dialog").close();
+    window.AuthorDialogs.submit("new-dialog", "create");
     form.reset();
     await loadState(created.slug);
     toast("Workspace created");
@@ -2759,7 +3161,7 @@ function openContextDialog() {
     label.appendChild(text);
     list.appendChild(label);
   }
-  $("context-dialog").showModal();
+  window.AuthorDialogs.open("context-dialog", { focus: "#context-list input" });
 }
 
 function applyContext(event) {
@@ -2768,7 +3170,7 @@ function applyContext(event) {
   state.selectedContext = checked;
   saveContext();
   renderContextChips();
-  $("context-dialog").close();
+  window.AuthorDialogs.submit("context-dialog", "apply");
 }
 
 function renderUsage(data) {
@@ -2938,38 +3340,64 @@ async function resumeApproval(decision) {
   }
 }
 
-// ---------- resizable panes ----------
+// ---------- resizable regions / drawers ----------
+
+const REGION_DEFAULTS = { nav: 280, agent: 400 };
+
+function applyRegionWidth(kind, width) {
+  const value = Math.round(width);
+  const property = kind === "nav" ? "--nav-width" : "--agent-width";
+  document.documentElement.style.setProperty(property, value + "px");
+  localStorage.setItem(`author-agent-${kind}-width`, String(value));
+  updateSplitterValue(kind, value);
+}
 
 function applyStoredWidths() {
-  const left = localStorage.getItem("author-agent-left-width");
-  const right = localStorage.getItem("author-agent-right-width");
-  if (left) document.documentElement.style.setProperty("--left-width", left + "px");
-  if (right) document.documentElement.style.setProperty("--right-width", right + "px");
+  const nav = localStorage.getItem("author-agent-nav-width") || localStorage.getItem("author-agent-left-width");
+  const agent = localStorage.getItem("author-agent-agent-width") || localStorage.getItem("author-agent-right-width");
+  if (nav) document.documentElement.style.setProperty("--nav-width", Number(nav) + "px");
+  if (agent) document.documentElement.style.setProperty("--agent-width", Number(agent) + "px");
+  for (const kind of ["nav", "agent"]) {
+    const pane = document.querySelector(kind === "nav" ? ".navigator" : ".agent-panel");
+    updateSplitterValue(kind, pane ? pane.getBoundingClientRect().width : REGION_DEFAULTS[kind]);
+  }
+}
+
+function updateSplitterValue(kind, width) {
+  const splitter = document.querySelector(`.splitter[data-split="${kind}"]`);
+  if (splitter) splitter.setAttribute("aria-valuenow", String(Math.round(width)));
 }
 
 function initSplitters() {
-  const layout = document.querySelector(".layout");
-  const leftPane = document.querySelector(".left");
-  const rightPane = document.querySelector(".right");
+  const panes = {
+    nav: document.querySelector(".navigator"),
+    agent: document.querySelector(".agent-panel"),
+  };
   document.querySelectorAll(".splitter").forEach((splitter) => {
+    const kind = splitter.dataset.split;
+    const pane = panes[kind];
+    if (!pane) return;
+    splitter.setAttribute("role", "separator");
+    splitter.setAttribute("aria-orientation", "vertical");
+    splitter.setAttribute("aria-label", kind === "nav" ? "Resize navigator" : "Resize agent panel");
+    splitter.setAttribute("tabindex", "0");
+    updateSplitterValue(kind, pane.getBoundingClientRect().width);
+
+    const resize = (delta) => {
+      const start = pane.getBoundingClientRect().width;
+      const next = Math.max(kind === "nav" ? 200 : 300, Math.min(kind === "nav" ? 520 : 820, start + delta));
+      applyRegionWidth(kind, next);
+    };
+
     splitter.addEventListener("mousedown", (event) => {
       event.preventDefault();
-      const isLeft = splitter.dataset.split === "left";
       const startX = event.clientX;
-      const startLeft = leftPane.getBoundingClientRect().width;
-      const startRight = rightPane.getBoundingClientRect().width;
+      const startWidth = pane.getBoundingClientRect().width;
       document.body.classList.add("resizing");
       const move = (moveEvent) => {
         const dx = moveEvent.clientX - startX;
-        if (isLeft) {
-          const width = Math.max(200, Math.min(520, startLeft + dx));
-          document.documentElement.style.setProperty("--left-width", width + "px");
-          localStorage.setItem("author-agent-left-width", String(Math.round(width)));
-        } else {
-          const width = Math.max(320, Math.min(820, startRight - dx));
-          document.documentElement.style.setProperty("--right-width", width + "px");
-          localStorage.setItem("author-agent-right-width", String(Math.round(width)));
-        }
+        const width = Math.max(kind === "nav" ? 200 : 300, Math.min(kind === "nav" ? 520 : 820, startWidth + (kind === "nav" ? dx : -dx)));
+        applyRegionWidth(kind, width);
       };
       const up = () => {
         document.removeEventListener("mousemove", move);
@@ -2979,27 +3407,180 @@ function initSplitters() {
       document.addEventListener("mousemove", move);
       document.addEventListener("mouseup", up);
     });
+    splitter.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      resize(event.key === "ArrowRight" ? 16 : -16);
+    });
     splitter.addEventListener("dblclick", () => {
-      if (splitter.dataset.split === "left") {
-        document.documentElement.style.setProperty("--left-width", "272px");
-        localStorage.removeItem("author-agent-left-width");
-      } else {
-        document.documentElement.style.setProperty("--right-width", "440px");
-        localStorage.removeItem("author-agent-right-width");
-      }
+      document.documentElement.style.setProperty(kind === "nav" ? "--nav-width" : "--agent-width", REGION_DEFAULTS[kind] + "px");
+      localStorage.removeItem(`author-agent-${kind}-width`);
+      updateSplitterValue(kind, REGION_DEFAULTS[kind]);
+    });
+  });
+}
+
+function isAgentDrawer() {
+  return window.matchMedia("(max-width: 1099px)").matches;
+}
+
+function isNavSheet() {
+  return window.matchMedia("(max-width: 759px)").matches;
+}
+
+function drawerScrim() {
+  return $("drawer-scrim");
+}
+
+function syncDrawerScrim() {
+  const open = document.body.classList.contains("agent-open") || document.body.classList.contains("nav-open");
+  const scrim = drawerScrim();
+  if (scrim) scrim.hidden = !open;
+}
+
+function setDrawer(kind, open) {
+  const isAgent = kind === "agent";
+  const allowed = isAgent ? isAgentDrawer() : isNavSheet();
+  if (open && !allowed) open = false;
+  const className = isAgent ? "agent-open" : "nav-open";
+  document.body.classList.toggle(className, open);
+  const panel = isAgent ? $("agent-panel") : $("navigator");
+  const toggle = isAgent ? $("toggle-agent") : $("toggle-navigator");
+  const hadFocus = Boolean(panel && panel.contains(document.activeElement));
+  if (panel) panel.inert = allowed ? !open : false;
+  if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  syncDrawerScrim();
+  if (open && panel) {
+    const target = panel.querySelector("button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])");
+    if (target) target.focus();
+  }
+  if (!open && hadFocus && toggle) toggle.focus();
+}
+
+function closeDrawers() {
+  setDrawer("agent", false);
+  setDrawer("nav", false);
+}
+
+function initTopbarMetrics() {
+  const topbar = document.querySelector(".topbar");
+  if (!topbar) return;
+  const apply = () => document.documentElement.style.setProperty("--topbar-height", topbar.offsetHeight + "px");
+  apply();
+  if (window.ResizeObserver) new ResizeObserver(apply).observe(topbar);
+  window.addEventListener("resize", apply);
+}
+
+function syncDrawers() {
+  if (!isAgentDrawer()) {
+    document.body.classList.remove("agent-open");
+    $("agent-panel").inert = false;
+    $("toggle-agent").setAttribute("aria-expanded", "false");
+  } else if (!document.body.classList.contains("agent-open")) {
+    $("agent-panel").inert = true;
+  }
+  if (!isNavSheet()) {
+    document.body.classList.remove("nav-open");
+    $("navigator").inert = false;
+    $("toggle-navigator").setAttribute("aria-expanded", "false");
+  } else if (!document.body.classList.contains("nav-open")) {
+    $("navigator").inert = true;
+  }
+  syncDrawerScrim();
+}
+
+function trapDrawerFocus(event) {
+  const panel = document.body.classList.contains("agent-open")
+    ? $("agent-panel")
+    : document.body.classList.contains("nav-open") ? $("navigator") : null;
+  if (!panel || event.key !== "Tab") return;
+  const items = [...panel.querySelectorAll("button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])")]
+    .filter((element) => element.getClientRects().length);
+  if (!items.length) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function initEditorTabs() {
+  const tabs = [...document.querySelectorAll(".inspector-tabs [role='tab']")];
+  tabs.forEach((tab, index) => {
+    tab.tabIndex = tab.classList.contains("active") ? 0 : -1;
+    tab.addEventListener("keydown", (event) => {
+      let next = index;
+      if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+      else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      else return;
+      event.preventDefault();
+      tabs[next].focus();
+      switchTab(tabs[next].dataset.tab);
+    });
+  });
+  const sides = [...document.querySelectorAll(".side-tabs [role='tab']")];
+  sides.forEach((tab, index) => {
+    tab.tabIndex = tab.classList.contains("active") ? 0 : -1;
+    tab.addEventListener("keydown", (event) => {
+      let next = index;
+      if (event.key === "ArrowDown") next = (index + 1) % sides.length;
+      else if (event.key === "ArrowUp") next = (index - 1 + sides.length) % sides.length;
+      else return;
+      event.preventDefault();
+      sides[next].focus();
+      switchSide(sides[next].dataset.side);
     });
   });
 }
 
 // ---------- wiring ----------
 
+function registerDialogs() {
+  window.AuthorDialogs.register("action-dialog", {
+    cancelId: "action-cancel",
+    fallbackFocus: "#composer",
+    onClose: finishActionDialog,
+  });
+  window.AuthorDialogs.register("new-dialog", {
+    cancelId: "new-cancel",
+    fallbackFocus: "#new-problem",
+    onClose: () => { $("new-form").reset(); },
+  });
+  window.AuthorDialogs.register("settings-dialog", {
+    cancelId: "settings-cancel",
+    fallbackFocus: "#settings-btn",
+    beforeClose: () => {
+      if (!settingsDirty()) return true;
+      return actionDialog({
+        kicker: "Settings",
+        title: "Discard unsaved settings?",
+        description: "Your provider or backend settings have not been saved.",
+        confirmLabel: "Discard changes",
+        danger: true,
+      });
+    },
+  });
+  window.AuthorDialogs.register("context-dialog", {
+    cancelId: "context-cancel",
+    fallbackFocus: "#context-btn",
+  });
+}
+
 function wire() {
+  registerDialogs();
   $("workspace-select").addEventListener("change", (event) => selectWorkspace(event.target.value || null));
-  $("new-problem").addEventListener("click", () => $("new-dialog").showModal());
-  $("new-cancel").addEventListener("click", () => $("new-dialog").close());
+  $("new-problem").addEventListener("click", () => {
+    $("new-form").reset();
+    window.AuthorDialogs.open("new-dialog", { focus: '[name="name"]' });
+  });
   $("new-form").addEventListener("submit", createProblem);
   $("settings-btn").addEventListener("click", openSettings);
-  $("settings-cancel").addEventListener("click", () => $("settings-dialog").close());
   $("settings-form").addEventListener("submit", saveSettings);
   $("refresh-tree").addEventListener("click", async () => { await refreshWorkspace(); toast("Refreshed"); });
   $("new-file").addEventListener("click", () => newEntry("file", ""));
@@ -3030,7 +3611,6 @@ function wire() {
     localStorage.setItem("author-agent-mode", event.target.value || "author");
   });
   $("context-btn").addEventListener("click", openContextDialog);
-  $("context-cancel").addEventListener("click", () => $("context-dialog").close());
   $("context-form").addEventListener("submit", applyContext);
   $("follow-btn").addEventListener("click", () => setFollow(true));
   $("messages").addEventListener("scroll", () => {
@@ -3063,16 +3643,50 @@ function wire() {
   $("reload-file").addEventListener("click", () => state.file && openFile(state.file.path));
   $("edit-file").addEventListener("click", enterEditMode);
   $("view-file").addEventListener("click", enterViewMode);
-  $("run-file").addEventListener("click", runFile);
+  $("run-file").addEventListener("click", runSelectedBackend);
   $("judge0-run").addEventListener("click", runJudge0);
   $("isolate-run").addEventListener("click", runIsolate);
   $("run-tests").addEventListener("click", runSamples);
   $("load-sample").addEventListener("click", () => loadSampleInput());
+  $("run-stdin").addEventListener("input", saveRunPrefs);
+  $("run-backend").addEventListener("change", () => { saveRunPrefs(); syncRunBackends(); });
+  $("run-cancel").addEventListener("click", () => {
+    if (abortRun()) toast("Run cancelled");
+  });
+  $("run-history-btn").addEventListener("click", () => {
+    const host = $("run-history");
+    const open = host.hidden;
+    host.hidden = !open;
+    $("run-history-btn").setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) renderRunHistory();
+  });
+  initRunTabs();
   document.querySelectorAll(".tabs button, .inspector-tabs button").forEach((button) => {
     button.addEventListener("click", () => switchTab(button.dataset.tab));
   });
   document.querySelectorAll(".side-tabs button").forEach((button) => {
     button.addEventListener("click", () => switchSide(button.dataset.side));
+  });
+  document.querySelectorAll(".activity-rail button[data-activity]").forEach((button) => {
+    button.addEventListener("click", () => switchActivity(button.dataset.activity));
+  });
+  $("toggle-agent").addEventListener("click", () => {
+    setDrawer("agent", !document.body.classList.contains("agent-open"));
+  });
+  $("toggle-navigator").addEventListener("click", () => {
+    setDrawer("nav", !document.body.classList.contains("nav-open"));
+  });
+  drawerScrim().addEventListener("click", closeDrawers);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      if (window.AuthorDialogs.topOpen()) return;
+      if (document.body.classList.contains("agent-open") || document.body.classList.contains("nav-open")) {
+        event.preventDefault();
+        closeDrawers();
+      }
+      return;
+    }
+    trapDrawerFocus(event);
   });
   document.addEventListener("click", (event) => {
     if (!event.target.closest("#mention-menu") && event.target.id !== "composer") hideMentions();
@@ -3086,5 +3700,10 @@ function wire() {
 
 applyStoredWidths();
 initSplitters();
+initEditorTabs();
+initTopbarMetrics();
 wire();
+syncDrawers();
+window.addEventListener("resize", () => { syncDrawers(); });
+updateStatusBar();
 loadState();

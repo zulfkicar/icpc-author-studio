@@ -77,6 +77,15 @@ def main() -> int:
             workspace.write_text(slug, "ref.cpp", "int main(){return 0;}\n", source="test")
             result = judge0_adapter.run_file(slug, "ref.cpp", base_url=base)
             check("judge0 run_file", result["ok"] and result["path"] == "ref.cpp", result)
+            workspace.write_text(slug, "data/secret/01.in", "1 2\n", source="test")
+            workspace.write_text(slug, "data/sample/01.ans", "3\n", source="test")
+            for blocked in ("data/secret/01.in", "data/sample/01.ans"):
+                try:
+                    judge0_adapter.run_file(slug, blocked, base_url=base)
+                except ValueError:
+                    check(f"judge0 blocks {blocked}", True)
+                else:
+                    check(f"judge0 blocks {blocked}", False)
         finally:
             shutil.rmtree(workspace.ws_path(slug), ignore_errors=True)
 

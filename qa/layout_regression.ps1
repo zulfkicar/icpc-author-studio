@@ -76,6 +76,45 @@ try {
   results.panelAttribute = document.body.getAttribute('data-panel');
   results.sideAttribute = document.body.getAttribute('data-side');
 
+  const rect = (selector) => {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom), width: Math.round(r.width), height: Math.round(r.height) };
+  };
+  const regions = {
+    rail: rect('.activity-rail'),
+    navigator: rect('.navigator'),
+    editor: rect('.editor-group'),
+    agent: rect('.agent-panel'),
+    status: rect('.statusbar'),
+  };
+  results.regions = regions;
+  results.regionsPresent = Object.values(regions).every((r) => r && r.width > 0 && r.height > 0);
+  results.regionsOrdered = regions.rail.right <= regions.navigator.left + 1
+    && regions.navigator.right <= regions.editor.left + 1
+    && regions.editor.right <= regions.agent.left + 1;
+  results.agentIsChat = Boolean(document.querySelector('.agent-panel #messages')) && Boolean(document.querySelector('.agent-panel #composer'));
+  results.editorIsCentre = regions.editor.width > regions.navigator.width && regions.editor.width > regions.agent.width;
+  results.statusbarAtBottom = regions.status.bottom <= innerHeight + 1 && regions.status.top > innerHeight - 60;
+  results.noHorizontalOverflow = document.documentElement.scrollWidth <= innerWidth;
+  results.statusLanguage = document.getElementById('status-language').textContent;
+  results.statusCursor = document.getElementById('status-cursor').textContent;
+  results.statusVerify = document.getElementById('status-verify').textContent;
+  results.breadcrumb = document.getElementById('breadcrumbs').textContent;
+
+  const rail = (section) => document.querySelector('.activity-rail [data-activity="' + section + '"]');
+  const clickRail = async (section) => {
+    rail(section).click();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    return rail(section).getAttribute('aria-current');
+  };
+  results.railEvidence = (await clickRail('evidence')) === 'page' && document.getElementById('panel-report').classList.contains('active');
+  results.railHistory = (await clickRail('history')) === 'page' && document.getElementById('panel-history').classList.contains('active');
+  results.railRun = (await clickRail('run')) === 'page' && document.getElementById('panel-file').classList.contains('active');
+  results.railFiles = (await clickRail('files')) === 'page' && document.getElementById('side-files').classList.contains('active');
+  results.railChats = (await clickRail('chats')) === 'page' && document.getElementById('side-chats').classList.contains('active');
+
   const invoker = document.getElementById('verify-btn');
   invoker.focus();
   const pending = actionDialog({
@@ -129,6 +168,57 @@ try {
   document.getElementById('context-cancel').click();
   results.contextDialogCancelClosed = !document.getElementById('context-dialog').open;
 
+  // Every dialog must also cancel on Escape and on a backdrop click.
+  const escapeChecks = {};
+  for (const [id, opener] of [['new-dialog', 'new-problem'], ['settings-dialog', 'settings-btn'], ['context-dialog', 'context-btn']]) {
+    const dialog = document.getElementById(id);
+    document.getElementById(opener).click();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const opened = dialog.open;
+    dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 140));
+    escapeChecks[id] = opened && !dialog.open;
+    document.getElementById(opener).click();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    dialog.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 140));
+    escapeChecks[id + 'Backdrop'] = !dialog.open;
+  }
+  results.newEscape = escapeChecks['new-dialog'];
+  results.newBackdrop = escapeChecks['new-dialogBackdrop'];
+  results.settingsEscape = escapeChecks['settings-dialog'];
+  results.settingsBackdrop = escapeChecks['settings-dialogBackdrop'];
+  results.contextEscape = escapeChecks['context-dialog'];
+  results.contextBackdrop = escapeChecks['context-dialogBackdrop'];
+
+  const actionEscapePending = actionDialog({ title: 'Escape check', inputLabel: 'Value', value: 'x' });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  document.getElementById('action-dialog').dispatchEvent(new Event('cancel', { cancelable: true }));
+  results.actionEscapeValue = await actionEscapePending;
+  results.actionEscapeClosed = !document.getElementById('action-dialog').open;
+
+  const actionBackdropPending = actionDialog({ title: 'Backdrop check', inputLabel: 'Value', value: 'y' });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  document.getElementById('action-dialog').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  results.actionBackdropValue = await actionBackdropPending;
+  results.actionBackdropClosed = !document.getElementById('action-dialog').open;
+
+  // Dirty settings must not close on cancel; the discard dialog decides.
+  document.getElementById('settings-btn').click();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  document.querySelector('#settings-form [name="model"]').value = 'qa-dirty-model';
+  document.getElementById('settings-cancel').click();
+  await new Promise((resolve) => setTimeout(resolve, 160));
+  results.settingsDirtyGuard = document.getElementById('settings-dialog').open && document.getElementById('action-dialog').open;
+  document.getElementById('action-cancel').click();
+  await new Promise((resolve) => setTimeout(resolve, 160));
+  results.settingsDirtyKept = document.getElementById('settings-dialog').open && !document.getElementById('action-dialog').open;
+  document.getElementById('settings-cancel').click();
+  await new Promise((resolve) => setTimeout(resolve, 160));
+  document.getElementById('action-confirm').click();
+  await new Promise((resolve) => setTimeout(resolve, 160));
+  results.settingsDirtyDiscarded = !document.getElementById('settings-dialog').open;
+
   const originalChat = state.chatId;
   const created = await api('/api/workspaces/sum-test/chats', { method: 'POST', body: {} });
   await loadChats(created.id);
@@ -149,6 +239,61 @@ try {
 })()
 '@
   Write-Output ($report | ConvertTo-Json -Compress)
+
+  $widthReport = @()
+  foreach ($width in @(1440, 1100, 768, 320)) {
+    $height = if ($width -le 480) { 800 } else { 900 }
+    Invoke-Cdp 'Emulation.setDeviceMetricsOverride' @{ width = $width; height = $height; deviceScaleFactor = 1; mobile = $false } | Out-Null
+    Start-Sleep -Milliseconds 300
+    $raw = Eval @'
+JSON.stringify((() => {
+  const rect = (selector) => {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width), height: Math.round(r.height) };
+  };
+  const editor = rect('.editor-group');
+  const agent = rect('.agent-panel');
+  const navigator = rect('.navigator');
+  return {
+    width: innerWidth,
+    overflow: document.documentElement.scrollWidth > innerWidth,
+    editorVisible: Boolean(editor && editor.width > 0 && editor.height > 0),
+    agentVisible: Boolean(agent && agent.width > 0 && agent.left >= 0 && agent.right <= innerWidth + 1),
+    navigatorVisible: Boolean(navigator && navigator.width > 0 && navigator.left >= 0),
+    agentToggle: getComputedStyle(document.getElementById('toggle-agent')).display !== 'none',
+    navToggle: getComputedStyle(document.getElementById('toggle-navigator')).display !== 'none',
+  };
+})())
+'@
+    $widthReport += ($raw | ConvertFrom-Json)
+  }
+  Write-Output ("widths=" + ($widthReport | ConvertTo-Json -Compress))
+
+  $drawer = $null
+  Invoke-Cdp 'Emulation.setDeviceMetricsOverride' @{ width = 320; height = 800; deviceScaleFactor = 1; mobile = $false } | Out-Null
+  Start-Sleep -Milliseconds 300
+  $drawerRaw = Eval @'
+(async () => {
+  document.getElementById('toggle-agent').click();
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  const panel = document.getElementById('agent-panel');
+  const composer = document.querySelector('.composer');
+  const p = panel.getBoundingClientRect();
+  const c = composer.getBoundingClientRect();
+  const open = document.body.classList.contains('agent-open') && p.left >= 0 && p.right <= innerWidth + 1;
+  const composerVisible = c.bottom <= innerHeight && c.height > 0;
+  const focusAfterOpen = document.activeElement.id || document.activeElement.tagName;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  const focusAfterClose = document.activeElement.id || document.activeElement.tagName;
+  return JSON.stringify({ open, composerVisible, closed: !document.body.classList.contains('agent-open'), focusReturned: focusAfterClose === 'toggle-agent', focusAfterOpen, focusAfterClose });
+})()
+'@
+  $drawer = $drawerRaw | ConvertFrom-Json
+  Write-Output ("drawer=" + $drawerRaw)
+
   $checks = @{
     chatScrolls = $true
     chatConstrained = $true
@@ -156,6 +301,17 @@ try {
     runPanelVisible = $true
     runPanelInViewport = $true
     chatActionLabels = $true
+    regionsPresent = $true
+    regionsOrdered = $true
+    agentIsChat = $true
+    editorIsCentre = $true
+    statusbarAtBottom = $true
+    noHorizontalOverflow = $true
+    railEvidence = $true
+    railHistory = $true
+    railRun = $true
+    railFiles = $true
+    railChats = $true
     dialogOpen = $true
     dialogLabelled = $true
     dialogFocusInside = $true
@@ -170,6 +326,17 @@ try {
     settingsDialogCancelClosed = $true
     contextDialogOpen = $true
     contextDialogCancelClosed = $true
+    newEscape = $true
+    newBackdrop = $true
+    settingsEscape = $true
+    settingsBackdrop = $true
+    contextEscape = $true
+    contextBackdrop = $true
+    actionEscapeClosed = $true
+    actionBackdropClosed = $true
+    settingsDirtyGuard = $true
+    settingsDirtyKept = $true
+    settingsDirtyDiscarded = $true
     chatRenamed = $true
     chatDeleted = $true
   }
@@ -179,8 +346,22 @@ try {
   if ($report.scrollbarPx -le 0) { throw "chat scrollbar is not visible" }
   if ($report.dialogValue -ne 'New title') { throw "dialog did not return the edited value" }
   if ($report.dialogCancelValue -ne $null) { throw "cancel should resolve to null for a prompt" }
+  if ($report.actionEscapeValue -ne $null) { throw "Escape should resolve a prompt to null" }
+  if ($report.actionBackdropValue -ne $null) { throw "backdrop should resolve a prompt to null" }
   if (-not $report.machines -or $report.machines.turn -ne 'idle') { throw "state machine snapshot missing or turn is not idle" }
   if ($report.chatTitleButtons -lt 1) { throw "chat titles are not buttons" }
+  if (-not $report.statusLanguage -or -not $report.statusCursor -or -not $report.statusVerify) { throw "status bar is incomplete" }
+  if ($report.breadcrumb -notmatch 'ref\.cpp') { throw "breadcrumb does not show the open file" }
+  if ($report.regions.editor.width -le 500) { throw "editor region is too narrow at 1440" }
+  foreach ($row in $widthReport) {
+    if ($row.overflow) { throw ("horizontal overflow at " + $row.width) }
+    if (-not $row.editorVisible) { throw ("editor hidden at " + $row.width) }
+    if ($row.width -ge 1100 -and -not $row.agentVisible) { throw ("agent panel missing at " + $row.width) }
+    if ($row.width -ge 1100 -and ($row.agentToggle -or $row.navToggle)) { throw ("drawer toggles should be hidden at " + $row.width) }
+    if ($row.width -eq 768 -and (-not $row.agentToggle -or -not $row.navigatorVisible)) { throw "768 should be navigator + agent drawer" }
+    if ($row.width -eq 320 -and (-not $row.agentToggle -or -not $row.navToggle)) { throw "320 should offer both drawers" }
+  }
+  if (-not $drawer.open -or -not $drawer.composerVisible -or -not $drawer.closed -or -not $drawer.focusReturned) { throw ("agent drawer failed: " + $drawerRaw) }
   Write-Output 'LAYOUT REGRESSION PASSED'
 }
 finally {

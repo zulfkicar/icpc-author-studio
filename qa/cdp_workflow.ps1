@@ -53,6 +53,7 @@ try {
     return $res.result.result.value
   }
   Invoke-Cdp 'Runtime.enable' @{} | Out-Null
+  Invoke-Cdp 'Emulation.setDeviceMetricsOverride' @{ width = 1440; height = 900; deviceScaleFactor = 1; mobile = $false } | Out-Null
   Invoke-Cdp 'Page.navigate' @{ url = 'http://127.0.0.1:8787/' } | Out-Null
   Start-Sleep -Seconds 3
   $result = Eval @"
@@ -99,10 +100,43 @@ try {
   await openFile('hello.cpp');
   const judge0Visible = !document.getElementById('judge0-run').hidden;
   const isolateVisible = !document.getElementById('isolate-run').hidden;
+
+  // Run panel: backend selector, per-file stdin, output tabs, status, history.
+  const runBackend = document.getElementById('run-backend');
+  const backendOptions = Array.from(runBackend.options).map((option) => option.value);
+  const backendJudge0Enabled = !Array.from(runBackend.options).find((option) => option.value === 'judge0').disabled;
+  const quickRunWarning = document.getElementById('run-warning').textContent;
+  const runOutputTabs = document.querySelectorAll('#run-output-tabs [role="tab"]').length;
+  document.getElementById('run-stdin').value = 'hello-stdin';
+  document.getElementById('run-stdin').dispatchEvent(new Event('input'));
+  await openFile('notes.txt');
+  await openFile('hello.cpp');
+  const perFileStdin = document.getElementById('run-stdin').value;
+  runBackend.value = 'local';
+  await runFile();
+  const runStatus = document.getElementById('run-status').textContent;
+  const runHistoryRows = state.runHistory.length;
+  const runHistoryRendered = document.querySelectorAll('#run-history .run-history-row').length;
+
+  const secretFile = state.file;
+  state.file = { path: 'data/secret/01.in', text: true, content: '', size: 0 };
+  await runJudge0();
+  const secretBlocked = document.getElementById('toast').textContent.includes('blocked');
+  state.file = secretFile;
+
   await api('/api/settings', { method: 'POST', body: { judge0Url: previousJudge0 } });
   return {
     judge0Visible,
     isolateVisible,
+    backendOptions,
+    backendJudge0Enabled,
+    quickRunWarning,
+    runOutputTabs,
+    perFileStdin,
+    runStatus,
+    runHistoryRows,
+    runHistoryRendered,
+    secretBlocked,
     mcpRows,
     mcpToggle,
     mcpSave,

@@ -4,7 +4,7 @@ Dependency-ordered work. `[P]` means it can run in parallel with other `[P]`
 tasks in the same phase. Every task has an acceptance check; “implemented” without
 the check is not done.
 
-Status: Phase 0 complete. Phase 0.5 is the next PR.
+Status: Phase 0, Phase 0.5, Phase 1 and the Phase 3 run-panel slice are complete. Phase 2 (Monaco/tabs) is next.
 
 ## Conventions
 
@@ -28,31 +28,31 @@ Status: Phase 0 complete. Phase 0.5 is the next PR.
 
 ## Phase 0.5 — dialog consolidation (1 day)
 
-- [ ] **D-1** Create one dialog controller.
+- [x] **D-1** Create one dialog controller.
   - Files: `web/app.js`, `web/index.html`.
   - Covers: new problem, settings, context, action.
   - API: `openDialog({id, title, description, fields, confirmLabel, danger, validate})`.
   - Verify: all four open through the controller.
   - Est: 0.5d.
 
-- [ ] **D-2** Guarantee cancel parity.
+- [x] **D-2** Guarantee cancel parity.
   - Every dialog closes on Cancel, Escape and backdrop.
   - Focus returns to the invoker or `#composer`.
   - Verify: `layout_regression` checks all four.
   - Est: 0.2d.
 
-- [ ] **D-3** Dirty guard for settings.
+- [x] **D-3** Dirty guard for settings.
   - If fields changed, confirm discard before close.
   - Verify: edit → Cancel → dialog stays until confirmed.
   - Est: 0.2d.
 
-- [ ] **D-4** Static lint for native dialogs.
+- [x] **D-4** Static lint for native dialogs.
   - Add `qa/lint_ui_contracts.py` or extend `test_ui_contracts.py`.
   - Fails on `prompt(`/`confirm(` in `web/*.js`.
   - Verify: intentional test fixture fails; real code passes.
   - Est: 0.2d.
 
-- [ ] **D-5** Dialog accessibility pass.
+- [x] **D-5** Dialog accessibility pass.
   - All dialogs have `aria-labelledby`/`aria-describedby`.
   - Errors are `role="alert"`.
   - Verify: AX-tree shows named dialogs and controls.
@@ -64,7 +64,7 @@ Status: Phase 0 complete. Phase 0.5 is the next PR.
 
 ### 1a. Scaffolding
 
-- [ ] **S-1** Add region markup without moving features.
+- [x] **S-1** Add region markup without moving features.
   - Files: `web/index.html`, `web/style.css`.
   - Add `.activity-rail`, `.navigator`, `.editor-group`, `.agent-panel`,
     `.statusbar`.
@@ -72,40 +72,40 @@ Status: Phase 0 complete. Phase 0.5 is the next PR.
   - Verify: screenshot + no visual regression.
   - Est: 0.5d.
 
-- [ ] **S-2** Switch `.layout` to the four-column grid.
+- [x] **S-2** Switch `.layout` to the four-column grid.
   - Files: `web/style.css`.
   - `48px | var(--nav-width) | minmax(0,1fr) | var(--agent-width)`.
   - `grid-template-rows: minmax(0,1fr)`.
   - Verify: no overflow; layout regression.
   - Est: 0.2d.
 
-- [ ] **S-3** Preserve all existing IDs.
+- [x] **S-3** Preserve all existing IDs.
   - Add a `qa/ui_ids.json` manifest and a test that the IDs exist.
   - Verify: `test_ui_contracts` checks the manifest.
   - Est: 0.2d.
 
 ### 1b. DOM move
 
-- [ ] **S-4** Move chat pane into `.agent-panel`.
+- [x] **S-4** Move chat pane into `.agent-panel`.
   - Keep `#messages`, `#composer`, `#chat-title`, `#agent-state`.
   - Verify: send/stream/scroll/focus tests pass.
   - Depends: S-1, S-2.
   - Est: 0.5d.
 
-- [ ] **S-5** Move inspector panels into `.editor-group`.
+- [x] **S-5** Move inspector panels into `.editor-group`.
   - Keep `#panel-*` IDs; add editor tab bar.
   - `switchTab()` remains the controller.
   - Verify: Plan/File/Report/Diff/History/MCP open from tabs.
   - Depends: S-1, S-2.
   - Est: 0.5d.
 
-- [ ] **S-6** Move problem card and side panels into `.navigator`.
+- [x] **S-6** Move problem card and side panels into `.navigator`.
   - Keep `#side-chats`, `#side-files`, `#side-changes`.
   - Verify: switchSide + all three panels.
   - Depends: S-1.
   - Est: 0.3d.
 
-- [ ] **S-7** Add `switchActivity(section)` and rail wiring.
+- [x] **S-7** Add `switchActivity(section)` and rail wiring.
   - Maps rail → navigator/editor views.
   - Verify: every rail item changes the visible region.
   - Depends: S-4, S-5, S-6.
@@ -113,19 +113,19 @@ Status: Phase 0 complete. Phase 0.5 is the next PR.
 
 ### 1c. Status and controls
 
-- [ ] **S-8** Add status bar.
+- [x] **S-8** Add status bar.
   - Connection dot, backend chips, limits, cursor, language, verification.
   - Verify: values match current editor/summary/settings.
   - Depends: S-1.
   - Est: 0.5d.
 
-- [ ] **S-9** Add editor tab bar semantics.
+- [x] **S-9** Add editor tab bar semantics.
   - `role="tablist"`, `aria-controls`, roving tabindex.
   - Verify: keyboard arrow/Home/End.
   - Depends: S-5.
   - Est: 0.3d.
 
-- [ ] **S-10** Add rail semantics.
+- [x] **S-10** Add rail semantics.
   - `nav`, `aria-current`, badges, tooltips.
   - Verify: AX-tree and keyboard.
   - Depends: S-7.
@@ -133,29 +133,29 @@ Status: Phase 0 complete. Phase 0.5 is the next PR.
 
 ### 1d. Resize and responsive
 
-- [ ] **S-11** Persist navigator/agent widths.
+- [x] **S-11** Persist navigator/agent widths.
   - Use localStorage; double-click resets.
   - Verify: reload keeps width.
   - Est: 0.3d.
 
-- [ ] **S-12** Agent drawer < 1100 px.
+- [x] **S-12** Agent drawer < 1100 px.
   - Toggle button, focus trap while open, Escape closes.
   - Verify: 768/1100 screenshots.
   - Est: 0.5d.
 
-- [ ] **S-13** Navigator sheet < 760 px.
+- [x] **S-13** Navigator sheet < 760 px.
   - Full-height overlay; editor/agent tabs.
   - Verify: 320/480 screenshots; no horizontal scroll.
   - Est: 0.5d.
 
 ### 1e. Tests
 
-- [ ] **S-14** Region geometry regression.
+- [x] **S-14** Region geometry regression.
   - `layout_regression` asserts non-overlap, composer/run panel visibility,
     region bounds at 1440/1100/768/320.
   - Est: 0.5d.
 
-- [ ] **S-15** Screenshot set.
+- [x] **S-15** Screenshot set.
   - `qa/screenshots.ps1` captures all regions at four widths.
   - Est: 0.2d.
 
@@ -220,51 +220,51 @@ Status: Phase 0 complete. Phase 0.5 is the next PR.
 
 ## Phase 3 — run panel and Judge0 (3–4 days)
 
-- [ ] **R-1** Backend selector.
+- [x] **R-1** Backend selector.
   - Isolate/Judge0/Local; disabled states from settings.
   - Verify: setting URL shows/hides backend.
   - Est: 0.4d.
 
-- [ ] **R-2** Per-file stdin/backend persistence.
+- [x] **R-2** Per-file stdin/backend persistence.
   - localStorage keyed by slug+path.
   - Verify: switch files, values restore.
   - Est: 0.3d.
 
-- [ ] **R-3** Output tabs.
+- [x] **R-3** Output tabs.
   - stdin/stdout/stderr/compile/result.
   - Verify: CE shows compile; RE shows stderr; OK shows stdout.
   - Est: 0.6d.
 
-- [ ] **R-4** Status chip/time/memory.
+- [x] **R-4** Status chip/time/memory.
   - Map result fields; truncate long messages.
   - Verify: all statuses.
   - Est: 0.3d.
 
-- [ ] **R-5** Run history.
+- [x] **R-5** Run history.
   - Last 10 per file; compare output with previous.
   - Verify: history across reload.
   - Est: 0.5d.
 
-- [ ] **R-6** Cancel in-flight.
+- [x] **R-6** Cancel in-flight.
   - Abort fetch on file change/tab close.
   - Verify: no late render into wrong file.
   - Est: 0.3d.
 
-- [ ] **R-7** Quick-run warning.
+- [x] **R-7** Quick-run warning.
   - “Quick run is not verification” next to selector.
   - Verify: visible and in AX name.
   - Est: 0.1d.
 
-- [ ] **R-8** Secret guard.
+- [x] **R-8** Secret guard.
   - Client and server refuse `data/secret` and `.ans` for Judge0.
   - Verify: negative tests.
   - Est: 0.3d.
 
-- [ ] **R-9** Verification timing guard.
+- [x] **R-9** Verification timing guard.
   - Test 100 tests under 15 min; fail on regression.
   - Est: 0.5d.
 
-- [ ] **R-10** Run tests.
+- [x] **R-10** Run tests.
   - live Judge0, Isolate, local, CE/RE/TO, output cap.
   - Est: 0.5d.
 

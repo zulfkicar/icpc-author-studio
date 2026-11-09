@@ -15,8 +15,9 @@ representable, forces every handler to repeat guards, and leaves browser/agent
 automation with no stable way to ask "what is the app doing?".
 
 This document is the inventory and the decision. `web/machines.js` is the
-first, deliberately additive implementation. The migration tasks and target
-machine set are in
+deliberately additive implementation. All 18 machines in the target set are now
+defined and transition-tested; the app still reads the legacy fields until each
+Phase 4 migration lands. The migration tasks and target machine set are in
 [`plans/ui-ux-ax-rework/03-ARCHITECTURE.md`](plans/ui-ux-ax-rework/03-ARCHITECTURE.md)
 and [`plans/ui-ux-ax-rework/04-TASKS.md`](plans/ui-ux-ax-rework/04-TASKS.md).
 

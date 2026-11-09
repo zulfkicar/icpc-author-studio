@@ -71,9 +71,17 @@ def _request(base_url: str, source: str, language: str, stdin: str, token: str,
         raise RuntimeError(f"Judge0 request failed: {exc}") from exc
 
 
+def is_blocked_path(path: str) -> bool:
+    """Secret tests and answer files must never leave the workspace."""
+    normalized = str(path or "").replace("\\", "/").lstrip("./")
+    return normalized.startswith("data/secret/") or normalized.lower().endswith(".ans")
+
+
 def run_file(slug: str, path: str, stdin: str = "", *, base_url: str | None = None,
              token: str | None = None, time_limit: float = 2.0, memory_mb: int = 256) -> dict:
     """Read a workspace source file and run it through Judge0."""
+    if is_blocked_path(path):
+        raise ValueError("Judge0 quick run is blocked for secret tests and .ans answer files")
     content = workspace.read_text(slug, path).get("content") or ""
     language = path.rsplit(".", 1)[-1] if "." in path else "cpp"
     result = quick_run(

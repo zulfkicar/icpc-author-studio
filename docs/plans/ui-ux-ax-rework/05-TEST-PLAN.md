@@ -43,6 +43,14 @@ wsl -e docker exec icpc-author-agent python qa/test_interactive.py
 wsl -e docker exec icpc-author-agent python qa/test_live_judge0.py
 wsl -e docker exec icpc-author-agent python qa/test_executor_limits.py
 wsl -e docker exec icpc-author-agent python qa/test_executor_security.py
+wsl -e docker exec icpc-author-agent python qa/test_verification_timing.py
+```
+
+The heavy timing measurement is explicit:
+
+```powershell
+# 86 tests, measure limits + verify, writes qa/verification-timing.json
+wsl -e docker exec icpc-author-agent python qa/run_verification_timing.py
 ```
 
 ### Static
@@ -109,7 +117,7 @@ python -m py_compile isolate_worker.py server.py verify.py winutil.py
 | Cancel | file change aborts in-flight render |
 | Security | secret paths blocked; only open file sent |
 | Live | Judge0 and Isolate runs pass |
-| Timing | 100-test verifier under 15 min |
+| Timing | 86-test verifier under 15 min; `qa/test_verification_timing.py` guards the recorded artifact |
 
 ### Phase 4 — evidence/AX/state
 

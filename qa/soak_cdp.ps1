@@ -34,6 +34,7 @@ try {
     return $res.result.result.value
   }
   Invoke-Cdp 'Runtime.enable' @{} | Out-Null
+  Invoke-Cdp 'Emulation.setDeviceMetricsOverride' @{ width = 1440; height = 900; deviceScaleFactor = 1; mobile = $false } | Out-Null
   Invoke-Cdp 'Page.navigate' @{ url = 'http://127.0.0.1:8787/' } | Out-Null
   Start-Sleep -Seconds 3
   $result = Eval @'

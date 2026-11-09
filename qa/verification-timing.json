@@ -1,0 +1,1066 @@
+{
+  "slug": "eval-claim-or-concede-2",
+  "limitsSeconds": 229.8,
+  "verifySeconds": 834.1,
+  "elapsedSeconds": 1063.9,
+  "budgetSeconds": 900.0,
+  "withinBudget": true,
+  "status": "verified",
+  "tests": 86,
+  "accepted": 2,
+  "negative": 4,
+  "limits": {
+    "timeSeconds": 1.0,
+    "memoryMb": 256
+  },
+  "errors": [],
+  "measuredLimits": {
+    "ok": true,
+    "timeLimitSeconds": 1.0,
+    "memoryMb": 256,
+    "tests": 86,
+    "solutions": [
+      "submissions/accepted/dp_forward.cpp",
+      "submissions/accepted/reference.cpp"
+    ],
+    "maxRuntimeMs": 15.0,
+    "maxMemoryMb": 4.1,
+    "slowestTest": "data/secret/07_boundaries/n_boundary_max.in",
+    "worstMemoryTest": "data/secret/05_structured_large/large_decreasing.in",
+    "samples": [
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/sample/01.in",
+        "ms": 1.0,
+        "rss": 2838528
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/sample/02.in",
+        "ms": 1.0,
+        "rss": 2695168
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/sample/03.in",
+        "ms": 3.0,
+        "rss": 2904064
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/01_tiny/n1_max.in",
+        "ms": 1.0,
+        "rss": 2744320
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/01_tiny/n1_one.in",
+        "ms": 1.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/01_tiny/n1_zero.in",
+        "ms": 1.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/01_tiny/n2_max_max.in",
+        "ms": 2.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/01_tiny/n2_max_zero.in",
+        "ms": 2.0,
+        "rss": 2875392
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/01_tiny/n2_one_one.in",
+        "ms": 2.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/01_tiny/n2_one_two.in",
+        "ms": 2.0,
+        "rss": 2838528
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/01_tiny/n2_one_zero.in",
+        "ms": 2.0,
+        "rss": 2695168
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/01_tiny/n2_two_one.in",
+        "ms": 2.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/01_tiny/n2_zero_max.in",
+        "ms": 2.0,
+        "rss": 2834432
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/01_tiny/n2_zero_one.in",
+        "ms": 2.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/01_tiny/n2_zero_zero.in",
+        "ms": 2.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/02_concede_traps/trap_1_10_1.in",
+        "ms": 2.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/02_concede_traps/trap_1_2_3_4.in",
+        "ms": 2.0,
+        "rss": 2707456
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/02_concede_traps/trap_4_3_2_1.in",
+        "ms": 3.0,
+        "rss": 2838528
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/02_concede_traps/trap_5_1_1.in",
+        "ms": 2.0,
+        "rss": 2711552
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/02_concede_traps/trap_big_middle.in",
+        "ms": 2.0,
+        "rss": 2904064
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/02_concede_traps/trap_big_middle_wide.in",
+        "ms": 2.0,
+        "rss": 2826240
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/02_concede_traps/trap_big_then_zeros.in",
+        "ms": 2.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/02_concede_traps/trap_ramp.in",
+        "ms": 2.0,
+        "rss": 2695168
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/02_concede_traps/trap_ramp_down.in",
+        "ms": 2.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/02_concede_traps/trap_sawtooth.in",
+        "ms": 2.0,
+        "rss": 2760704
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/02_concede_traps/trap_two_spikes.in",
+        "ms": 2.0,
+        "rss": 2834432
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/02_concede_traps/trap_zeros_then_big.in",
+        "ms": 2.0,
+        "rss": 2744320
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_00.in",
+        "ms": 2.0,
+        "rss": 2695168
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_01.in",
+        "ms": 3.0,
+        "rss": 2809856
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_02.in",
+        "ms": 2.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_03.in",
+        "ms": 1.0,
+        "rss": 2768896
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_04.in",
+        "ms": 1.0,
+        "rss": 2826240
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_05.in",
+        "ms": 1.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_06.in",
+        "ms": 2.0,
+        "rss": 2736128
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_07.in",
+        "ms": 1.0,
+        "rss": 2711552
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_08.in",
+        "ms": 2.0,
+        "rss": 2834432
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_09.in",
+        "ms": 2.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_big_00.in",
+        "ms": 2.0,
+        "rss": 2822144
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_big_01.in",
+        "ms": 2.0,
+        "rss": 2695168
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_big_02.in",
+        "ms": 2.0,
+        "rss": 2695168
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_big_03.in",
+        "ms": 2.0,
+        "rss": 2711552
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_big_04.in",
+        "ms": 1.0,
+        "rss": 2711552
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_big_05.in",
+        "ms": 1.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_binary_00.in",
+        "ms": 2.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_binary_01.in",
+        "ms": 2.0,
+        "rss": 2838528
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_binary_02.in",
+        "ms": 2.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_binary_03.in",
+        "ms": 2.0,
+        "rss": 2711552
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_binary_04.in",
+        "ms": 1.0,
+        "rss": 2904064
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/03_random_small/rand_small_binary_05.in",
+        "ms": 1.0,
+        "rss": 2834432
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_00.in",
+        "ms": 2.0,
+        "rss": 2691072
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_01.in",
+        "ms": 1.0,
+        "rss": 2875392
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_02.in",
+        "ms": 2.0,
+        "rss": 2760704
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_03.in",
+        "ms": 1.0,
+        "rss": 2711552
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_04.in",
+        "ms": 2.0,
+        "rss": 2768896
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_05.in",
+        "ms": 2.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_binary_00.in",
+        "ms": 1.0,
+        "rss": 2768896
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_binary_01.in",
+        "ms": 2.0,
+        "rss": 2834432
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_binary_02.in",
+        "ms": 2.0,
+        "rss": 2875392
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_binary_03.in",
+        "ms": 1.0,
+        "rss": 2826240
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_sparse_00.in",
+        "ms": 2.0,
+        "rss": 2838528
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_sparse_01.in",
+        "ms": 2.0,
+        "rss": 2695168
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_sparse_02.in",
+        "ms": 2.0,
+        "rss": 2793472
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/04_random_medium/rand_med_sparse_03.in",
+        "ms": 2.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/05_structured_large/large_all_max.in",
+        "ms": 13.0,
+        "rss": 4153344
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/05_structured_large/large_all_one.in",
+        "ms": 10.0,
+        "rss": 4112384
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/05_structured_large/large_all_zero.in",
+        "ms": 9.0,
+        "rss": 4227072
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/05_structured_large/large_alt_max_zero.in",
+        "ms": 14.0,
+        "rss": 4239360
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/05_structured_large/large_alt_one_zero.in",
+        "ms": 13.0,
+        "rss": 4227072
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/05_structured_large/large_alt_zero_max.in",
+        "ms": 12.0,
+        "rss": 4112384
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/05_structured_large/large_decreasing.in",
+        "ms": 11.0,
+        "rss": 4112384
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/05_structured_large/large_increasing.in",
+        "ms": 11.0,
+        "rss": 4186112
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/05_structured_large/large_ramp.in",
+        "ms": 11.0,
+        "rss": 4227072
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/05_structured_large/large_spike_first.in",
+        "ms": 9.0,
+        "rss": 4259840
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/05_structured_large/large_spike_last.in",
+        "ms": 9.0,
+        "rss": 4227072
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/05_structured_large/large_spike_middle.in",
+        "ms": 9.0,
+        "rss": 4202496
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/06_random_large/large_rand_binary.in",
+        "ms": 10.0,
+        "rss": 4153344
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/06_random_large/large_rand_full.in",
+        "ms": 14.0,
+        "rss": 4120576
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/06_random_large/large_rand_full_b.in",
+        "ms": 13.0,
+        "rss": 4227072
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/06_random_large/large_rand_near_max.in",
+        "ms": 13.0,
+        "rss": 4153344
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/06_random_large/large_rand_small_vals.in",
+        "ms": 12.0,
+        "rss": 4120576
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/06_random_large/large_rand_sparse.in",
+        "ms": 10.0,
+        "rss": 4177920
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/07_boundaries/n_boundary_2.in",
+        "ms": 2.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/07_boundaries/n_boundary_3.in",
+        "ms": 2.0,
+        "rss": 2744320
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/07_boundaries/n_boundary_max.in",
+        "ms": 15.0,
+        "rss": 4202496
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/07_boundaries/n_boundary_max_minus_1.in",
+        "ms": 14.0,
+        "rss": 4136960
+      },
+      {
+        "path": "submissions/accepted/dp_forward.cpp",
+        "test": "data/secret/07_boundaries/n_boundary_max_zeros.in",
+        "ms": 10.0,
+        "rss": 4239360
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/sample/01.in",
+        "ms": 2.0,
+        "rss": 2834432
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/sample/02.in",
+        "ms": 2.0,
+        "rss": 2834432
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/sample/03.in",
+        "ms": 2.0,
+        "rss": 2711552
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/01_tiny/n1_max.in",
+        "ms": 3.0,
+        "rss": 2695168
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/01_tiny/n1_one.in",
+        "ms": 2.0,
+        "rss": 2760704
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/01_tiny/n1_zero.in",
+        "ms": 1.0,
+        "rss": 2768896
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/01_tiny/n2_max_max.in",
+        "ms": 3.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/01_tiny/n2_max_zero.in",
+        "ms": 1.0,
+        "rss": 2838528
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/01_tiny/n2_one_one.in",
+        "ms": 1.0,
+        "rss": 2904064
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/01_tiny/n2_one_two.in",
+        "ms": 1.0,
+        "rss": 2727936
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/01_tiny/n2_one_zero.in",
+        "ms": 1.0,
+        "rss": 2744320
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/01_tiny/n2_two_one.in",
+        "ms": 1.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/01_tiny/n2_zero_max.in",
+        "ms": 1.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/01_tiny/n2_zero_one.in",
+        "ms": 1.0,
+        "rss": 2838528
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/01_tiny/n2_zero_zero.in",
+        "ms": 2.0,
+        "rss": 2768896
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/02_concede_traps/trap_1_10_1.in",
+        "ms": 2.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/02_concede_traps/trap_1_2_3_4.in",
+        "ms": 2.0,
+        "rss": 2875392
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/02_concede_traps/trap_4_3_2_1.in",
+        "ms": 2.0,
+        "rss": 2822144
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/02_concede_traps/trap_5_1_1.in",
+        "ms": 1.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/02_concede_traps/trap_big_middle.in",
+        "ms": 2.0,
+        "rss": 2838528
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/02_concede_traps/trap_big_middle_wide.in",
+        "ms": 2.0,
+        "rss": 2695168
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/02_concede_traps/trap_big_then_zeros.in",
+        "ms": 2.0,
+        "rss": 2826240
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/02_concede_traps/trap_ramp.in",
+        "ms": 2.0,
+        "rss": 2707456
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/02_concede_traps/trap_ramp_down.in",
+        "ms": 2.0,
+        "rss": 2904064
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/02_concede_traps/trap_sawtooth.in",
+        "ms": 3.0,
+        "rss": 2707456
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/02_concede_traps/trap_two_spikes.in",
+        "ms": 2.0,
+        "rss": 2834432
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/02_concede_traps/trap_zeros_then_big.in",
+        "ms": 1.0,
+        "rss": 2904064
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_00.in",
+        "ms": 2.0,
+        "rss": 2719744
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_01.in",
+        "ms": 2.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_02.in",
+        "ms": 2.0,
+        "rss": 2826240
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_03.in",
+        "ms": 2.0,
+        "rss": 2838528
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_04.in",
+        "ms": 1.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_05.in",
+        "ms": 2.0,
+        "rss": 2768896
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_06.in",
+        "ms": 2.0,
+        "rss": 2768896
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_07.in",
+        "ms": 2.0,
+        "rss": 2707456
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_08.in",
+        "ms": 1.0,
+        "rss": 2805760
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_09.in",
+        "ms": 1.0,
+        "rss": 2834432
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_big_00.in",
+        "ms": 1.0,
+        "rss": 2809856
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_big_01.in",
+        "ms": 1.0,
+        "rss": 2822144
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_big_02.in",
+        "ms": 2.0,
+        "rss": 2838528
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_big_03.in",
+        "ms": 2.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_big_04.in",
+        "ms": 2.0,
+        "rss": 2793472
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_big_05.in",
+        "ms": 2.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_binary_00.in",
+        "ms": 1.0,
+        "rss": 2904064
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_binary_01.in",
+        "ms": 2.0,
+        "rss": 2760704
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_binary_02.in",
+        "ms": 1.0,
+        "rss": 2711552
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_binary_03.in",
+        "ms": 1.0,
+        "rss": 2760704
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_binary_04.in",
+        "ms": 2.0,
+        "rss": 2760704
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/03_random_small/rand_small_binary_05.in",
+        "ms": 2.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_00.in",
+        "ms": 1.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_01.in",
+        "ms": 1.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_02.in",
+        "ms": 3.0,
+        "rss": 2703360
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_03.in",
+        "ms": 2.0,
+        "rss": 2838528
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_04.in",
+        "ms": 2.0,
+        "rss": 2838528
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_05.in",
+        "ms": 1.0,
+        "rss": 2695168
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_binary_00.in",
+        "ms": 1.0,
+        "rss": 2813952
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_binary_01.in",
+        "ms": 1.0,
+        "rss": 2711552
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_binary_02.in",
+        "ms": 2.0,
+        "rss": 2826240
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_binary_03.in",
+        "ms": 1.0,
+        "rss": 2797568
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_sparse_00.in",
+        "ms": 1.0,
+        "rss": 2826240
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_sparse_01.in",
+        "ms": 2.0,
+        "rss": 2834432
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_sparse_02.in",
+        "ms": 2.0,
+        "rss": 2793472
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/04_random_medium/rand_med_sparse_03.in",
+        "ms": 2.0,
+        "rss": 2830336
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/05_structured_large/large_all_max.in",
+        "ms": 13.0,
+        "rss": 4116480
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/05_structured_large/large_all_one.in",
+        "ms": 9.0,
+        "rss": 4177920
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/05_structured_large/large_all_zero.in",
+        "ms": 9.0,
+        "rss": 4259840
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/05_structured_large/large_alt_max_zero.in",
+        "ms": 14.0,
+        "rss": 4186112
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/05_structured_large/large_alt_one_zero.in",
+        "ms": 10.0,
+        "rss": 4120576
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/05_structured_large/large_alt_zero_max.in",
+        "ms": 12.0,
+        "rss": 4194304
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/05_structured_large/large_decreasing.in",
+        "ms": 11.0,
+        "rss": 4308992
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/05_structured_large/large_increasing.in",
+        "ms": 12.0,
+        "rss": 4227072
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/05_structured_large/large_ramp.in",
+        "ms": 12.0,
+        "rss": 4239360
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/05_structured_large/large_spike_first.in",
+        "ms": 11.0,
+        "rss": 4227072
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/05_structured_large/large_spike_last.in",
+        "ms": 12.0,
+        "rss": 4153344
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/05_structured_large/large_spike_middle.in",
+        "ms": 10.0,
+        "rss": 4227072
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/06_random_large/large_rand_binary.in",
+        "ms": 10.0,
+        "rss": 4194304
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/06_random_large/large_rand_full.in",
+        "ms": 13.0,
+        "rss": 4153344
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/06_random_large/large_rand_full_b.in",
+        "ms": 13.0,
+        "rss": 4235264
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/06_random_large/large_rand_near_max.in",
+        "ms": 13.0,
+        "rss": 4116480
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/06_random_large/large_rand_small_vals.in",
+        "ms": 10.0,
+        "rss": 4227072
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/06_random_large/large_rand_sparse.in",
+        "ms": 10.0,
+        "rss": 4116480
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/07_boundaries/n_boundary_2.in",
+        "ms": 2.0,
+        "rss": 2793472
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/07_boundaries/n_boundary_3.in",
+        "ms": 2.0,
+        "rss": 2826240
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/07_boundaries/n_boundary_max.in",
+        "ms": 13.0,
+        "rss": 4186112
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/07_boundaries/n_boundary_max_minus_1.in",
+        "ms": 11.0,
+        "rss": 4227072
+      },
+      {
+        "path": "submissions/accepted/reference.cpp",
+        "test": "data/secret/07_boundaries/n_boundary_max_zeros.in",
+        "ms": 8.0,
+        "rss": 4235264
+      }
+    ],
+    "measuredAt": "2026-11-09T04:16:53"
+  }
+}

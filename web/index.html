@@ -8,9 +8,13 @@
 <link rel="stylesheet" href="/style.css">
 <script defer src="/vendor/highlight.min.js"></script>
 <script defer src="/machines.js"></script>
+<script defer src="/dialogs.js"></script>
 <script defer src="/app.js"></script>
 </head>
 <body>
+<a class="skip-link" href="#editor-group">Skip to editor</a>
+<a class="skip-link" href="#composer">Skip to composer</a>
+
 <header class="topbar">
   <div class="brand">
     <span class="brand-mark" aria-hidden="true"><span></span></span>
@@ -22,6 +26,8 @@
     <button id="new-problem" class="icon-btn" title="New problem" aria-label="New problem">+</button>
   </div>
   <span class="spacer"></span>
+  <button id="toggle-navigator" class="icon-btn drawer-toggle" aria-label="Toggle navigator" aria-controls="navigator" aria-expanded="false" title="Toggle navigator">&#9776;</button>
+  <button id="toggle-agent" class="icon-btn drawer-toggle" aria-label="Toggle agent panel" aria-controls="agent-panel" aria-expanded="false" title="Toggle agent panel">&#9707;</button>
   <span id="status-pill" class="pill unverified">unverified</span>
   <div class="top-actions">
     <button id="answers-btn" class="quiet">Build answers</button>
@@ -33,7 +39,17 @@
 </header>
 
 <main class="layout">
-  <aside class="left">
+  <nav class="activity-rail" aria-label="Workspace sections">
+    <button type="button" data-activity="chats" aria-label="Conversations" title="Conversations" aria-current="page"><span aria-hidden="true">&#9673;</span></button>
+    <button type="button" data-activity="files" aria-label="Files" title="Files"><span aria-hidden="true">&#9639;</span></button>
+    <button type="button" data-activity="changes" aria-label="Review changes" title="Review changes"><span aria-hidden="true">&#8644;</span></button>
+    <span class="rail-sep" aria-hidden="true"></span>
+    <button type="button" data-activity="run" aria-label="Run and test" title="Run and test"><span aria-hidden="true">&#9654;</span></button>
+    <button type="button" data-activity="evidence" aria-label="Evidence report" title="Evidence report"><span aria-hidden="true">&#10003;</span></button>
+    <button type="button" data-activity="history" aria-label="History and checkpoints" title="History and checkpoints"><span aria-hidden="true">&#8634;</span></button>
+  </nav>
+
+  <aside id="navigator" class="left navigator" data-region="navigator" aria-label="Navigator">
     <div id="problem-card" class="problem-card">
       <div class="problem-kicker">Workspace</div>
       <div class="problem-name">No problem</div>
@@ -41,12 +57,12 @@
     </div>
 
     <div class="side-tabs" role="tablist" aria-label="Workspace sections">
-      <button data-side="chats" class="active" role="tab" aria-selected="true"><span class="nav-icon" aria-hidden="true">&#9673;</span><span>Chats</span></button>
-      <button data-side="files" role="tab" aria-selected="false"><span class="nav-icon" aria-hidden="true">&#9639;</span><span>Files</span></button>
-      <button data-side="changes" role="tab" aria-selected="false"><span class="nav-icon" aria-hidden="true">&#8644;</span><span>Changes</span></button>
+      <button data-side="chats" class="active" role="tab" aria-selected="true" aria-controls="side-chats"><span class="nav-icon" aria-hidden="true">&#9673;</span><span>Chats</span></button>
+      <button data-side="files" role="tab" aria-selected="false" aria-controls="side-files"><span class="nav-icon" aria-hidden="true">&#9639;</span><span>Files</span></button>
+      <button data-side="changes" role="tab" aria-selected="false" aria-controls="side-changes"><span class="nav-icon" aria-hidden="true">&#8644;</span><span>Changes</span></button>
     </div>
 
-    <div id="side-chats" class="side-panel active">
+    <div id="side-chats" class="side-panel active" role="tabpanel" aria-label="Conversations">
       <div class="side-head">
         <span>Conversations</span>
         <button id="new-chat" class="icon-btn" title="New chat" aria-label="New chat">+</button>
@@ -56,7 +72,7 @@
       <div id="chat-list" class="chat-list"></div>
     </div>
 
-    <div id="side-files" class="side-panel">
+    <div id="side-files" class="side-panel" role="tabpanel" aria-label="Workspace files">
       <div class="side-head">
         <span>Workspace</span>
         <button id="new-file" class="icon-btn" title="New file" aria-label="New file">&#43;</button>
@@ -66,7 +82,7 @@
       <div id="file-tree" class="tree"></div>
     </div>
 
-    <div id="side-changes" class="side-panel">
+    <div id="side-changes" class="side-panel" role="tabpanel" aria-label="Review changes">
       <div class="side-head">
         <span>Changes</span>
         <span id="unreviewed-count" class="badge zero">0</span>
@@ -79,9 +95,111 @@
     </div>
   </aside>
 
-  <div class="splitter" data-split="left" title="Drag to resize the sidebar"></div>
+  <div class="splitter" data-split="nav" title="Drag to resize the navigator"></div>
 
-  <section class="chat-pane">
+  <section id="editor-group" class="right editor-group" data-region="editor" aria-label="Editor group">
+    <div class="inspector-head">
+      <div>
+        <div class="inspector-kicker">Editor</div>
+        <div class="inspector-title">Workspace</div>
+      </div>
+      <span class="inspector-hint">edit · run · evidence</span>
+    </div>
+    <nav id="breadcrumbs" class="breadcrumbs" aria-label="File breadcrumb"></nav>
+    <div class="inspector-tabs" role="tablist" aria-label="Editor views">
+      <button id="tab-plan" data-tab="plan" role="tab" aria-selected="true" aria-controls="panel-plan" class="active">Plan</button>
+      <button id="tab-file" data-tab="file" role="tab" aria-selected="false" aria-controls="panel-file">File</button>
+      <button id="tab-report" data-tab="report" role="tab" aria-selected="false" aria-controls="panel-report">Report</button>
+      <button id="tab-diff" data-tab="diff" role="tab" aria-selected="false" aria-controls="panel-diff">Diff</button>
+      <button id="tab-history" data-tab="history" role="tab" aria-selected="false" aria-controls="panel-history">History</button>
+      <button id="tab-mcp" data-tab="mcp" role="tab" aria-selected="false" aria-controls="panel-mcp">MCP</button>
+    </div>
+
+    <div id="panel-plan" class="panel active" role="tabpanel" aria-labelledby="tab-plan">
+      <div id="plan-body" class="plan-body" tabindex="0" role="region" aria-label="Plan details"></div>
+    </div>
+
+    <div id="panel-file" class="panel" role="tabpanel" aria-labelledby="tab-file">
+      <div class="file-head">
+        <span id="file-name">No file selected</span>
+        <span id="file-meta" class="muted small"></span>
+        <span class="spacer"></span>
+        <button id="view-file" class="quiet small" hidden>View</button>
+        <button id="edit-file" class="quiet small" hidden>Edit</button>
+        <button id="save-file" class="primary small" hidden>Save</button>
+        <button id="reload-file" class="quiet small" hidden>Reload</button>
+      </div>
+      <div class="editor-shell">
+        <div id="line-numbers" class="line-numbers" hidden></div>
+        <div class="editor-main">
+          <pre id="file-view" class="file-view" hidden><code id="file-code" class="hljs"></code></pre>
+          <textarea id="file-editor" class="file-editor" spellcheck="false" placeholder="Select a file in the Files tab." disabled aria-label="File editor"></textarea>
+        </div>
+      </div>
+      <div class="editor-status">
+        <span id="editor-language">?</span>
+        <span id="editor-cursor">Ln 1, Col 1</span>
+        <span id="editor-lines" class="spacer"></span>
+      </div>
+      <div id="run-panel" class="run-panel" hidden>
+        <div class="run-panel-head">
+          <span>Run</span>
+          <span id="run-language" class="muted small"></span>
+          <label class="run-backend-label" for="run-backend">Backend</label>
+          <select id="run-backend" class="run-backend" aria-label="Run backend">
+            <option value="local">Local (bwrap)</option>
+            <option value="isolate">Isolate</option>
+            <option value="judge0">Judge0</option>
+          </select>
+          <span id="run-warning" class="run-warning">Quick run is not verification</span>
+          <span id="run-status" class="run-status" role="status" hidden></span>
+          <span class="spacer"></span>
+          <button id="run-history-btn" class="quiet small" aria-expanded="false" aria-controls="run-history">History</button>
+          <button id="run-cancel" class="quiet small" hidden>Cancel</button>
+          <button id="load-sample" class="quiet small">Load sample</button>
+          <button id="run-tests" class="quiet small">Run tests</button>
+          <button id="judge0-run" class="quiet small" hidden>Judge0</button>
+          <button id="isolate-run" class="quiet small" hidden>Isolate</button>
+          <button id="run-file" class="primary small">Run</button>
+        </div>
+        <div id="test-tabs" class="test-tabs"></div>
+        <div id="test-results" class="test-results" hidden></div>
+        <div id="run-output-tabs" class="run-output-tabs" role="tablist" aria-label="Run output">
+          <button id="run-tab-stdin" data-run-tab="stdin" role="tab" aria-selected="true" aria-controls="run-stdin">stdin</button>
+          <button id="run-tab-stdout" data-run-tab="stdout" role="tab" aria-selected="false" aria-controls="run-stdout" tabindex="-1">stdout</button>
+          <button id="run-tab-stderr" data-run-tab="stderr" role="tab" aria-selected="false" aria-controls="run-stderr" tabindex="-1">stderr</button>
+          <button id="run-tab-compile" data-run-tab="compile" role="tab" aria-selected="false" aria-controls="run-compile" tabindex="-1">compile</button>
+          <button id="run-tab-result" data-run-tab="result" role="tab" aria-selected="false" aria-controls="run-output" tabindex="-1">result</button>
+        </div>
+        <textarea id="run-stdin" class="run-stdin" rows="3" placeholder="Custom input passed to the program on stdin" aria-label="Custom input passed to the program on stdin"></textarea>
+        <pre id="run-stdout" class="run-output" hidden></pre>
+        <pre id="run-stderr" class="run-output" hidden></pre>
+        <pre id="run-compile" class="run-output" hidden></pre>
+        <pre id="run-output" class="run-output" hidden></pre>
+        <div id="run-history" class="run-history" hidden></div>
+      </div>
+    </div>
+
+    <div id="panel-report" class="panel" role="tabpanel" aria-labelledby="tab-report">
+      <div id="report-body" class="report" tabindex="0" role="region" aria-label="Verification report"></div>
+    </div>
+
+    <div id="panel-diff" class="panel" role="tabpanel" aria-labelledby="tab-diff">
+      <div id="diff-body" class="diff-view" tabindex="0" role="region" aria-label="Change diff"><div class="pad muted">Select a change to inspect its diff.</div></div>
+    </div>
+
+    <div id="panel-history" class="panel" role="tabpanel" aria-labelledby="tab-history">
+      <div id="history-body" class="report" tabindex="0" role="region" aria-label="Checkpoint history"><div class="pad muted">Open a chat to inspect checkpoints.</div></div>
+    </div>
+
+    <div id="panel-mcp" class="panel" role="tabpanel" aria-labelledby="tab-mcp">
+      <div id="mcp-body" class="report" tabindex="0" role="region" aria-label="MCP consent"><div class="pad muted">Open a workspace to inspect MCP consent.</div></div>
+    </div>
+  </section>
+
+  <div class="splitter" data-split="agent" title="Drag to resize the agent panel"></div>
+
+  <section id="agent-panel" class="chat-pane agent-panel" data-region="agent" aria-label="Agent conversation">
     <div class="chat-head">
       <div class="chat-heading">
         <div class="chat-kicker">Conversation</div>
@@ -128,92 +246,35 @@
     </div>
   </section>
 
-  <div class="splitter" data-split="right" title="Drag to resize the inspector"></div>
-
-  <section class="right">
-    <div class="inspector-head">
-      <div>
-        <div class="inspector-kicker">Evidence</div>
-        <div class="inspector-title">Inspector</div>
-      </div>
-      <span class="inspector-hint">review · verify · export</span>
-    </div>
-    <div class="inspector-tabs" role="tablist">
-      <button data-tab="plan" role="tab" aria-selected="true" class="active">Plan</button>
-      <button data-tab="file" role="tab" aria-selected="false">File</button>
-      <button data-tab="report" role="tab" aria-selected="false">Report</button>
-      <button data-tab="diff" role="tab" aria-selected="false">Diff</button>
-      <button data-tab="history" role="tab" aria-selected="false">History</button>
-      <button data-tab="mcp" role="tab" aria-selected="false">MCP</button>
-    </div>
-
-    <div id="panel-plan" class="panel active">
-      <div id="plan-body" class="plan-body"></div>
-    </div>
-
-    <div id="panel-file" class="panel">
-      <div class="file-head">
-        <span id="file-name">No file selected</span>
-        <span id="file-meta" class="muted small"></span>
-        <span class="spacer"></span>
-        <button id="view-file" class="quiet small" hidden>View</button>
-        <button id="edit-file" class="quiet small" hidden>Edit</button>
-        <button id="save-file" class="primary small" hidden>Save</button>
-        <button id="reload-file" class="quiet small" hidden>Reload</button>
-      </div>
-      <div class="editor-shell">
-        <div id="line-numbers" class="line-numbers" hidden></div>
-        <div class="editor-main">
-          <pre id="file-view" class="file-view" hidden><code id="file-code" class="hljs"></code></pre>
-          <textarea id="file-editor" class="file-editor" spellcheck="false" placeholder="Select a file in the Files tab." disabled></textarea>
-        </div>
-      </div>
-      <div class="editor-status">
-        <span id="editor-language">?</span>
-        <span id="editor-cursor">Ln 1, Col 1</span>
-        <span id="editor-lines" class="spacer"></span>
-      </div>
-      <div id="run-panel" class="run-panel" hidden>
-        <div class="run-panel-head">
-          <span>Run</span>
-          <span id="run-language" class="muted small"></span>
-          <span class="spacer"></span>
-          <button id="load-sample" class="quiet small">Load sample</button>
-          <button id="run-tests" class="quiet small">Run tests</button>
-          <button id="judge0-run" class="quiet small" hidden>Judge0</button>
-          <button id="isolate-run" class="quiet small" hidden>Isolate</button>
-          <button id="run-file" class="primary small">Run</button>
-        </div>
-        <div id="test-tabs" class="test-tabs"></div>
-        <div id="test-results" class="test-results" hidden></div>
-        <textarea id="run-stdin" class="run-stdin" rows="3" placeholder="Custom input passed to the program on stdin"></textarea>
-        <pre id="run-output" class="run-output" hidden></pre>
-      </div>
-    </div>
-
-    <div id="panel-report" class="panel">
-      <div id="report-body" class="report"></div>
-    </div>
-
-    <div id="panel-diff" class="panel">
-      <div id="diff-body" class="diff-view"><div class="pad muted">Select a change to inspect its diff.</div></div>
-    </div>
-
-    <div id="panel-history" class="panel">
-      <div id="history-body" class="report"><div class="pad muted">Open a chat to inspect checkpoints.</div></div>
-    </div>
-
-    <div id="panel-mcp" class="panel">
-      <div id="mcp-body" class="report"><div class="pad muted">Open a workspace to inspect MCP consent.</div></div>
-    </div>
-  </section>
+  <div id="drawer-scrim" class="drawer-scrim" hidden></div>
 </main>
 
-<dialog id="new-dialog" aria-label="New problem">
+<footer class="statusbar" aria-label="Workbench status">
+  <span class="status-item" title="Connection to the author agent">
+    <span id="connection-dot" class="conn-dot" aria-hidden="true"></span>
+    <span id="status-connection">connecting</span>
+  </span>
+  <span class="status-item status-backend" title="Judge0 quick-run backend">
+    <span class="status-label">Judge0</span><b id="status-judge0">off</b>
+  </span>
+  <span class="status-item status-backend" title="Isolate verifier executor">
+    <span class="status-label">Isolate</span><b id="status-isolate">off</b>
+  </span>
+  <span class="status-item status-backend" title="bwrap executor / LaTeX PDF">
+    <span class="status-label">Executor</span><b id="status-executor">off</b>
+  </span>
+  <span class="spacer"></span>
+  <span class="status-item" id="status-limits">limits not measured</span>
+  <span class="status-item" id="status-language">text</span>
+  <span class="status-item" id="status-cursor">Ln 1, Col 1</span>
+  <span class="status-item verification" id="status-verify">unverified</span>
+</footer>
+
+<dialog id="new-dialog" aria-labelledby="new-title" aria-describedby="new-desc">
   <form method="dialog" id="new-form">
     <div class="dialog-kicker">Start here</div>
-    <h2>New problem</h2>
-    <p class="dialog-sub muted">Start from an idea. The agent will turn it into a verified DOMjudge package. Limits are measured from the reference after the tests are built.</p>
+    <h2 id="new-title">New problem</h2>
+    <p id="new-desc" class="dialog-sub muted">Start from an idea. The agent will turn it into a verified DOMjudge package. Limits are measured from the reference after the tests are built.</p>
     <label>Problem name <input name="name" required placeholder="e.g. Claim or Concede"></label>
     <label>Idea / prompt <textarea name="idea" rows="5" placeholder="A rough idea is enough. Include the core mechanic, constraints you have in mind, and what should make it interesting."></textarea></label>
     <div class="grid2">
@@ -222,17 +283,17 @@
     </div>
     <label class="check"><input name="startNow" type="checkbox" checked> Start the agent immediately on this idea</label>
     <div class="dialog-actions">
-      <button type="button" id="new-cancel" class="quiet">Cancel</button>
+      <button type="button" id="new-cancel" class="quiet" data-dialog-cancel>Cancel</button>
       <button value="create" class="primary">Create workspace</button>
     </div>
   </form>
 </dialog>
 
-<dialog id="settings-dialog" aria-label="Provider settings">
+<dialog id="settings-dialog" aria-labelledby="settings-title" aria-describedby="settings-desc">
   <form method="dialog" id="settings-form">
     <div class="dialog-kicker">Runtime</div>
-    <h2>Provider settings</h2>
-    <p class="dialog-sub muted">DeepSeek or any OpenAI-compatible chat endpoint with tool calling. The key is stored only in <code>.author-agent/config.json</code> on this machine.</p>
+    <h2 id="settings-title">Provider settings</h2>
+    <p id="settings-desc" class="dialog-sub muted">DeepSeek or any OpenAI-compatible chat endpoint with tool calling. The key is stored only in <code>.author-agent/config.json</code> on this machine.</p>
     <label>Base URL <input name="baseUrl" placeholder="https://api.deepseek.com/v1"></label>
     <label>Model <input name="model" placeholder="deepseek-chat"></label>
     <label>API key <input name="apiKey" type="password" placeholder="Leave blank to keep the saved key" autocomplete="off"></label>
@@ -271,20 +332,20 @@
     <label class="check"><input name="clearKey" type="checkbox"> Delete the saved key</label>
     <label class="check"><input name="reviewWrites" type="checkbox"> Review every file write/delete before it runs</label>
     <div class="dialog-actions">
-      <button type="button" id="settings-cancel" class="quiet">Cancel</button>
+      <button type="button" id="settings-cancel" class="quiet" data-dialog-cancel>Cancel</button>
       <button value="save" class="primary">Save settings</button>
     </div>
   </form>
 </dialog>
 
-<dialog id="context-dialog" aria-label="Selected context">
+<dialog id="context-dialog" aria-labelledby="context-title" aria-describedby="context-desc">
   <form method="dialog" id="context-form">
     <div class="dialog-kicker">Focus</div>
-    <h2>Selected context</h2>
-    <p class="dialog-sub muted">Explicitly include these files in the agent's pinned context. Hidden test data is not listed here.</p>
+    <h2 id="context-title">Selected context</h2>
+    <p id="context-desc" class="dialog-sub muted">Explicitly include these files in the agent's pinned context. Hidden test data is not listed here.</p>
     <div id="context-list" class="context-list"></div>
     <div class="dialog-actions">
-      <button type="button" id="context-cancel" class="quiet">Cancel</button>
+      <button type="button" id="context-cancel" class="quiet" data-dialog-cancel>Cancel</button>
       <button value="apply" class="primary">Apply context</button>
     </div>
   </form>
@@ -301,7 +362,7 @@
       <span id="action-error" class="field-error" role="alert" hidden></span>
     </label>
     <div class="dialog-actions">
-      <button type="button" id="action-cancel" class="quiet">Cancel</button>
+      <button type="button" id="action-cancel" class="quiet" data-dialog-cancel>Cancel</button>
       <button type="submit" id="action-confirm" class="primary">Confirm</button>
     </div>
   </form>

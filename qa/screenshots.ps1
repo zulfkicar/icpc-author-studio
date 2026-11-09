@@ -130,6 +130,33 @@ try {
   Start-Sleep -Milliseconds 300
   Shot '08-rename-dialog.png'
   Eval 'document.getElementById("action-dialog").close(); true' | Out-Null
+
+  $shellShots = @{ 1440 = '09-shell-1440.png'; 1100 = '10-shell-1100.png'; 768 = '11-shell-768.png'; 320 = '12-shell-320.png' }
+  foreach ($width in @(1440, 1100, 768, 320)) {
+    $height = if ($width -le 480) { 800 } else { 900 }
+    Invoke-Cdp 'Emulation.setDeviceMetricsOverride' @{ width = $width; height = $height; deviceScaleFactor = 1; mobile = $false } | Out-Null
+    Start-Sleep -Milliseconds 350
+    Shot $shellShots[$width]
+  }
+  Eval @'
+(async () => {
+  document.getElementById('toggle-agent').click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return true;
+})()
+'@ | Out-Null
+  Shot '13-shell-320-agent.png'
+  Eval @'
+(async () => {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  document.getElementById('toggle-navigator').click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return true;
+})()
+'@ | Out-Null
+  Shot '14-shell-320-navigator.png'
+  Eval 'document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true' | Out-Null
 }
 finally {
   try { $ws.Dispose() } catch {}

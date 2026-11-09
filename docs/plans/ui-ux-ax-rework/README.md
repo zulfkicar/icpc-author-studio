@@ -1,7 +1,7 @@
 # UI/UX/AX rework — execution package
 
-Status: **Phase 0 complete; Phase 1 next**.
-Baseline: commit `b04e5d7` or later.
+Status: **Phase 0, Phase 0.5, Phase 1 and the Phase 3 run-panel slice complete; Phase 2 next**.
+Baseline: commit `03714a6` or later.
 Owner: workbench frontend + accessibility.
 Canonical design rationale: [`../../UI-UX-REDESIGN.md`](../../UI-UX-REDESIGN.md).
 Canonical state catalog: [`../../STATE-MACHINES.md`](../../STATE-MACHINES.md).

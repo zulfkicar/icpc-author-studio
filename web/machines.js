@@ -78,6 +78,124 @@
         open: { on: { CLOSE: "closed" } },
       },
     },
+    fileLoad: {
+      initial: "none",
+      states: {
+        none: { on: { LOAD: "loading" } },
+        loading: { on: { READY: "loaded", ERROR: "error" } },
+        loaded: { on: { LOAD: "loading", STALE: "stale", ERROR: "error", RESET: "none" } },
+        stale: { on: { LOAD: "loading", READY: "loaded", RESET: "none" } },
+        error: { on: { LOAD: "loading", RESET: "none" } },
+      },
+    },
+    chat: {
+      initial: "no-chat",
+      states: {
+        "no-chat": { on: { SELECT: "loading", NEW: "loading" } },
+        loading: { on: { LOAD: "loaded", ERROR: "error", RESET: "no-chat" } },
+        loaded: {
+          on: {
+            SELECT: "loading",
+            NEW: "loading",
+            RENAME: "loaded",
+            DELETE: "loading",
+            ERROR: "error",
+            RESET: "no-chat",
+          },
+        },
+        error: { on: { LOAD: "loading", SELECT: "loading", RESET: "no-chat" } },
+      },
+    },
+    verification: {
+      initial: "unverified",
+      states: {
+        unverified: { on: { VERIFY: "verifying" } },
+        verifying: { on: { PASS: "verified", FAIL: "failed" } },
+        verified: { on: { VERIFY: "verifying", STALE: "stale", RESET: "unverified" } },
+        failed: { on: { VERIFY: "verifying", RESET: "unverified" } },
+        stale: { on: { VERIFY: "verifying", RESET: "unverified" } },
+      },
+    },
+    changes: {
+      initial: "clean",
+      states: {
+        clean: { on: { CHANGE: "unreviewed" } },
+        unreviewed: {
+          on: { REVIEW: "reviewing", REVERT: "reverted", CHANGE: "unreviewed", CLEAR: "clean" },
+        },
+        reviewing: { on: { REVIEW: "reviewing", CONFLICT: "conflict", CLEAR: "clean" } },
+        reverted: { on: { CHANGE: "unreviewed", CLEAR: "clean" } },
+        conflict: { on: { CHANGE: "unreviewed", CLEAR: "clean" } },
+      },
+    },
+    mcp: {
+      initial: "disabled",
+      states: {
+        disabled: { on: { GRANT: "enabled" } },
+        enabled: {
+          on: { REVOKE: "disabled", SAVE: "saving", PROBE: "probing", EDIT: "dirty" },
+        },
+        dirty: { on: { SAVE: "saving", REVOKE: "disabled", EDIT: "dirty" } },
+        saving: { on: { SAVED: "enabled", ERROR: "error" } },
+        probing: { on: { SAVED: "enabled", ERROR: "error" } },
+        error: { on: { SAVE: "saving", REVOKE: "disabled", GRANT: "enabled" } },
+      },
+    },
+    settings: {
+      initial: "clean",
+      states: {
+        clean: { on: { EDIT: "dirty" } },
+        dirty: { on: { SAVE: "saving", RESET: "clean", EDIT: "dirty" } },
+        saving: { on: { SAVED: "saved", ERROR: "error" } },
+        saved: { on: { EDIT: "dirty", RESET: "clean" } },
+        error: { on: { EDIT: "dirty", SAVE: "saving", RESET: "clean" } },
+      },
+    },
+    mentions: {
+      initial: "hidden",
+      states: {
+        hidden: { on: { TRIGGER: "open" } },
+        open: { on: { FILTER: "filtered", PICK: "picked", CLOSE: "hidden" } },
+        filtered: { on: { FILTER: "filtered", PICK: "picked", CLOSE: "hidden" } },
+        picked: { on: { TRIGGER: "open", CLOSE: "hidden" } },
+      },
+    },
+    follow: {
+      initial: "following",
+      states: {
+        following: { on: { PAUSE: "paused" } },
+        paused: { on: { FOLLOW: "following" } },
+      },
+    },
+    tree: {
+      initial: "collapsed",
+      states: {
+        collapsed: { on: { TOGGLE: "expanded", SELECT: "selected" } },
+        expanded: { on: { TOGGLE: "collapsed", SELECT: "selected" } },
+        selected: {
+          on: { TOGGLE: "collapsed", SELECT: "selected", REFRESH: "collapsed" },
+        },
+      },
+    },
+    tests: {
+      initial: "empty",
+      states: {
+        empty: { on: { RUN: "running" } },
+        running: { on: { PASS: "pass", FAIL: "fail", RUN: "running" } },
+        pass: { on: { RUN: "running", SELECT: "pass" } },
+        fail: { on: { RUN: "running", SELECT: "fail" } },
+      },
+    },
+    restore: {
+      initial: "idle",
+      states: {
+        idle: { on: { ASK: "confirming" } },
+        confirming: { on: { RESTORE: "restoring", CLEAR: "idle" } },
+        restoring: { on: { DONE: "done", ERROR: "error" } },
+        done: { on: { ASK: "confirming", RESET: "idle" } },
+        error: { on: { ASK: "confirming", RESET: "idle" } },
+      },
+    },
   };
 
   const registry = {};
@@ -88,7 +206,8 @@
 
     function publish(previous, event) {
       if (typeof document !== "undefined" && document.body) {
-        document.body.setAttribute("data-state-" + id, state);
+        const attributeId = id.replace(/[A-Z]/g, (letter) => "-" + letter.toLowerCase());
+        document.body.setAttribute("data-state-" + attributeId, state);
       }
       const record = { state, previous, event, at: Date.now() };
       if (typeof window !== "undefined") {
