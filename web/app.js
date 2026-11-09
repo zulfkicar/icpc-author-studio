@@ -2563,6 +2563,15 @@ function actionDialog(options = {}) {
   });
 }
 
+$("action-cancel").addEventListener("click", () => {
+  $("action-dialog").close("cancel");
+});
+
+// Clicking the backdrop is a cancel gesture, matching native dialog expectations.
+$("action-dialog").addEventListener("click", (event) => {
+  if (event.target === $("action-dialog")) $("action-dialog").close("cancel");
+});
+
 $("action-form").addEventListener("submit", (event) => {
   event.preventDefault();
   if (!$("action-field").hidden) {

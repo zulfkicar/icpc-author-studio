@@ -98,6 +98,37 @@ try {
   results.dialogClosed = !dialog.open;
   results.dialogFocusReturned = document.activeElement === invoker;
 
+  const cancelPending = actionDialog({
+    kicker: 'QA',
+    title: 'Cancel check',
+    description: 'Cancel must close and resolve without applying.',
+    inputLabel: 'Value',
+    value: 'unchanged',
+  });
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  results.dialogCancelOpen = dialog.open;
+  document.getElementById('action-cancel').click();
+  results.dialogCancelValue = await cancelPending;
+  results.dialogCancelClosed = !dialog.open;
+
+  document.getElementById('new-problem').click();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  results.newDialogOpen = document.getElementById('new-dialog').open;
+  document.getElementById('new-cancel').click();
+  results.newDialogCancelClosed = !document.getElementById('new-dialog').open;
+
+  document.getElementById('settings-btn').click();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  results.settingsDialogOpen = document.getElementById('settings-dialog').open;
+  document.getElementById('settings-cancel').click();
+  results.settingsDialogCancelClosed = !document.getElementById('settings-dialog').open;
+
+  document.getElementById('context-btn').click();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  results.contextDialogOpen = document.getElementById('context-dialog').open;
+  document.getElementById('context-cancel').click();
+  results.contextDialogCancelClosed = !document.getElementById('context-dialog').open;
+
   const originalChat = state.chatId;
   const created = await api('/api/workspaces/sum-test/chats', { method: 'POST', body: {} });
   await loadChats(created.id);
@@ -131,6 +162,14 @@ try {
     dialogInputLabelled = $true
     dialogClosed = $true
     dialogFocusReturned = $true
+    dialogCancelOpen = $true
+    dialogCancelClosed = $true
+    newDialogOpen = $true
+    newDialogCancelClosed = $true
+    settingsDialogOpen = $true
+    settingsDialogCancelClosed = $true
+    contextDialogOpen = $true
+    contextDialogCancelClosed = $true
     chatRenamed = $true
     chatDeleted = $true
   }
@@ -139,6 +178,7 @@ try {
   }
   if ($report.scrollbarPx -le 0) { throw "chat scrollbar is not visible" }
   if ($report.dialogValue -ne 'New title') { throw "dialog did not return the edited value" }
+  if ($report.dialogCancelValue -ne $null) { throw "cancel should resolve to null for a prompt" }
   if (-not $report.machines -or $report.machines.turn -ne 'idle') { throw "state machine snapshot missing or turn is not idle" }
   if ($report.chatTitleButtons -lt 1) { throw "chat titles are not buttons" }
   Write-Output 'LAYOUT REGRESSION PASSED'
