@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ICPC Author Agent — Module cheat sheet</title>
+<style>
+  @page { size: A4 landscape; margin: 8mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: #1b1f24;
+    font-size: 8.2pt;
+    line-height: 1.28;
+  }
+  .sheet { width: 100%; }
+  h1 { font-size: 15pt; margin: 0 0 1mm; letter-spacing: -0.2px; }
+  .sub { font-size: 8.4pt; color: #4b5563; margin: 0 0 2.5mm; }
+  .flow {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 7.4pt;
+    background: #f3f6f8;
+    border: 1px solid #d8dee4;
+    border-radius: 2px;
+    padding: 1.6mm 2mm;
+    margin: 0 0 2.5mm;
+    white-space: pre-wrap;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 0 0 2.5mm; }
+  th, td { border: 1px solid #d8dee4; padding: 1.1mm 1.4mm; vertical-align: top; text-align: left; }
+  th { background: #eef2f5; font-size: 7.6pt; text-transform: uppercase; letter-spacing: 0.3px; }
+  td { font-size: 7.7pt; }
+  code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 7.2pt; background: #f6f8fa; padding: 0 0.6mm; border-radius: 1px; }
+  .cols { display: flex; gap: 3mm; }
+  .col { flex: 1; }
+  .box { border: 1px solid #d8dee4; border-radius: 2px; padding: 1.6mm 2mm; }
+  .box h2 { font-size: 8.4pt; margin: 0 0 1mm; text-transform: uppercase; letter-spacing: 0.3px; }
+  ul { margin: 0; padding-left: 4mm; }
+  li { margin: 0 0 0.7mm; }
+  .read { font-size: 7.4pt; color: #4b5563; }
+  .k { font-weight: 600; }
+  .footer { margin-top: 2mm; font-size: 7pt; color: #6b7280; border-top: 1px solid #d8dee4; padding-top: 1mm; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <h1>ICPC Author Agent — Module cheat sheet</h1>
+  <p class="sub">One page. What does what, who calls whom, and what proves it. The workspace is the source of truth; the verifier is the authority; the UI is an instrument.</p>
+
+  <div class="flow">Browser → server.py → graph_agent.py → agent.py → tools
+        → workspace.py (files) / verify.py (evidence)
+        → winutil.py → isolate_worker.py / executor_server.py
+        → export ZIP → DOMjudge 9.0.1</div>
+
+  <table>
+    <thead>
+      <tr><th>Layer</th><th>Module</th><th>What it does</th><th>Read it for</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>HTTP</td><td><code>server.py</code></td><td>Loopback server, routes, jobs, event polling, per-workspace locks</td><td><code>Handler</code>, <code>start_job</code>, <code>workspace_lock</code></td></tr>
+      <tr><td>UI</td><td><code>web/app.js</code></td><td>Five-region UI, editor, run panel, evidence, review, dialogs</td><td><code>app.js</code>, <code>dialogs.js</code>, <code>machines.js</code></td></tr>
+      <tr><td>Agent</td><td><code>graph_agent.py</code></td><td>LangGraph graph, middleware order, turn lifecycle, checkpoint repair</td><td><code>_graph</code>, <code>run_turn</code>, <code>_repair_checkpoint</code></td></tr>
+      <tr><td>Tools</td><td><code>agent.py</code></td><td>Tool implementations, path/command guards, secret-read blocks, system prompt</td><td><code>_dispatch</code>, <code>_clean_command</code>, <code>SYSTEM</code></td></tr>
+      <tr><td>Middleware</td><td><code>agent_middleware.py</code></td><td>Pinned context, conservative counter, hard trim, stream/refusal guards</td><td><code>PinnedContextMiddleware</code>, <code>ContextBudgetMiddleware</code></td></tr>
+      <tr><td>State</td><td><code>agent_state.py</code></td><td>Typed graph state</td><td><code>AuthorState</code>, <code>MAX_CONTEXT_FILES</code></td></tr>
+      <tr><td>Prompts</td><td><code>prompt_loader.py</code></td><td>Composes the system prompt</td><td><code>compose_system</code>, <code>mode_text</code></td></tr>
+      <tr><td>Skills</td><td><code>skill_registry.py</code></td><td>Curated CP skills, max two active</td><td><code>index_text</code>, <code>pinned_text</code></td></tr>
+      <tr><td>Settings</td><td><code>config.py</code></td><td>Provider settings, key storage, redaction</td><td><code>load</code>, <code>save</code>, <code>public</code></td></tr>
+      <tr><td>Workspace</td><td><code>workspace.py</code></td><td>Paths, scaffold, files, diffs, review, chats, plans, snapshots</td><td><code>resolve</code>, <code>write_text</code>, <code>changes</code>, <code>snapshot_hash</code></td></tr>
+      <tr><td>Package</td><td><code>package_model.py</code></td><td>Tests, validators, groups, interactive flag</td><td><code>load</code>, <code>group_errors</code></td></tr>
+      <tr><td>Verifier</td><td><code>verify.py</code></td><td>Structure, validator, references, negatives, limits, PDF, export</td><td><code>verify</code>, <code>measure_limits</code>, <code>export_package</code></td></tr>
+      <tr><td>Modes</td><td><code>verification_modes.py</code></td><td>Checker self-test, interactive harness</td><td><code>checker_selftest</code>, <code>interactive_selftest</code></td></tr>
+      <tr><td>Spec</td><td><code>icpc_spec.py</code></td><td>ICPC package format audit</td><td><code>audit</code></td></tr>
+      <tr><td>Scoring</td><td><code>scoring.py</code></td><td>Group points and dependencies</td><td><code>evaluate</code></td></tr>
+      <tr><td>Exec</td><td><code>winutil.py</code></td><td>Local process execution and remote executor client</td><td><code>run_captured</code>, <code>run_measured</code></td></tr>
+      <tr><td>Isolate</td><td><code>isolate_worker.py</code></td><td>Real Isolate 1.8.1 box lifecycle and limits</td><td><code>run_argv</code>, <code>_isolate_args</code></td></tr>
+      <tr><td>bwrap</td><td><code>executor_server.py</code></td><td>bwrap sandbox for LaTeX/PDF and fallback</td><td><code>run</code>, <code>isolate_run</code></td></tr>
+      <tr><td>Quick run</td><td><code>judge0_adapter.py</code></td><td>Optional Judge0 backend; blocks secret tests</td><td><code>run_file</code>, <code>quick_run</code></td></tr>
+      <tr><td>MCP</td><td><code>mcp_server.py</code></td><td>Scoped MCP server and per-tool consent</td><td><code>call</code>, <code>handle</code>, <code>allowed</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="cols">
+    <div class="col box">
+      <h2>What proves what</h2>
+      <ul>
+        <li><span class="k">Structure:</span> <code>verify._structure</code> + 16 report checks</li>
+        <li><span class="k">Validator:</span> <code>verify.verify</code> — 6/6, exit 42</li>
+        <li><span class="k">Reference:</span> <code>verify.verify</code> — AC on every test</li>
+        <li><span class="k">Negative:</span> <code>verify.verify</code> — survivor check</li>
+        <li><span class="k">Limits:</span> <code>verify.measure_limits</code></li>
+        <li><span class="k">Statement:</span> <code>verify._statement</code> — <code>pdflatex</code> twice</li>
+        <li><span class="k">Spec:</span> <code>icpc_spec.audit</code> — 18/18</li>
+        <li><span class="k">Export:</span> <code>verify.export_package</code> — verified + unchanged + reviewed</li>
+        <li><span class="k">Import:</span> <code>qa/test_domjudge_import.ps1</code></li>
+        <li><span class="k">Judge:</span> <code>qa/test_domjudge_judging.ps1</code> — AC/WA/TLE</li>
+      </ul>
+    </div>
+    <div class="col box">
+      <h2>If asked, say this</h2>
+      <ul>
+        <li>“The model proposes; the verifier proves.”</li>
+        <li>“Export is verified, unchanged and reviewed — or it is disabled.”</li>
+        <li>“Secret tests go to the verifier, not to the provider.”</li>
+        <li>“Isolate is the authority; Judge0 is a convenience.”</li>
+        <li>“It is a hardened container, not a hypervisor.”</li>
+        <li>“The single-author loop is proven; multi-user hosting is not.”</li>
+      </ul>
+      <p class="read"><span class="k">Read in this order:</span> <code>verify.py</code> → <code>agent.py</code> → <code>graph_agent.py</code> → <code>workspace.py</code> → <code>isolate_worker.py</code>.</p>
+    </div>
+  </div>
+
+  <div class="footer">Full detail: <code>docs/TECHNICAL-DEEP-DIVE.md</code> · Demo runbook: <code>docs/DEMO.md</code> · Local workflow: <code>docs/USING.md</code></div>
+</div>
+</body>
+</html>

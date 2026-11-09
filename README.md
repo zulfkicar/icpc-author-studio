@@ -18,7 +18,9 @@ deterministic verifier passes.
 >
 > **Presenting:** [`docs/DEMO.md`](docs/DEMO.md) is the demo runbook;
 > [`docs/TECHNICAL-DEEP-DIVE.md`](docs/TECHNICAL-DEEP-DIVE.md) is the
-> architecture, decision log, coverage matrix and Q&A bank.
+> architecture, decision log, coverage matrix and Q&A bank. The one-page
+> [`docs/MODULE-CHEAT-SHEET.md`](docs/MODULE-CHEAT-SHEET.md) is the printable
+> what-does-what map.
 
 ## Run
 

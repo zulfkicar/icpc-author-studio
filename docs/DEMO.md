@@ -70,13 +70,15 @@ DOMjudge:   demo contest / sum-test-qa with AC, WA, TLE submissions
 known AC/WA/TLE set. The tests are idempotent for the problem import but add new
 submissions each run; that is fine for a demo.
 
-Then do these three checks:
+Then do these four checks:
 
 1. In the app, select **Sum Test**. The status pill should say **verified** and
    **Export** should be enabled.
 2. In DOMjudge, log in as `admin` **off-screen** and leave the tab on
    **Jury → Submissions** for contest `demo`. Do not project the password.
 3. Open `qa/screenshots/01-overview.png` in a second window as the fallback.
+4. Keep `docs/MODULE-CHEAT-SHEET.html` open in a second window for the
+   deep dive; it prints to one page.
 
 If `-PrepareData` fails, fix that before presenting. Do not debug in front of
 the audience.
