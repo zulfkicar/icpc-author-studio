@@ -12,6 +12,9 @@ deterministic verifier passes.
 > multi-user service. Read [`docs/READINESS.md`](docs/READINESS.md) before
 > sharing it with other authors. Each author should run their own local
 > instance; do not expose port 8787 or share `.author-agent/`.
+>
+> **Start here:** [`docs/USING.md`](docs/USING.md) is the complete local
+> authoring and DOMjudge workflow.
 
 ## Run
 
