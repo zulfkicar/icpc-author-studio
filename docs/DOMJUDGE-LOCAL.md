@@ -79,7 +79,7 @@ one and can validate the fix.
 powershell -NoProfile -ExecutionPolicy Bypass -File .\qa\test_domjudge_judging.ps1
 ```
 
-Actual result:
+Actual result from a clean `domjudge-down.ps1 -Reset` volume:
 
 ```json
 {
@@ -87,9 +87,9 @@ Actual result:
   "contest": "demo",
   "problem": "sum-test-qa",
   "team": "exteam",
-  "accepted": {"id": "13", "verdict": "AC", "maxRunTime": 0.002},
-  "wrongAnswer": {"id": "14", "verdict": "WA", "maxRunTime": 0.001},
-  "timeLimit": {"id": "15", "verdict": "TLE", "maxRunTime": 1.875}
+  "accepted": {"id": "1", "verdict": "AC", "maxRunTime": 0.001},
+  "wrongAnswer": {"id": "2", "verdict": "WA", "maxRunTime": 0.001},
+  "timeLimit": {"id": "3", "verdict": "TLE", "maxRunTime": 1.883}
 }
 ```
 
