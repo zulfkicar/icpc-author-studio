@@ -1,11 +1,10 @@
 # Workbench UI/UX/AX redesign
 
 Status: Phases 0.5 (dialog controller), 1 (five-region shell), 2 (Monaco,
-per-file tabs, Monaco diff, file-tree keyboard), 3 (run panel) and 4
-(evidence/review/state/AX) are implemented and gate-tested, except the manual
-screen-reader sign-off. The command palette and quick open are also done.
-Phase 5 polish (notifications, toast dedupe, onboarding, optional theme,
-performance budgets, final docs) remains. The four reported defects are fixed
+per-file tabs, Monaco diff, file-tree keyboard), 3 (run panel), 4
+(evidence/review/state/AX) and 5 (notifications, toast dedupe, onboarding,
+optional light theme, performance budgets) are implemented and gate-tested,
+except the manual screen-reader sign-off. The four reported defects are fixed
 and covered by a browser regression test; the full IDE rework is phased below.
 Companion documents: [`VISUAL-AUDIT.md`](VISUAL-AUDIT.md),
 [`STATE-MACHINES.md`](STATE-MACHINES.md),

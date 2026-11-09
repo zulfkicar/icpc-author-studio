@@ -15,6 +15,10 @@ summary without the command that produced it.
 | Every in-scope state machine has a transition test | `node qa/test_state_machines.mjs` → 18 machines; `phase4_evidence.ps1` browser assertions | pass |
 | Evidence/review tabs, stale banner, limits, review queue, export predicate | `phase4_evidence.ps1`, screenshots 03/17/18/19 | pass |
 | axe 0; AX tree has no unnamed controls | `accessibility_axe.ps1` `blocking=0`; `accessibility_tree.ps1` 0 empty names | pass |
+| Notification centre, long-job status, toast dedupe | `phase5_polish.ps1` | pass |
+| Onboarding tour and empty states | `phase5_polish.ps1` | pass |
+| Optional light theme with contrast gates | `accessibility_axe.ps1` `lightBlocking=0` | pass |
+| Performance budgets in CDP | `phase5_perf.ps1` (8 ms / 0.17 ms / 0.0141 / 2 ms) | pass |
 | Manual screen-reader checklist signed | `SCREEN-READER-CHECKLIST.md` | **manual / not signed** |
 | Verification timing budget guarded by a test | `test_verification_timing.py`; 834.1 s / 86 tests | pass |
 | Existing QA, CDP, soak and accessibility suites green | Phases 0.5/1/3 command lists below | pass |
@@ -425,14 +429,68 @@ Residual risks:
 
 ## Phase 5 — polish
 
-Date:
-Commit:
+Date: 2026-11-09
+Commit: phase commit (see `git log --oneline`)
+
 Commands:
-- `...` → `...`
+- `qa/phase5_polish.ps1` → `PHASE 5 POLISH TESTS PASSED`
+  - notifications: `opened=true`, `listCount=1`, `badgeText=1`,
+    `closed=true` (Escape + focus return), `clicked=true`
+  - long job: `activeRunning="running"`, `activeIdle="idle"`,
+    `activeText="No active job"`, `unreadBadge=1`, `cleared=true`
+  - toast dedupe: `toastCount=2`, `toastText="phase5 dedupe"` (text unchanged)
+  - theme: `lightTheme="light"`, `lightBg="#f5f7fb"`,
+    `lightLabel="Switch to dark theme"`, `persisted="light"`,
+    `darkTheme="dark"`, `darkBg="#0a0c10"`
+  - tour: `tourOpen=true`, `tourTitle="A five-region workbench"`,
+    `tourStep2=1`, `tourStep3=2`, `tourClosed=true`, `tourSeen=1`,
+    `tourEscape=true`
+  - empty state: `emptyState=true`, `emptyOpensNew=true`
+- `qa/phase5_perf.ps1` → `PHASE 5 PERFORMANCE BUDGETS PASSED`
+  - `editorWarmMs=8` (budget < 2000)
+  - `appendAvgMs=0.17` (budget < 16 ms/frame)
+  - `layoutShift=0.0141` (budget < 0.1)
+  - `runPanelShiftPx=0`
+  - `runOk=true`, `runMs=3353`
+  - `render1MbMs=2` (budget < 50 ms)
+- `qa/accessibility_axe.ps1` → dark `blocking=0`, light
+  `lightBlocking=0`; `AXE ACCESSIBILITY AUDIT PASSED`
+- `qa/layout_regression.ps1` → `LAYOUT REGRESSION PASSED`
+- `qa/accessibility_tree.ps1` → `ACCESSIBILITY TREE AUDIT PASSED`
+- `qa/cdp_workflow.ps1` → all prior checks pass
+- `qa/soak_cdp.ps1` → `CDP SOAK PASSED`
+- `qa/phase2_editor.ps1` → `PHASE 2 EDITOR TESTS PASSED`
+- `qa/phase4_evidence.ps1` → `PHASE 4 EVIDENCE/AX/STATE TESTS PASSED`
+- `node qa/test_state_machines.mjs` → `STATE MACHINE TESTS PASSED`
+- container: `UI CONTRACT TESTS PASSED`, `ACCESSIBILITY AUDIT PASSED`,
+  `SECURITY TESTS PASSED`, `ISOLATE WORKER TESTS PASSED`,
+  `TESTLIB FIXTURE TESTS PASSED`, `INTERACTIVE TESTS PASSED`,
+  `LIVE JUDGE0 TESTS PASSED`, `EXECUTOR LIMIT TESTS PASSED`,
+  `EXECUTOR SECURITY TESTS PASSED`, `JUDGE0 ADAPTER TESTS PASSED`,
+  `VERIFICATION TIMING TESTS PASSED`
+
 Screenshots:
-- `...`
+- `qa/screenshots/20-notifications.png` → notification centre open with an
+  active long job and a verification notification; unread badge
+- `qa/screenshots/21-tour.png` → first-run tour, step 1 of 3, Back/Close/Next
+- `qa/screenshots/22-light-theme.png` → optional light theme with readable
+  report, navigator and status bar
+
 Manual checks:
-- command palette → result
-- performance budgets → result
+- Notifications: bell opens the panel, Escape closes it and returns focus,
+  clicking an item opens its tab, Clear empties the list.
+- Toast dedupe: the same message twice increments `data-count` but does not
+  re-announce or duplicate the toast.
+- Tour: next/back/done, Escape, focus return, and `author-agent-tour-seen`.
+- Theme: toggle persists across reloads via `theme.js`; Monaco switches
+  between `vs` and `vs-dark`; axe passes in both themes.
+- Performance: all five budgets pass.
+
 Residual risks:
-- ...
+- **A-10 is still unsigned.** The manual screen-reader checklist is prepared in
+  `SCREEN-READER-CHECKLIST.md`; a human NVDA/VoiceOver session is the only
+  outstanding program item.
+- The light theme is optional and token-based; rare hard-coded accent surfaces
+  should be re-checked if new components are added.
+- C-5 (remove every legacy field) is partial: `fileBusy` remains a
+  compatibility guard around the run machine.

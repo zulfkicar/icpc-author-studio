@@ -1,6 +1,6 @@
 # UI/UX/AX rework — execution package
 
-Status: **Phase 0, Phase 0.5, Phase 1, Phase 2, Phase 3 and Phase 4 complete except the manual screen-reader sign-off; Phase 5 polish next (P-1/P-2 done)**.
+Status: **Phases 0-5 complete except the manual A-10 screen-reader sign-off.**
 Baseline: commit `03714a6` or later.
 Owner: workbench frontend + accessibility.
 Canonical design rationale: [`../../UI-UX-REDESIGN.md`](../../UI-UX-REDESIGN.md).

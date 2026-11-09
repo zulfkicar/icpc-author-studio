@@ -45,8 +45,9 @@ sign-off: grid/scroll/composer/run-panel fixes, one dialog controller, the
 five-region shell, Monaco with per-file tabs and fallback, file-tree keyboard
 semantics, native run backends, evidence/review tabs with the export predicate,
 18 wired and transition-tested state machines, the full keyboard map, the
-command palette and quick open. Phase 5 polish (notifications, toasts,
-onboarding, performance budgets, final docs) is the next slice.
+command palette and quick open, the notification centre and long-job status,
+toast dedupe, onboarding, the optional light theme and the CDP performance
+budgets. The only outstanding item is the manual A-10 screen-reader sign-off.
 
 Authoritative documents, read in this order before editing:
 1. docs/plans/ui-ux-ax-rework/00-CONSTITUTION.md

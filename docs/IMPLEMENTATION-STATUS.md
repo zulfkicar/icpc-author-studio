@@ -167,6 +167,14 @@ fallback:
 - **Command palette and quick open:** `Ctrl+Shift+P` and `Ctrl+K` open an
   accessible palette dialog with filtered commands/files, arrow navigation and
   Enter/Escape. Secret tests and `.ans` files are excluded from quick open.
+- **Phase 5 polish:** a notification centre with an unread badge, pinned
+  long-job status (`running → idle`, approval/failure/cancel details) and
+  click-through to the relevant tab; toast dedupe (`data-count`, no repeated
+  announcement); a three-step onboarding tour (first-run when there are no
+  workspaces, plus a permanent `?` button) and an empty-state New problem CTA;
+  an optional token-based light theme persisted by `theme.js` and applied to
+  Monaco; and CDP performance budgets (editor warm 8 ms, transcript append
+  0.17 ms, CLS 0.0141, 1 MB render 2 ms).
 - **Dialog controller (Phase 0.5):** `web/dialogs.js` owns open, Cancel,
   Escape, backdrop, focus return and an async dirty-form guard for all four
   dialogs. The settings form refuses to close with unsaved changes until the
@@ -336,4 +344,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File qa/cdp_workflow.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File qa/soak_cdp.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File qa/phase2_editor.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File qa/phase4_evidence.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File qa/phase5_polish.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File qa/phase5_perf.ps1
 ```

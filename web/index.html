@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ICPC Author Agent</title>
+<script src="/theme.js"></script>
 <link rel="stylesheet" href="/vendor/highlight-dark.min.css">
 <link rel="stylesheet" href="/style.css">
 <script defer src="/vendor/highlight.min.js"></script>
@@ -28,6 +29,9 @@
   <span class="spacer"></span>
   <button id="toggle-navigator" class="icon-btn drawer-toggle" aria-label="Toggle navigator" aria-controls="navigator" aria-expanded="false" title="Toggle navigator">&#9776;</button>
   <button id="toggle-agent" class="icon-btn drawer-toggle" aria-label="Toggle agent panel" aria-controls="agent-panel" aria-expanded="false" title="Toggle agent panel">&#9707;</button>
+  <button id="notifications-btn" class="icon-btn notification-btn" aria-label="Notifications" aria-controls="notifications-panel" aria-expanded="false" title="Notifications"><span aria-hidden="true">&#128276;</span><span id="notification-count" class="notification-count" hidden>0</span></button>
+  <button id="tour-btn" class="icon-btn" aria-label="Product tour" title="Product tour">?</button>
+  <button id="theme-btn" class="icon-btn" aria-label="Switch to light theme" title="Switch theme">&#9790;</button>
   <span id="status-pill" class="pill unverified">unverified</span>
   <div class="top-actions">
     <button id="answers-btn" class="quiet">Build answers</button>
@@ -37,6 +41,16 @@
     <button id="settings-btn" class="icon-btn" title="Provider settings" aria-label="Provider settings">&#9881;</button>
   </div>
 </header>
+
+<section id="notifications-panel" class="notifications-panel" hidden aria-label="Notifications">
+  <div class="notifications-head">
+    <span>Notifications</span>
+    <span id="notifications-active" class="notifications-active">No active job</span>
+    <button id="notifications-clear" class="quiet small">Clear</button>
+    <button id="notifications-close" class="icon-btn" aria-label="Close notifications">&#215;</button>
+  </div>
+  <div id="notifications-list" class="notifications-list" role="log" aria-live="polite"></div>
+</section>
 
 <main class="layout">
   <nav class="activity-rail" aria-label="Workspace sections">
@@ -273,6 +287,7 @@
     <span class="status-label">Executor</span><b id="status-executor">off</b>
   </span>
   <span class="spacer"></span>
+  <span class="status-item" id="status-job">idle</span>
   <span class="status-item" id="status-limits">limits not measured</span>
   <span class="status-item" id="status-language">text</span>
   <span class="status-item" id="status-cursor">Ln 1, Col 1</span>
@@ -356,6 +371,20 @@
     <div class="dialog-actions">
       <button type="button" id="context-cancel" class="quiet" data-dialog-cancel>Cancel</button>
       <button value="apply" class="primary">Apply context</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="tour-dialog" class="tour-dialog" aria-labelledby="tour-title" aria-describedby="tour-desc">
+  <form method="dialog" id="tour-form" novalidate>
+    <div class="dialog-kicker" id="tour-kicker">Welcome</div>
+    <h2 id="tour-title">A five-region workbench</h2>
+    <p id="tour-desc" class="dialog-sub muted"></p>
+    <div class="tour-body" id="tour-body"></div>
+    <div class="dialog-actions">
+      <button type="button" id="tour-back" class="quiet">Back</button>
+      <button type="button" id="tour-cancel" class="quiet" data-dialog-cancel>Close</button>
+      <button type="button" id="tour-next" class="primary">Next</button>
     </div>
   </form>
 </dialog>

@@ -233,9 +233,36 @@ try {
   }
   await refreshWorkspace();
   await selectWorkspace('sum-test');
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  notify('Verification finished', '86 tests · package verified', { tab: 'report' });
+  notifyJob('Agent turn');
+  document.getElementById('notifications-btn').click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
   return true;
 })()
 '@ | Out-Null
+  Shot '20-notifications.png'
+  Eval @'
+(async () => {
+  document.getElementById('notifications-close').click();
+  openTour();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  return true;
+})()
+'@ | Out-Null
+  Shot '21-tour.png'
+  Eval @'
+(async () => {
+  document.getElementById('tour-dialog').dispatchEvent(new Event('cancel', { cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  applyTheme('light');
+  switchTab('report');
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  return true;
+})()
+'@ | Out-Null
+  Shot '22-light-theme.png'
+  Eval 'applyTheme("dark"); true' | Out-Null
 }
 finally {
   try { $ws.Dispose() } catch {}

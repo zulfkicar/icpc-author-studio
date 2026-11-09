@@ -13,7 +13,7 @@ HTML = (ROOT / "web" / "index.html").read_text("utf-8")
 JS = (ROOT / "web" / "app.js").read_text("utf-8")
 CSS = (ROOT / "web" / "style.css").read_text("utf-8")
 
-DIALOGS = ["new-dialog", "settings-dialog", "context-dialog", "action-dialog", "palette-dialog"]
+DIALOGS = ["new-dialog", "settings-dialog", "context-dialog", "action-dialog", "palette-dialog", "tour-dialog"]
 NATIVE_DIALOG = re.compile(r"(?<![\w.$-])(?:window\.)?(prompt|confirm|alert)\s*\(")
 
 
@@ -57,6 +57,9 @@ def check_dialog_controller():
         check(f"{dialog} is described", 'aria-describedby' in block.group(0))
     check("dialog controller owns cancel", "requestClose" in (ROOT / "web" / "dialogs.js").read_text("utf-8"))
     check("quick open and command palette wired", "openPalette" in JS and 'key.toLowerCase() === "k"' in JS and 'key.toLowerCase() === "p"' in JS)
+    check("notification centre wired", "notifications-panel" in HTML and "toggleNotifications" in JS and "notifyJob" in JS)
+    check("theme toggle wired", "theme-btn" in HTML and "applyTheme" in JS and "/theme.js" in HTML)
+    check("onboarding tour wired", 'id="tour-dialog"' in HTML and "openTour" in JS and "TOUR_STEPS" in JS)
 
 
 def main():

@@ -31,6 +31,8 @@ wsl -e sh -c "cd /mnt/e/ICPC/author-agent && docker compose up -d --build author
 & 'C:\Projects\author-agent\qa\soak_cdp.ps1'
 & 'C:\Projects\author-agent\qa\phase2_editor.ps1'
 & 'C:\Projects\author-agent\qa\phase4_evidence.ps1'
+& 'C:\Projects\author-agent\qa\phase5_polish.ps1'
+& 'C:\Projects\author-agent\qa\phase5_perf.ps1'
 node 'C:\Projects\author-agent\qa\test_state_machines.mjs'
 ```
 
@@ -140,12 +142,14 @@ python -m py_compile isolate_worker.py server.py verify.py winutil.py
 
 | Gate | Check |
 |---|---|
-| Palette | opens, filters, executes |
-| Quick open | opens files |
-| Notifications | long job updates, dedupe |
-| Onboarding | first-run path |
-| Theme | optional; contrast in both |
-| Performance | budgets met |
+| Palette | `commandPaletteOpen=true`, filtered commands, Escape closes |
+| Quick open | `quickOpenOpen=true`, filtered files, Enter opens |
+| Notifications | panel opens/closes, long-job status `running → idle`, clear works |
+| Toast dedupe | two identical toasts → `data-count=2`, text unchanged |
+| Onboarding | tour steps advance, Done persists, Escape returns focus |
+| Empty state | `[data-empty-new]` opens the new-problem dialog |
+| Theme | light `--bg=#f5f7fb`, persisted, dark restores; axe `lightBlocking=0` |
+| Performance | editor <2 s, append <16 ms, CLS <0.1, 1 MB render <50 ms |
 
 ## 4. Browser test matrix
 

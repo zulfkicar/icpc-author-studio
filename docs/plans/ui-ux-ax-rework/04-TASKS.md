@@ -4,7 +4,7 @@ Dependency-ordered work. `[P]` means it can run in parallel with other `[P]`
 tasks in the same phase. Every task has an acceptance check; “implemented” without
 the check is not done.
 
-Status: Phase 0, Phase 0.5, Phase 1, Phase 2, Phase 3 and Phase 4 (except the manual A-10 screen-reader sign-off) are complete. P-1/P-2 are also done; Phase 5 polish remains.
+Status: Phases 0-5 are complete except the manual A-10 screen-reader sign-off (checklist prepared, not signed).
 
 ## Conventions
 
@@ -306,21 +306,21 @@ Status: Phase 0, Phase 0.5, Phase 1, Phase 2, Phase 3 and Phase 4 (except the ma
 
 - [x] **P-1** Command palette.
 - [x] **P-2** Quick open.
-- [ ] **P-3** Notification centre / long-job status.
-- [ ] **P-4** Toast dedupe.
-- [ ] **P-5** First-run tour / empty states.
-- [ ] **P-6** Optional light theme with contrast gates.
-- [ ] **P-7** Performance budgets in CDP.
-- [ ] **P-8** Final documentation and evidence.
+- [x] **P-3** Notification centre / long-job status.
+- [x] **P-4** Toast dedupe.
+- [x] **P-5** First-run tour / empty states.
+- [x] **P-6** Optional light theme with contrast gates.
+- [x] **P-7** Performance budgets in CDP.
+- [x] **P-8** Final documentation and evidence.
 
 ## Continuous tasks
 
-- [ ] **C-1** Keep `EVIDENCE.md` current.
-- [ ] **C-2** Update `IMPLEMENTATION-STATUS.md` every phase.
-- [ ] **C-3** Keep `layout_regression` and `cdp_workflow` in sync.
-- [ ] **C-4** Run the full gate set before each PR.
+- [x] **C-1** Keep `EVIDENCE.md` current.
+- [x] **C-2** Update `IMPLEMENTATION-STATUS.md` every phase.
+- [x] **C-3** Keep `layout_regression` and `cdp_workflow` in sync.
+- [x] **C-4** Run the full gate set before each PR.
 - [ ] **C-5** Remove dead fields after each machine migration.
-- [ ] **C-6** Re-run the eval/verifier timing guard after backend changes.
+- [x] **C-6** Re-run the eval/verifier timing guard after backend changes.
 
 ## Dependency graph
 

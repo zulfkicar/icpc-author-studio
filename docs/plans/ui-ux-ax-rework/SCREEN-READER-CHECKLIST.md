@@ -4,6 +4,19 @@ Automated gates already cover axe (0 serious/critical), the AX tree (no unnamed
 controls), tab order, dialog labels and live regions. A human screen-reader pass
 is still required; this file is the sign-off record.
 
+## How to run the session
+
+1. Start the stack and open `http://127.0.0.1:8787/` at 1440×900.
+2. Run one desktop pass with NVDA on Windows or VoiceOver on macOS.
+3. Use the browser's normal Tab/arrow/Enter/Escape keys only; do not use a
+   mouse except to note a mouse-only control.
+4. Walk the sections below in order. Record the exact announcement when
+   something is wrong.
+5. Run a second quick pass with `?editor=textarea` to confirm the fallback is
+   labelled and editable.
+6. Fill the result block, commit this file with the date/tester, and note the
+   commit in `EVIDENCE.md` (A-10).
+
 Environment:
 
 - OS:

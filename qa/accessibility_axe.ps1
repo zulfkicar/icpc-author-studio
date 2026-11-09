@@ -79,6 +79,23 @@ try {
   if (-not $kb.openInside -or -not $kb.closed -or -not $kb.focusReturned) {
     throw ("keyboard/dialog audit failed: " + $keyboard)
   }
+
+  # Optional light theme: reload with the saved preference and run the same
+  # WCAG audit, so contrast is a gate in both themes.
+  Eval 'localStorage.setItem("author-agent-theme", "light"); true' | Out-Null
+  Invoke-Cdp 'Page.navigate' @{ url = 'http://127.0.0.1:8787/' } | Out-Null
+  Start-Sleep -Seconds 3
+  $lightTheme = Eval 'document.documentElement.dataset.theme'
+  if ($lightTheme -ne 'light') { throw ("light theme did not apply: " + $lightTheme) }
+  $lightAudit = Eval $expression
+  Write-Output ("light=" + $lightAudit)
+  $lightParsed = $lightAudit | ConvertFrom-Json
+  $lightBlocking = @($lightParsed.violations | Where-Object { $_.impact -eq 'critical' -or $_.impact -eq 'serious' })
+  Write-Output ("lightBlocking=" + $lightBlocking.Count)
+  if ($lightBlocking.Count -gt 0) {
+    throw ("light axe violations: " + ($lightBlocking | ConvertTo-Json -Compress))
+  }
+  Eval 'localStorage.setItem("author-agent-theme", "dark"); true' | Out-Null
   Write-Output 'AXE ACCESSIBILITY AUDIT PASSED'
 }
 finally {

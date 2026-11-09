@@ -33,6 +33,10 @@ const state = {
   activeSide: "chats",
   activeActivity: "chats",
   showReverted: false,
+  notifications: [],
+  activeJob: null,
+  tourStep: 0,
+  theme: "dark",
   pendingMessage: null,
   pendingApproval: null,
   selectedContext: [],
@@ -63,12 +67,219 @@ const state = {
 
 // ---------- basics ----------
 
+let toastTimer = null;
+let lastToast = { key: "", at: 0, count: 0 };
+
 function toast(message, isError = false) {
   const el = $("toast");
+  const key = (isError ? "err:" : "ok:") + String(message);
+  const now = Date.now();
+  if (lastToast.key === key && now - lastToast.at < 1800) {
+    lastToast.at = now;
+    lastToast.count += 1;
+    el.dataset.count = String(lastToast.count);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = "toast"; }, 3600);
+    return;
+  }
+  lastToast = { key, at: now, count: 1 };
+  el.dataset.count = "1";
   el.textContent = message;
   el.className = "toast show" + (isError ? " err" : "");
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => { el.className = "toast"; }, 3600);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = "toast"; }, 3600);
+}
+
+// ---------- notifications ----------
+
+function renderNotifications() {
+  const host = $("notifications-list");
+  if (!host) return;
+  const active = state.activeJob || state.notifications.find((item) => item.active);
+  const activeLabel = active ? `${active.title}: ${active.detail}` : "No active job";
+  const activeEl = $("notifications-active");
+  if (activeEl) activeEl.textContent = activeLabel;
+  const jobEl = $("status-job");
+  if (jobEl) jobEl.textContent = active ? active.detail : "idle";
+  const unread = state.notifications.filter((item) => item.unread).length;
+  const badge = $("notification-count");
+  if (badge) {
+    badge.hidden = unread === 0;
+    badge.textContent = String(unread);
+  }
+  host.innerHTML = "";
+  if (!state.notifications.length) {
+    host.innerHTML = '<div class="notification-empty">No notifications yet. Long jobs and verification results appear here.</div>';
+    return;
+  }
+  for (const item of state.notifications) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "notification-item" + (item.unread ? " unread" : "");
+    const title = document.createElement("div");
+    title.className = "notification-title";
+    title.textContent = item.title;
+    const time = document.createElement("span");
+    time.className = "notification-time";
+    time.textContent = new Date(item.at || Date.now()).toTimeString().slice(0, 8);
+    title.appendChild(time);
+    const detail = document.createElement("div");
+    detail.className = "notification-detail";
+    detail.textContent = item.detail || "";
+    button.appendChild(title);
+    button.appendChild(detail);
+    button.addEventListener("click", () => {
+      item.unread = false;
+      renderNotifications();
+      toggleNotifications(false);
+      if (item.tab) switchTab(item.tab);
+    });
+    host.appendChild(button);
+  }
+}
+
+function notify(title, detail = "", options = {}) {
+  state.notifications.unshift({
+    id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title,
+    detail,
+    kind: options.kind || "info",
+    tab: options.tab || null,
+    at: Date.now(),
+    unread: true,
+    active: false,
+  });
+  state.notifications = state.notifications.slice(0, 50);
+  renderNotifications();
+}
+
+function notifyJob(title, tab = null) {
+  const item = {
+    id: `job-${Date.now()}`,
+    title,
+    detail: "running",
+    kind: "job",
+    tab,
+    at: Date.now(),
+    unread: false,
+    active: true,
+  };
+  state.notifications.unshift(item);
+  state.notifications = state.notifications.slice(0, 50);
+  state.activeJob = item;
+  renderNotifications();
+}
+
+function finishJobNotification(detail, kind = "info") {
+  const item = state.activeJob || state.notifications.find((entry) => entry.active);
+  if (!item) {
+    notify("Job finished", detail, { kind });
+    return;
+  }
+  item.active = false;
+  item.unread = true;
+  item.detail = detail;
+  item.kind = kind;
+  item.at = Date.now();
+  state.activeJob = null;
+  renderNotifications();
+}
+
+function toggleNotifications(open) {
+  const panel = $("notifications-panel");
+  const button = $("notifications-btn");
+  if (!panel || !button) return;
+  const next = open === undefined ? panel.hidden : Boolean(open);
+  panel.hidden = !next;
+  button.setAttribute("aria-expanded", next ? "true" : "false");
+  if (next) {
+    renderNotifications();
+    const target = panel.querySelector(".notification-item") || $("notifications-close");
+    if (target) target.focus();
+  } else if (panel.contains(document.activeElement)) {
+    button.focus();
+  }
+}
+
+function clearNotifications() {
+  state.notifications = [];
+  state.activeJob = null;
+  renderNotifications();
+}
+
+// ---------- theme ----------
+
+function applyTheme(theme, persist = true) {
+  const next = theme === "light" ? "light" : "dark";
+  state.theme = next;
+  document.documentElement.dataset.theme = next;
+  if (persist) localStorage.setItem("author-agent-theme", next);
+  const button = $("theme-btn");
+  if (button) {
+    button.textContent = next === "light" ? "\u2600" : "\u263e";
+    button.setAttribute("aria-label", next === "light" ? "Switch to dark theme" : "Switch to light theme");
+    button.title = next === "light" ? "Switch to dark theme" : "Switch to light theme";
+  }
+  if (state.monaco) {
+    state.monaco.monaco.editor.setTheme(next === "light" ? "vs" : "vs-dark");
+  }
+}
+
+// ---------- onboarding tour ----------
+
+const TOUR_STEPS = [
+  {
+    kicker: "Welcome",
+    title: "A five-region workbench",
+    body: "<p>The shell keeps each job in one place.</p><ol><li><b>Activity rail</b> — conversations, files, review, run, evidence, history.</li><li><b>Navigator</b> — the active workspace section.</li><li><b>Editor group</b> — tabs, Monaco, diff and the run panel.</li><li><b>Agent panel</b> — the conversation and composer.</li><li><b>Status bar</b> — backends, limits, cursor and verification.</li></ol>",
+  },
+  {
+    kicker: "Author",
+    title: "Ask, watch, edit",
+    body: "<p>Describe the idea in the composer. The agent writes files, runs code and explains every change.</p><ul><li>Open files with the tree or <b>Ctrl+K</b>.</li><li>Dirty tabs ask before they close.</li><li><b>Ctrl+Enter</b> sends; <b>Ctrl+S</b> saves.</li></ul>",
+  },
+  {
+    kicker: "Ship",
+    title: "Verify, review, export",
+    body: "<p>The deterministic verifier gates export.</p><ol><li>Measure limits.</li><li>Verify the package.</li><li>Review every change.</li><li>Export only when verified, not stale and fully reviewed.</li></ol><p>Quick runs are never verification.</p>",
+  },
+];
+
+function renderTour() {
+  const step = TOUR_STEPS[state.tourStep] || TOUR_STEPS[0];
+  $("tour-kicker").textContent = step.kicker;
+  $("tour-title").textContent = step.title;
+  $("tour-desc").textContent = "";
+  $("tour-body").innerHTML = `${step.body}<div class="tour-steps" aria-label="Tour progress">${TOUR_STEPS.map((_, index) => `<span class="tour-step${index === state.tourStep ? " active" : ""}"></span>`).join("")}</div>`;
+  $("tour-back").hidden = state.tourStep === 0;
+  $("tour-next").textContent = state.tourStep === TOUR_STEPS.length - 1 ? "Done" : "Next";
+}
+
+function openTour() {
+  if (window.AuthorDialogs.topOpen()) return;
+  state.tourStep = 0;
+  renderTour();
+  const active = document.activeElement;
+  const invoker = active && active instanceof HTMLElement && !["BODY", "HTML"].includes(active.tagName)
+    ? active
+    : $("tour-btn");
+  window.AuthorDialogs.open("tour-dialog", { focus: "#tour-next", invoker });
+}
+
+function tourNext() {
+  if (state.tourStep < TOUR_STEPS.length - 1) {
+    state.tourStep += 1;
+    renderTour();
+    return;
+  }
+  window.AuthorDialogs.submit("tour-dialog", "done");
+}
+
+function tourBack() {
+  if (state.tourStep > 0) {
+    state.tourStep -= 1;
+    renderTour();
+  }
 }
 
 function setConnection(online) {
@@ -1559,7 +1770,7 @@ async function ensureMonacoEditor() {
   const editor = monaco.editor.create(host, {
     value: "",
     language: "plaintext",
-    theme: "vs-dark",
+    theme: state.theme === "light" ? "vs" : "vs-dark",
     automaticLayout: true,
     minimap: { enabled: false },
     fontSize: 12,
@@ -2394,7 +2605,7 @@ async function toggleDiffMode() {
     host.hidden = false;
     if (!bundle.diffEditor) {
       bundle.diffEditor = monaco.editor.createDiffEditor(host, {
-        theme: "vs-dark",
+        theme: state.theme === "light" ? "vs" : "vs-dark",
         automaticLayout: true,
         readOnly: true,
         renderSideBySide: true,
@@ -2744,7 +2955,9 @@ async function loadConversation() {
   state.plan = { steps: [] };
   if (!state.slug || !state.chatId) {
     machineSet("chat", "no-chat", "no conversation");
-    host.innerHTML = '<div class="empty"><h2>No conversation</h2><p>Create a chat to begin.</p></div>';
+    host.innerHTML = '<div class="empty"><h2>No conversation</h2><p>Create a chat to begin.</p><button class="primary" type="button" data-empty-chat>New chat</button></div>';
+    const emptyChat = host.querySelector("[data-empty-chat]");
+    if (emptyChat) emptyChat.addEventListener("click", newChat);
     renderChatList();
     renderPlan();
     return;
@@ -3135,7 +3348,9 @@ async function selectWorkspace(slug) {
     document.querySelector(".problem-name").textContent = "No problem";
     document.querySelector(".problem-sub").textContent = "Create a workspace to begin";
     setStatus("unverified");
-    $("messages").innerHTML = '<div class="empty"><h2>No problem selected</h2><p>Create a workspace to begin.</p></div>';
+    $("messages").innerHTML = '<div class="empty"><h2>No problem selected</h2><p>Create a workspace to begin.</p><button class="primary" type="button" data-empty-new>New problem</button></div>';
+    const emptyNew = $("messages").querySelector("[data-empty-new]");
+    if (emptyNew) emptyNew.addEventListener("click", () => $("new-problem").click());
     renderPlan();
     renderChatList();
     return;
@@ -3175,6 +3390,9 @@ async function loadState(selectSlug) {
     select.value = slug || "";
     await selectWorkspace(slug || null);
     machineSend("session", "READY");
+    if (!data.workspaces.length && !localStorage.getItem("author-agent-tour-seen")) {
+      setTimeout(openTour, 500);
+    }
   } catch (error) {
     machineSend("session", "ERROR");
     toast(error.message, true);
@@ -3277,8 +3495,10 @@ function pollJob(jobId, onDone) {
         if (state.pendingApproval.length) {
           machineSend("approval", "ASK");
           machineSend("turn", "WAIT");
+          finishJobNotification("Needs approval", "warn");
         } else {
           machineSend("turn", "DONE");
+          finishJobNotification("Finished", "success");
         }
         $("agent-state").textContent = "";
         $("send-btn").disabled = true;
@@ -3294,6 +3514,7 @@ function pollJob(jobId, onDone) {
       state.jobChatId = null;
       machineSend("turn", "DONE");
       machineSend("approval", "CLEAR");
+      finishJobNotification(wasCancelled ? "Cancelled" : "Finished", wasCancelled ? "warn" : "success");
       await refreshWorkspace();
       await loadReport();
       await loadChats(state.chatId);
@@ -3311,6 +3532,7 @@ function pollJob(jobId, onDone) {
       state.jobChatId = null;
       machineSend("turn", "FAIL");
       machineSend("approval", "CLEAR");
+      finishJobNotification(`Failed: ${error.message}`, "error");
       toast(error.message, true);
     }
   };
@@ -3361,6 +3583,7 @@ async function sendMessage(override) {
     state.jobEvents = 0;
     machineSend("turn", "START");
     machineSend("approval", "CLEAR");
+    notifyJob("Agent turn");
     resetStreaming();
     $("send-btn").disabled = true;
     $("agent-state").textContent = "starting…";
@@ -3387,6 +3610,10 @@ async function runToolJob(kind, body) {
     state.jobEvents = 0;
     machineSend("turn", "START");
     if (kind === "verify") machineSend("verification", "VERIFY");
+    notifyJob(
+      kind === "verify" ? "Verification" : kind === "measure-limits" ? "Measure limits" : kind === "answers" ? "Build answers" : "Export",
+      kind === "verify" ? "report" : null
+    );
     $("send-btn").disabled = true;
     $("agent-state").textContent = kind === "verify" ? "verifying…"
       : kind === "answers" ? "building answers…"
@@ -4107,6 +4334,7 @@ async function resumeClarification(answers) {
     state.jobEvents = 0;
     machineSend("turn", "RESUME");
     machineSend("approval", "RESOLVE");
+    notifyJob("Resuming turn");
     $("send-btn").disabled = true;
     $("agent-state").textContent = "resuming\u2026";
     pollJob(job.id);
@@ -4132,6 +4360,7 @@ async function resumeApproval(decision) {
     state.jobEvents = 0;
     machineSend("turn", "RESUME");
     machineSend("approval", "RESOLVE");
+    notifyJob("Resuming turn");
     $("send-btn").disabled = true;
     $("agent-state").textContent = "resuming…";
     pollJob(job.id);
@@ -4374,6 +4603,13 @@ function registerDialogs() {
     cancelId: "palette-cancel",
     fallbackFocus: "#composer",
   });
+  window.AuthorDialogs.register("tour-dialog", {
+    cancelId: "tour-cancel",
+    fallbackFocus: "#tour-btn",
+    onClose: () => {
+      try { localStorage.setItem("author-agent-tour-seen", "1"); } catch { /* ignore */ }
+    },
+  });
 }
 
 function wire() {
@@ -4403,6 +4639,17 @@ function wire() {
   $("palette-form").addEventListener("submit", (event) => {
     event.preventDefault();
     runPalette();
+  });
+  $("notifications-btn").addEventListener("click", () => toggleNotifications());
+  $("notifications-close").addEventListener("click", () => toggleNotifications(false));
+  $("notifications-clear").addEventListener("click", clearNotifications);
+  $("theme-btn").addEventListener("click", () => applyTheme(state.theme === "light" ? "dark" : "light"));
+  $("tour-btn").addEventListener("click", openTour);
+  $("tour-back").addEventListener("click", tourBack);
+  $("tour-next").addEventListener("click", tourNext);
+  $("tour-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    tourNext();
   });
   $("refresh-tree").addEventListener("click", async () => { await refreshWorkspace(); toast("Refreshed"); });
   $("file-tree").addEventListener("keydown", handleTreeKeydown);
@@ -4509,6 +4756,11 @@ function wire() {
   drawerScrim().addEventListener("click", closeDrawers);
   document.addEventListener("keydown", (event) => {
     const mod = event.ctrlKey || event.metaKey;
+    if (event.key === "Escape" && !$("notifications-panel").hidden) {
+      event.preventDefault();
+      toggleNotifications(false);
+      return;
+    }
     if (mod && event.shiftKey && event.key.toLowerCase() === "p") {
       event.preventDefault();
       openPalette("commands");
@@ -4563,6 +4815,9 @@ function wire() {
   });
   document.addEventListener("click", (event) => {
     if (!event.target.closest("#mention-menu") && event.target.id !== "composer") hideMentions();
+    if (!event.target.closest("#notifications-panel") && !event.target.closest("#notifications-btn")) {
+      if (!$("notifications-panel").hidden) toggleNotifications(false);
+    }
   });
   window.addEventListener("beforeunload", (event) => {
     if (!state.dirty) return;
@@ -4576,6 +4831,8 @@ initSplitters();
 initEditorTabs();
 initTopbarMetrics();
 wire();
+applyTheme(document.documentElement.dataset.theme || "dark", false);
+renderNotifications();
 syncDrawers();
 window.addEventListener("resize", () => { syncDrawers(); });
 updateStatusBar();
