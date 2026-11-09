@@ -164,7 +164,10 @@ rename/delete/discard/restore flows use one accessible dialog. Screenshots and
 the audit are in [`docs/VISUAL-AUDIT.md`](docs/VISUAL-AUDIT.md). The state
 machine inventory is in [`docs/STATE-MACHINES.md`](docs/STATE-MACHINES.md) and
 the full Cline/VS Code/Judge0-informed IDE plan is in
-[`docs/UI-UX-REDESIGN.md`](docs/UI-UX-REDESIGN.md).
+[`docs/UI-UX-REDESIGN.md`](docs/UI-UX-REDESIGN.md). The executable execution
+package (constitution, spec, architecture, tasks, test plan, rollout, research
+and goal prompt) is in
+[`docs/plans/ui-ux-ax-rework/README.md`](docs/plans/ui-ux-ax-rework/README.md).
 
 ## Configure a provider
 

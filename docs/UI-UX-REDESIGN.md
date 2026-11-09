@@ -5,6 +5,8 @@ and covered by a browser regression test; the full IDE rework is phased below.
 Companion documents: [`VISUAL-AUDIT.md`](VISUAL-AUDIT.md),
 [`STATE-MACHINES.md`](STATE-MACHINES.md),
 [`IMPLEMENTATION-STATUS.md`](IMPLEMENTATION-STATUS.md).
+Execution package (constitution, spec, architecture, tasks, test plan,
+rollout, research, goal prompt): [`plans/ui-ux-ax-rework/README.md`](plans/ui-ux-ax-rework/README.md).
 
 ## 1. Executive decision
 
