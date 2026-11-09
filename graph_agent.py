@@ -34,7 +34,14 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command, interrupt
 
-from agent_middleware import ContextBudgetMiddleware, PinnedContextMiddleware, ProviderRefusalMiddleware, StreamIntegrityMiddleware, ToolErrorMiddleware
+from agent_middleware import (
+    ContextBudgetMiddleware,
+    PinnedContextMiddleware,
+    ProviderRefusalMiddleware,
+    StreamIntegrityMiddleware,
+    ToolErrorMiddleware,
+    conservative_token_count,
+)
 from agent_state import AuthorState, clean_brief, clean_decisions, clean_list
 import agent
 import config
@@ -942,6 +949,7 @@ def _graph(cfg: dict, saver):
                 model=model,
                 trigger=("tokens", int(cfg.get("summaryTriggerTokens", 500_000))),
                 keep=("messages", int(cfg.get("summaryKeepMessages", 24))),
+                token_counter=conservative_token_count,
             ),
             ContextBudgetMiddleware(
                 model_window_tokens=_context_window(cfg),

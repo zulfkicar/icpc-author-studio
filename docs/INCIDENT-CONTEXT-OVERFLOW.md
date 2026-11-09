@@ -67,6 +67,27 @@ messagesAfter=71, estimateAfter=31144
 maxMessageChars=10864
 ```
 
+Why autocompact did not run: `SummarizationMiddleware` was configured with the
+default `count_tokens_approximately` counter. It estimated the history at
+~341k tokens, below the 500k trigger, while the provider tokenizer counted
+~1.12M. The trigger now uses `conservative_token_count` (`max(approximate,
+chars/2)`), so the same checkpoint estimates 677k and summarization fires.
+
+Recovery turn on the exact failed chat after the fix:
+
+```text
+job=ebe938dd76ca state=done
+text=RECOVERED
+input_tokens=12634 (previously rejected at 1120042)
+messages=71 -> 31
+summaryPresent=true
+```
+
+The raw 1.3 MB tool result remains in the checkpoint as audit evidence, but it
+is truncated before every model call and is not sent to the provider. The UI
+tool card already bounds its display. A targeted transcript cleanup can remove
+it from the checkpoint if desired; it is not required for correctness.
+
 Synthetic and guard tests:
 
 ```text
@@ -87,6 +108,11 @@ result.text=OK
 usage={input_tokens:4341, output_tokens:3}
 conversation messages=2 (user + assistant OK)
 ```
+
+The same fix was then exercised against the exact failed `new-idea`
+conversation: the turn completed with `RECOVERED`, 12,634 input tokens and a
+visible assistant message. The checkpoint was summarized from 71 to 31
+messages (`summaryPresent=true`).
 
 ## Reset policy
 

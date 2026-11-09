@@ -49,6 +49,11 @@ def main() -> int:
         context_budget_tokens=500_000,
     )
     check("conservative estimate sees dense numeric data", middleware._estimate(messages) > 500_000, middleware._estimate(messages))
+    check(
+        "summarization trigger sees dense numeric data",
+        agent_middleware.conservative_token_count(messages) > 500_000,
+        agent_middleware.conservative_token_count(messages),
+    )
     system, trimmed = middleware._trimmed(FakeRequest(messages, SystemMessage(content="system")))
     check("trimmed estimate fits the context budget", middleware._estimate(([system] if system else []) + trimmed) <= 500_000)
     tools = [item for item in trimmed if isinstance(item, ToolMessage)]

@@ -36,6 +36,24 @@ MODE_INSTRUCTIONS = {
 }
 
 
+def conservative_token_count(messages) -> int:
+    """Token estimate that does not undercount dense numeric test data.
+
+    ``count_tokens_approximately`` is a chars/4 style estimate. A 1.3 MB file
+    of space-separated integers can be ~1.1M provider tokens while that counter
+    reports ~341k, so a 500k summarization trigger never fires. chars/2 is
+    deliberately conservative for normal prose and safely over-counts dense
+    numeric data.
+    """
+    materialized = list(messages or [])
+    try:
+        approximate = int(count_tokens_approximately(materialized))
+    except Exception:
+        approximate = 0
+    chars = sum(len(str(getattr(message, "content", ""))) for message in materialized)
+    return max(approximate, chars // 2)
+
+
 def _pinned_context(state: dict) -> str:
     slug = state.get("slug") or ""
     chat_id = state.get("chat_id") or ""
@@ -182,14 +200,7 @@ class ContextBudgetMiddleware(AgentMiddleware):
             return message
 
     def _estimate(self, messages) -> int:
-        try:
-            approximate = int(count_tokens_approximately(messages))
-        except Exception:
-            approximate = 0
-        chars = sum(len(self._text(message)) for message in messages)
-        # Conservative: provider tokenizers can be much denser than chars/4 for
-        # numeric data. chars/2 keeps a 2x safety margin for the normal case.
-        return max(approximate, chars // 2)
+        return conservative_token_count(messages)
 
     def _trimmed(self, request: ModelRequest):
         system = request.system_message
