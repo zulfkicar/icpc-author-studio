@@ -121,6 +121,9 @@ def _dispatch(slug: str, name: str, args: dict, emit) -> dict:
         rows = [row for row in workspace.tree(slug) if row["path"].startswith(prefix)]
         return {"path": rel, "entries": rows[:800], "count": len(rows)}
     if name == "read_file":
+        rel = str(args.get("path") or "").replace("\\", "/").lstrip("./")
+        if rel == "data/secret" or rel.startswith("data/secret/") or rel.lower().endswith(".ans"):
+            raise ValueError("The authoring agent may not read secret tests or answer files.")
         result = workspace.read_text(slug, args["path"])
         if result.get("text"):
             start = args.get("start_line")
@@ -136,6 +139,12 @@ def _dispatch(slug: str, name: str, args: dict, emit) -> dict:
                     raise ValueError("start_line must not exceed end_line")
                 result["content"] = "".join(lines[first - 1:last])
                 result["range"] = {"start": first, "end": last, "totalLines": len(lines)}
+            content = result.get("content") or ""
+            if len(content) > 200_000:
+                result["content"] = content[:200_000] + "\n...[truncated by the authoring agent]..."
+                result["truncated"] = True
+                result["totalChars"] = len(content)
+                result["hint"] = "Use start_line/end_line to read a smaller range."
         return result
     if name == "search_workspace":
         query = str(args.get("query") or "").strip()
@@ -150,6 +159,8 @@ def _dispatch(slug: str, name: str, args: dict, emit) -> dict:
         import fnmatch
         for row in workspace.tree(slug):
             if row["type"] != "file" or not row.get("text"):
+                continue
+            if row["path"].startswith("data/secret/") or row["path"].lower().endswith(".ans"):
                 continue
             if not fnmatch.fnmatch(row["path"], pattern):
                 continue

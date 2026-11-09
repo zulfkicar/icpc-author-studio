@@ -47,8 +47,12 @@ def main() -> int:
     check("small request gets full output", output == 393216, output)
 
     huge = ModelRequest(model=object(), messages=[HumanMessage(content="x" * 4_200_000)])
+    before = middleware._estimate(huge.messages)
+    _, huge_trimmed = middleware._trimmed(huge)
+    after = middleware._estimate(huge_trimmed)
+    check("huge request input is bounded", before > 500_000 and after <= 500_000, (before, after))
     _, output = middleware._budget(huge)
-    check("huge request clamps output", 1024 <= output < 393216, output)
+    check("huge request output stays within limits", 1024 <= output <= 393216, output)
 
     event = schemas.Event("run", 1, "now", "verify", "verify_package", status="passed", summary="ok")
     check("event schema", schemas.validate_event_dict(event.to_dict()), event.to_dict())

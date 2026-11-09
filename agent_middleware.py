@@ -126,12 +126,14 @@ class PinnedContextMiddleware(AgentMiddleware):
 
 
 class ContextBudgetMiddleware(AgentMiddleware):
-    """Reserve output tokens so the request never exceeds the model window.
+    """Keep every model call inside the context budget and model window.
 
-    The conversation budget is handled by SummarizationMiddleware. This layer is
-    the final guard: if estimated input plus the requested output would exceed
-    the provider window, it lowers max_tokens for that call. It records the
-    estimate on the request state for diagnostics when possible.
+    SummarizationMiddleware usually compacts older turns, but its approximate
+    token counter can undercount dense numeric data by 3x or more, and a single
+    huge tool result can survive the kept-message window. This middleware is the
+    final guard: it truncates oversized tool/message content, drops the oldest
+    complete messages until the conservative estimate fits, and then lowers
+    max_tokens so input plus output cannot exceed the provider window.
     """
 
     state_schema = AuthorState
@@ -143,20 +145,92 @@ class ContextBudgetMiddleware(AgentMiddleware):
         max_output_tokens: int = 393_216,
         reserve_tokens: int = 8192,
         min_output_tokens: int = 1024,
+        context_budget_tokens: int = 500_000,
+        max_tool_chars: int = 12_000,
+        max_message_chars: int = 60_000,
     ) -> None:
         self.model_window_tokens = max(1024, int(model_window_tokens))
         self.max_output_tokens = max(1, int(max_output_tokens))
         self.reserve_tokens = max(0, int(reserve_tokens))
         self.min_output_tokens = max(1, int(min_output_tokens))
+        self.context_budget_tokens = max(4096, int(context_budget_tokens))
+        self.max_tool_chars = max(1000, int(max_tool_chars))
+        self.max_message_chars = max(2000, int(max_message_chars))
+
+    @staticmethod
+    def _text(message) -> str:
+        content = getattr(message, "content", "")
+        return content if isinstance(content, str) else str(content)
+
+    def _truncate(self, message):
+        """Bound one message before counting it.
+
+        Numeric test data tokenizes far denser than chars/4 (a 1.3 MB file can
+        be ~1.1M provider tokens), so a token estimate alone is not safe.
+        """
+        text = self._text(message)
+        limit = self.max_tool_chars if isinstance(message, ToolMessage) else self.max_message_chars
+        if len(text) <= limit:
+            return message
+        head = text[: int(limit * 0.72)]
+        tail = text[-int(limit * 0.18):]
+        note = f"\n...[truncated {len(text) - len(head) - len(tail)} chars; request a line range for more]...\n"
+        content = head + note + tail
+        try:
+            return message.model_copy(update={"content": content})
+        except Exception:
+            return message
+
+    def _estimate(self, messages) -> int:
+        try:
+            approximate = int(count_tokens_approximately(messages))
+        except Exception:
+            approximate = 0
+        chars = sum(len(self._text(message)) for message in messages)
+        # Conservative: provider tokenizers can be much denser than chars/4 for
+        # numeric data. chars/2 keeps a 2x safety margin for the normal case.
+        return max(approximate, chars // 2)
+
+    def _trimmed(self, request: ModelRequest):
+        system = request.system_message
+        messages = [self._truncate(message) for message in (request.messages or [])]
+        if system is not None:
+            system = self._truncate(system)
+        budget = min(
+            self.context_budget_tokens,
+            max(1024, self.model_window_tokens - self.reserve_tokens - self.min_output_tokens),
+        )
+
+        def total() -> int:
+            return self._estimate(([system] if system is not None else []) + messages)
+
+        # Drop the oldest complete messages until the conservative estimate fits.
+        while len(messages) > 1 and total() > budget:
+            dropped = messages.pop(0)
+            if isinstance(dropped, AIMessage) and getattr(dropped, "tool_calls", None):
+                while messages and isinstance(messages[0], ToolMessage):
+                    messages.pop(0)
+        while messages and isinstance(messages[0], ToolMessage):
+            messages.pop(0)
+
+        # A single remaining message can still be too large. Cut it to the
+        # conservative char budget rather than sending a guaranteed 400.
+        if messages and total() > budget:
+            last = messages[-1]
+            text = self._text(last)
+            allowed = max(1000, min(len(text), budget))
+            if len(text) > allowed:
+                try:
+                    last = last.model_copy(update={"content": text[:allowed] + "\n...[truncated to fit the context budget]..."})
+                except Exception:
+                    pass
+                messages[-1] = last
+        return system, messages
 
     def _budget(self, request: ModelRequest) -> tuple[int, int]:
-        messages = list(request.messages or [])
-        if request.system_message is not None:
-            messages = [request.system_message, *messages]
-        try:
-            input_tokens = count_tokens_approximately(messages)
-        except Exception:
-            input_tokens = sum(len(str(getattr(item, "content", ""))) for item in messages) // 4
+        system, messages = self._trimmed(request)
+        all_messages = ([system] if system is not None else []) + messages
+        input_tokens = self._estimate(all_messages)
         available = self.model_window_tokens - int(input_tokens) - self.reserve_tokens
         output_tokens = min(self.max_output_tokens, max(self.min_output_tokens, available))
         settings = dict(request.model_settings or {})
@@ -166,10 +240,20 @@ class ContextBudgetMiddleware(AgentMiddleware):
         return int(input_tokens), int(output_tokens)
 
     def _override(self, request: ModelRequest) -> ModelRequest:
-        _, output_tokens = self._budget(request)
+        system, messages = self._trimmed(request)
+        all_messages = ([system] if system is not None else []) + messages
+        input_tokens = self._estimate(all_messages)
+        available = self.model_window_tokens - int(input_tokens) - self.reserve_tokens
+        output_tokens = min(self.max_output_tokens, max(self.min_output_tokens, available))
         settings = dict(request.model_settings or {})
+        existing = settings.get("max_tokens")
+        if isinstance(existing, (int, float)) and existing > 0:
+            output_tokens = min(output_tokens, int(existing))
         settings["max_tokens"] = output_tokens
-        return request.override(model_settings=settings)
+        overrides = {"messages": messages, "model_settings": settings}
+        if system is not None:
+            overrides["system_message"] = system
+        return request.override(**overrides)
 
     def wrap_model_call(self, request, handler):
         return handler(self._override(request))

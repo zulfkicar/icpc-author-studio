@@ -160,6 +160,9 @@ def read_file(
     state: Annotated[dict, InjectedState] = None,
 ) -> dict:
     """Read a UTF-8 text file, optionally a 1-based inclusive line range."""
+    rel = str(path or "").replace("\\", "/").lstrip("./")
+    if rel == "data/secret" or rel.startswith("data/secret/") or rel.lower().endswith(".ans"):
+        raise ValueError("The authoring agent may not read secret tests or answer files.")
     args = {"path": path}
     if start_line is not None:
         args["start_line"] = start_line
@@ -816,44 +819,75 @@ async def _run_turn_async(
             }
 
         final_text = ""
+        current_stream = ""
         rounds = 0
         usage = {}
-        async for event in graph.astream_events(input_state, config=thread_config, version="v2"):
-            if cancelled is not None and cancelled():
-                raise RuntimeError("Cancelled by user")
-            kind = event.get("event")
-            name = event.get("name") or ""
-            data = event.get("data") or {}
-            if kind == "on_chat_model_start":
-                rounds += 1
-                emit("thinking", {"round": rounds})
-            elif kind == "on_chat_model_stream":
-                chunk = data.get("chunk")
-                reasoning = _reasoning_of(chunk)
-                if reasoning:
-                    emit("reasoning_delta", {"text": reasoning})
-                text = _content_text(getattr(chunk, "content", ""))
-                if text:
-                    emit("assistant_delta", {"text": text})
-            elif kind == "on_chat_model_end":
-                message = data.get("output")
-                if isinstance(message, AIMessage):
-                    reasoning = _reasoning_of(message)
-                    text = _content_text(message.content)
+        try:
+            async for event in graph.astream_events(input_state, config=thread_config, version="v2"):
+                if cancelled is not None and cancelled():
+                    raise RuntimeError("Cancelled by user")
+                kind = event.get("event")
+                name = event.get("name") or ""
+                data = event.get("data") or {}
+                if kind == "on_chat_model_start":
+                    rounds += 1
+                    current_stream = ""
+                    emit("thinking", {"round": rounds})
+                elif kind == "on_chat_model_stream":
+                    chunk = data.get("chunk")
+                    reasoning = _reasoning_of(chunk)
                     if reasoning:
-                        emit("reasoning", {"text": reasoning})
+                        emit("reasoning_delta", {"text": reasoning})
+                    text = _content_text(getattr(chunk, "content", ""))
                     if text:
-                        final_text = text
-                        emit("assistant", {"text": text})
-                    _accumulate_usage(usage, message)
-            elif kind == "on_tool_start":
-                emit("tool_call", {"name": name, "args": data.get("input") or {}})
-            elif kind == "on_tool_end":
-                result = _result_of(data.get("output"))
-                emit("tool_result", {"name": name, "result": result})
-                _emit_tool_side_effects(name, result, emit)
-            elif kind == "on_tool_error":
-                emit("tool_result", {"name": name, "result": {"error": _content_text(data.get("error") or "Tool call failed")}})
+                        current_stream += text
+                        emit("assistant_delta", {"text": text})
+                elif kind == "on_chat_model_end":
+                    message = data.get("output")
+                    if isinstance(message, AIMessage):
+                        reasoning = _reasoning_of(message)
+                        text = _content_text(message.content)
+                        if reasoning:
+                            emit("reasoning", {"text": reasoning})
+                        if text:
+                            final_text = text
+                            emit("assistant", {"text": text})
+                        _accumulate_usage(usage, message)
+                elif kind == "on_tool_start":
+                    emit("tool_call", {"name": name, "args": data.get("input") or {}})
+                elif kind == "on_tool_end":
+                    result = _result_of(data.get("output"))
+                    emit("tool_result", {"name": name, "result": result})
+                    _emit_tool_side_effects(name, result, emit)
+                elif kind == "on_tool_error":
+                    emit("tool_result", {"name": name, "result": {"error": _content_text(data.get("error") or "Tool call failed")}})
+        except Exception as exc:  # noqa: BLE001 - persist the failure before re-raising
+            # A failed turn must not vanish from the visible transcript. Save the
+            # checkpoint state (which includes the user message) and append a
+            # clearly-labelled error/partial message.
+            try:
+                snapshot = await graph.aget_state(thread_config)
+                _save_snapshot(slug, chat_id, snapshot)
+            except Exception:
+                pass
+            try:
+                messages = workspace.get_chat(slug, chat_id).get("messages") or []
+                partial = current_stream.strip()
+                if partial:
+                    messages.append({
+                        "role": "assistant",
+                        "content": f"[Partial output before the turn failed]\n\n{partial[:20000]}",
+                    })
+                cancelled_turn = "cancel" in str(exc).lower()
+                label = "Turn cancelled" if cancelled_turn else f"Turn failed: {type(exc).__name__}: {exc}"
+                messages.append({
+                    "role": "assistant",
+                    "content": f"[{label}]\n\nNo successful output was committed. The conversation was preserved; retry, or start a new chat if the problem repeats.",
+                })
+                workspace.save_chat_messages(slug, chat_id, messages)
+            except Exception:
+                pass
+            raise
 
         snapshot = await graph.aget_state(thread_config)
         values = _save_snapshot(slug, chat_id, snapshot)
@@ -901,14 +935,18 @@ def _graph(cfg: dict, saver):
         system_prompt=prompt_loader.compose_system(),
         middleware=[
             PinnedContextMiddleware(),
-            ContextBudgetMiddleware(
-                model_window_tokens=_context_window(cfg),
-                max_output_tokens=int(cfg.get("maxOutputTokens", 393_216)),
-            ),
+            # Summarization gets first look at normal long histories; the hard
+            # ContextBudget guard then bounds dense tool output that the
+            # approximate token counter undercounts.
             SummarizationMiddleware(
                 model=model,
                 trigger=("tokens", int(cfg.get("summaryTriggerTokens", 500_000))),
                 keep=("messages", int(cfg.get("summaryKeepMessages", 24))),
+            ),
+            ContextBudgetMiddleware(
+                model_window_tokens=_context_window(cfg),
+                max_output_tokens=int(cfg.get("maxOutputTokens", 393_216)),
+                context_budget_tokens=int(cfg.get("contextBudgetTokens", 500_000)),
             ),
             TodoListMiddleware(),
             HumanInTheLoopMiddleware(interrupt_on=interrupt_on, interrupt_mode="per_call"),

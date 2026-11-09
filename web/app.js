@@ -3534,6 +3534,13 @@ function pollJob(jobId, onDone) {
       machineSend("approval", "CLEAR");
       finishJobNotification(`Failed: ${error.message}`, "error");
       toast(error.message, true);
+      try {
+        await refreshWorkspace();
+        if (state.chatId) {
+          await loadChats(state.chatId);
+          await loadConversation();
+        }
+      } catch { /* the server may be offline; the toast is still shown */ }
     }
   };
   state.pollTimer = setTimeout(tick, 400);

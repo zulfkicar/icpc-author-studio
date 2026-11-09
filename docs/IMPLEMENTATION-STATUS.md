@@ -28,6 +28,15 @@ Isolate backend: [`ISOLATE-BACKEND.md`](ISOLATE-BACKEND.md)
   instead of committing partial text.
 - Concurrent `load_skill` calls use a merge reducer, so parallel skill loads
   cannot corrupt graph state.
+- **Context-overflow recovery:** `ContextBudgetMiddleware` now applies a
+  conservative token estimate, truncates oversized tool results, drops oldest
+  complete messages and clamps output to the provider window; summarization
+  runs first for normal long histories. `read_file` blocks `data/secret/**` and
+  `**/*.ans` and caps large reads at 200k chars. Failed/cancelled turns persist
+  the checkpoint plus a visible error/partial message. The exact failed
+  `new-idea` checkpoint compacts from 677,334 to 31,144 estimated tokens and a
+  real provider turn now completes and saves `OK`. See
+  [`INCIDENT-CONTEXT-OVERFLOW.md`](INCIDENT-CONTEXT-OVERFLOW.md).
 
 ### Prompting, skills and clarification
 
@@ -336,6 +345,8 @@ node --check web/app.js
 node --check web/dialogs.js
 node --check web/machines.js
 node qa/test_state_machines.mjs
+python qa/test_context_budget.py
+python qa/test_context_500k.py
 python qa/test_verification_timing.py
 powershell -NoProfile -ExecutionPolicy Bypass -File qa/layout_regression.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File qa/accessibility_axe.ps1
