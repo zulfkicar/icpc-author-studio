@@ -63,6 +63,14 @@ Isolate backend: [`ISOLATE-BACKEND.md`](ISOLATE-BACKEND.md)
   `docker-compose.judge0.yml`. The app calls it at
   `/api/workspaces/<slug>/judge0/run`; the Run panel has a **Judge0** button.
   See [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md).
+- **Local DOMjudge 9.0.1 import:** pinned `domjudge/domserver:9.0.1` +
+  `mariadb:11.4` stack (`docker-compose.domjudge.yml`), with
+  `scripts/domjudge-up.ps1` / `domjudge-down.ps1`. `qa/test_domjudge_import.ps1`
+  exports the verified `sum-test` package, imports it through the DOMjudge API,
+  and verifies the problem: HTTP 200, `sum-test-qa`, 6 test cases, statement
+  `D.pdf`, no danger, no CRLF `.ans` warnings. See
+  [`DOMJUDGE-LOCAL.md`](DOMJUDGE-LOCAL.md). A judgehost/submission-judging loop
+  is not yet tested.
 - **Native run panel:** backend selector (Local/Isolate/Judge0), per-file
   stdin and backend persistence, stdin/stdout/stderr/compile/result tabs,
   status/time/memory text, last-10 history, abort-on-file-change and a visible
@@ -302,8 +310,10 @@ sum:   verified, 29 tests, 3 negatives, 1,325,603 input tokens
 - **True hypervisor VM:** unavailable in this environment. The executor is a
   hardened container plus a bwrap mount namespace, not a separate VM. This is a
   documented platform limitation, not a claim otherwise.
-- **Live DOMjudge:** intentionally not tested; no instance exists. Package
-  compatibility and a DOMjudge metadata adapter are implemented.
+- **Live DOMjudge:** import is now tested against a local DOMjudge 9.0.1
+  instance. Submission judging is not tested because the local stack does not
+  include a judgehost. Package compatibility and a DOMjudge metadata adapter
+  are implemented.
 - **Judge0 cgroup version:** Judge0 CE 1.13.1 targets cgroup v1. The adapter
   enables Isolate's rlimit path so it works on this cgroup v2 host; a future
   Judge0 release with cgroup v2 support would remove that workaround.
@@ -350,6 +360,7 @@ node qa/test_state_machines.mjs
 python qa/test_context_budget.py
 python qa/test_context_500k.py
 python qa/test_verification_timing.py
+powershell -NoProfile -ExecutionPolicy Bypass -File qa/test_domjudge_import.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File qa/layout_regression.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File qa/accessibility_axe.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File qa/accessibility_tree.ps1

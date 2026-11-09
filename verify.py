@@ -800,12 +800,23 @@ def export_package(slug: str) -> dict:
         "input_validators", "input_format_validators", "output_validators", "output_validator",
         "test_group.yaml", "testdata.yaml", "include", "generators",
     ]
+    def zip_payload(path: pathlib.Path) -> bytes:
+        """Normalize text test data to LF so DOMjudge import is warning-free."""
+        data = path.read_bytes()
+        if path.suffix.lower() in (".in", ".ans", ".out", ".interaction", ".py"):
+            data = data.replace(b"\r\n", b"\n")
+        return data
+
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
         for name in include_roots:
             path = root / name
             if path.is_file():
-                zf.write(path, name)
-                manifest["files"][name] = hashlib.sha256(path.read_bytes()).hexdigest()
+                data = zip_payload(path)
+                info = zipfile.ZipInfo(name, time.localtime()[:6])
+                info.external_attr = (path.stat().st_mode & 0xFFFF) << 16
+                info.compress_type = zipfile.ZIP_DEFLATED
+                zf.writestr(info, data)
+                manifest["files"][name] = hashlib.sha256(data).hexdigest()
             elif path.is_dir():
                 for item in sorted(path.rglob("*")):
                     if item.is_dir() or item.name == ".keep" or "__pycache__" in item.parts:
@@ -813,12 +824,17 @@ def export_package(slug: str) -> dict:
                     if item.suffix.lower() in (".aux", ".log", ".out", ".toc", ".synctex", ".gz", ".tmp"):
                         continue
                     rel = item.relative_to(root).as_posix()
-                    zf.write(item, rel)
-                    manifest["files"][rel] = hashlib.sha256(item.read_bytes()).hexdigest()
+                    data = zip_payload(item)
+                    info = zipfile.ZipInfo(rel, time.localtime()[:6])
+                    info.external_attr = (item.stat().st_mode & 0xFFFF) << 16
+                    info.compress_type = zipfile.ZIP_DEFLATED
+                    zf.writestr(info, data)
+                    manifest["files"][rel] = hashlib.sha256(data).hexdigest()
         validate = _validator(slug)
         validate_path = validate.path if validate is not None else None
         if validate_path is not None and validate_path.suffix.lower() == ".py" and "input_validators/validate" not in manifest["files"]:
             data = validate_path.read_bytes()
+            data = data.replace(b"\r\n", b"\n")
             if not data.startswith(b"#!"):
                 data = b"#!/usr/bin/env python3\n" + data
             info = zipfile.ZipInfo("input_validators/validate", time.localtime()[:6])

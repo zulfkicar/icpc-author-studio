@@ -39,7 +39,8 @@ capable local beta, not a production service.
 | Manual screen-reader session | `SCREEN-READER-CHECKLIST.md` | **not tested** | Human NVDA/VoiceOver pass still unsigned |
 | Shared-host auth / multi-user isolation | — | **not implemented** | Single-user loopback app |
 | Public/LAN exposure security review | — | **not tested** | No auth, CSRF token, TLS or per-user root |
-| Live DOMjudge import/export | — | **not tested** | No instance; package adapter only |
+| Local DOMjudge import | `qa/test_domjudge_import.ps1` → HTTP 200, `sum-test-qa`, 6 tests, statement, no danger, no CRLF | pass | DOMjudge 9.0.1 + MariaDB 11.4 |
+| DOMjudge submission judging | — | **not tested** | No judgehost yet |
 | True hypervisor VM isolation | — | **not tested** | Hardened containers + Isolate/bwrap |
 | CI green on GitHub | `.github/workflows/checks.yml` | **not observed here** | Static/Python gates defined; browser gates are local |
 | Battle-tested by independent authors | — | **not met** | This is the main release gap |
@@ -55,6 +56,8 @@ capable local beta, not a production service.
   tabs, a command palette, notifications, onboarding and a light theme.
 - Context recovery: the exact 1.12M-token failure now completes at 12.6k input
   tokens with a visible saved answer.
+- A verified package imports into a real local DOMjudge 9.0.1 instance with
+  HTTP 200, 6 test cases, a statement and no CRLF warnings.
 - Provider, chaos, security, snapshot, MCP, group-scoring, ICPC-spec and UI
   contract tests.
 
@@ -64,7 +67,8 @@ capable local beta, not a production service.
   packages.
 - Long sessions and restarts while jobs are active.
 - Provider outages, rate limits, malformed tool output and disk-full recovery.
-- A real DOMjudge round-trip.
+- A real DOMjudge judging round-trip (submission → judgehost → verdict), beyond
+  the import test.
 - A security review of the local HTTP surface, workspace boundaries and
   provider-key handling.
 - Backup/restore and upgrade rehearsals.
@@ -127,6 +131,9 @@ That work is not in this codebase.
   `scripts/docker-down.ps1`.
 - **In-memory jobs:** restarting `author-agent` loses running jobs. Avoid
   restarts while a turn or verification is active.
+- **DOMjudge:** the local stack proves import only. It has no judgehost, so it
+  cannot yet judge a submission end-to-end. See
+  [`DOMJUDGE-LOCAL.md`](DOMJUDGE-LOCAL.md).
 - **Verifier timing:** 834.1 s for 86 tests, under the 900 s budget but close.
 - **Judge0:** CE 1.13.1 targets cgroup v1; the adapter uses Isolate rlimits on
   this cgroup v2 host.

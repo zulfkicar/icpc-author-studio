@@ -1,0 +1,50 @@
+name: icpc-domjudge
+
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: icpc-domjudge-db
+    hostname: mariadb
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: domjudge
+      MYSQL_USER: domjudge
+      MYSQL_PASSWORD: djpw
+      MYSQL_DATABASE: domjudge
+    command: --max-connections=1000 --max-allowed-packet=512M --innodb_snapshot_isolation=OFF
+    volumes:
+      - icpc-domjudge-db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+    networks:
+      - domjudge
+
+  domserver:
+    image: domjudge/domserver:9.0.1
+    container_name: icpc-domjudge-server
+    hostname: domserver
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      MYSQL_ROOT_PASSWORD: domjudge
+      MYSQL_USER: domjudge
+      MYSQL_PASSWORD: djpw
+      MYSQL_DATABASE: domjudge
+      MYSQL_HOST: mariadb
+      CONTAINER_TIMEZONE: UTC
+    ports:
+      - "127.0.0.1:18080:80"
+    networks:
+      - domjudge
+
+volumes:
+  icpc-domjudge-db:
+
+networks:
+  domjudge:
+    driver: bridge

@@ -148,6 +148,22 @@ The app then exposes a **Judge0** button in the Run panel. Judge0 is **not** a
 second verification authority; see
 [`docs/JUDGE0-EVALUATION.md`](docs/JUDGE0-EVALUATION.md).
 
+### Local DOMjudge import
+
+A pinned local DOMjudge 9.0.1 + MariaDB stack is provided for import testing:
+
+```powershell
+.\scripts\domjudge-up.ps1
+# http://127.0.0.1:18080/  (admin password is printed)
+powershell -NoProfile -ExecutionPolicy Bypass -File .\qa\test_domjudge_import.ps1
+.\scripts\domjudge-down.ps1
+```
+
+The test exports the verified `sum-test` package, imports it into the local
+`demo` contest and verifies the problem, test count and statement through the
+DOMjudge API. It currently proves **import**, not judging submissions. See
+[`docs/DOMJUDGE-LOCAL.md`](docs/DOMJUDGE-LOCAL.md).
+
 For a literal separate VM, run the executor on that VM and point the app at it
 with `AUTHOR_AGENT_EXECUTOR_URL`; the app must be able to reach the executor over
 a private network and both must share the workspace volume. This machine has no
@@ -389,7 +405,8 @@ production platform.
 - `data/sample` and `data/secret` are flat; DOMjudge test groups are not modelled.
 - Default comparison is whitespace-token based. Float tolerance is explicit;
   custom checkers and interactive problems use the verification-mode harness.
-  There is no live DOMjudge import test.
+  Import into local DOMjudge 9.0.1 is tested; a judgehost/submission-judging
+  loop is not yet tested.
 - Memory limits are measured but not enforced on Windows.
 - Limits are measured from the reference runtime and memory; they are not
   manually chosen at problem creation.
