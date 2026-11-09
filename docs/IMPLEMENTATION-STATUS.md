@@ -10,6 +10,8 @@ UI/UX/AX redesign plan: [`UI-UX-REDESIGN.md`](UI-UX-REDESIGN.md)
 UI execution package: [`plans/ui-ux-ax-rework/README.md`](plans/ui-ux-ax-rework/README.md)
 UI goal prompt: [`plans/ui-ux-ax-rework/GOAL-PROMPT.md`](plans/ui-ux-ax-rework/GOAL-PROMPT.md)
 UI state machines: [`STATE-MACHINES.md`](STATE-MACHINES.md)
+Readiness review: [`READINESS.md`](READINESS.md)
+Context-overflow incident: [`INCIDENT-CONTEXT-OVERFLOW.md`](INCIDENT-CONTEXT-OVERFLOW.md)
 Judge0 decision: [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md)
 Isolate backend: [`ISOLATE-BACKEND.md`](ISOLATE-BACKEND.md)
 

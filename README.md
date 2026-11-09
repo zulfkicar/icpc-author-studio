@@ -8,6 +8,11 @@ solutions, run tests and build the statement. Every agent write is recorded as a
 reviewable change with a diff and a revert button. Export is blocked until the
 deterministic verifier passes.
 
+> **Sharing status:** this is a single-user local developer preview, not a
+> multi-user service. Read [`docs/READINESS.md`](docs/READINESS.md) before
+> sharing it with other authors. Each author should run their own local
+> instance; do not expose port 8787 or share `.author-agent/`.
+
 ## Run
 
 ```powershell
