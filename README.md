@@ -15,6 +15,10 @@ deterministic verifier passes.
 >
 > **Start here:** [`docs/USING.md`](docs/USING.md) is the complete local
 > authoring and DOMjudge workflow.
+>
+> **Presenting:** [`docs/DEMO.md`](docs/DEMO.md) is the demo runbook;
+> [`docs/TECHNICAL-DEEP-DIVE.md`](docs/TECHNICAL-DEEP-DIVE.md) is the
+> architecture, decision log, coverage matrix and Q&A bank.
 
 ## Run
 

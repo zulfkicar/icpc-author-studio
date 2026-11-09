@@ -29,7 +29,13 @@ function Submit-Program([string]$path, [string]$label) {
     for ($i = 0; $i -lt 90; $i++) {
         Start-Sleep -Seconds 1
         $judgements = Invoke-RestMethod -Uri "$base/api/v4/contests/demo/judgements?submission_id=$sid" -Headers $headers
-        $items = if ($null -ne $judgements.value) { @($judgements.value) } else { @($judgements) }
+        if ($judgements -is [System.Array]) {
+            $items = @($judgements)
+        } elseif ($judgements.PSObject.Properties.Name -contains 'value') {
+            $items = @($judgements.value)
+        } else {
+            $items = @($judgements)
+        }
         $row = $items | Where-Object { [string]$_.submission_id -eq [string]$sid } | Select-Object -First 1
         if ($row -and $row.judgement_type_id) {
             return [ordered]@{

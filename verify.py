@@ -359,7 +359,7 @@ def run_source(slug: str, path: str, stdin: str = "") -> dict:
         raise FileNotFoundError("Source file not found")
     language = SOLUTION_EXT.get(target.suffix.lower())
     if not language:
-        raise ValueError("Run supports C, C++, Python, Java and Kotlin files")
+        raise ValueError("Run supports C, C++, Python and Java files")
     solution = {"path": path, "absolute": target, "language": language, "kind": "accepted"}
     build_root = _new_build_dir(slug)
     compiled = _compile(slug, solution, build_root)

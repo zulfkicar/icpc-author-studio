@@ -15,3 +15,4 @@ if ($Reset) {
     Write-Host 'Stopping the local DOMjudge stack (database preserved)...'
     wsl -e sh -c "cd '$wslRepo' && docker compose -f docker-compose.domjudge.yml --profile judging down" | Out-Host
 }
+exit 0

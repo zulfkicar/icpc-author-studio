@@ -38,7 +38,14 @@ wsl -e sh -c "cd '$wslRepo' && JUDGEDAEMON_PASSWORD='$judgehostPassword' docker 
 $registered = $false
 for ($i = 0; $i -lt $TimeoutSeconds; $i++) {
     try {
-        $judgehosts = @(Invoke-RestMethod -Uri "$base/api/v4/judgehosts" -Headers $headers)
+        $response = Invoke-RestMethod -Uri "$base/api/v4/judgehosts" -Headers $headers
+        if ($response -is [System.Array]) {
+            $judgehosts = @($response)
+        } elseif ($response.PSObject.Properties.Name -contains 'value') {
+            $judgehosts = @($response.value)
+        } else {
+            $judgehosts = @($response)
+        }
         $ours = @($judgehosts | Where-Object { $_.hostname -like 'judgedaemon-0*' -and $_.enabled })
         if ($ours.Count -gt 0) {
             $registered = $true
@@ -54,3 +61,4 @@ if (-not $registered) {
 }
 Write-Output ("judgehosts=" + (($judgehosts | ForEach-Object { $_.hostname }) -join ','))
 Write-Output 'DOMJUDGE JUDGEHOST READY'
+exit 0

@@ -102,6 +102,13 @@ def _pinned_context(state: dict) -> str:
         lines.append("SELECTED CONTEXT")
         total = 0
         for path in selected[:MAX_CONTEXT_FILES]:
+            normalized = str(path).replace("\\", "/").lstrip("./")
+            if (
+                normalized == "data/secret"
+                or normalized.startswith("data/secret/")
+                or normalized.lower().endswith(".ans")
+            ):
+                continue
             try:
                 text = workspace.read_text(slug, path).get("content") or ""
             except Exception:

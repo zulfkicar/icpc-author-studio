@@ -83,6 +83,16 @@ def main() -> int:
         check("large non-secret read stays bounded", len(result.get("content") or "") <= 200_100, len(result.get("content") or ""))
         search = agent._dispatch(slug, "search_workspace", {"query": "1 2"}, lambda *_: None)
         check("search does not expose secret paths", all("data/secret" not in item["path"] for item in search.get("matches", [])), search)
+        pinned = agent_middleware._pinned_context({
+            "slug": slug,
+            "mode": "author",
+            "selected_context": ["data/secret/01.in", "data/sample/01.in"],
+        })
+        check(
+            "pinned context excludes secret tests",
+            "data/secret/01.in" not in pinned and "data/sample/01.in" in pinned,
+            pinned,
+        )
     finally:
         shutil.rmtree(workspace.ws_path(slug), ignore_errors=True)
     print("CONTEXT BUDGET TESTS PASSED")
