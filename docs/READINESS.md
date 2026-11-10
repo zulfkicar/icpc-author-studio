@@ -1,5 +1,11 @@
 # Readiness review
 
+> **Later source audit (2026-11-10):** [Full system audit](plans/system-depth/01-AUDIT.md)
+> found gaps in native execution defaults, protected-file filtering, interactive
+> verification, resource-limit propagation and revision integrity. The results
+> below are historical evidence from their stated environment, not validation
+> of those affected guarantees. See the [current plan](plans/system-depth/README.md).
+
 Date: 2026-11-09
 Commit reviewed: `b4a302c` (plus the CI/readiness docs in this change)
 Environment: Windows 11 + WSL2 Ubuntu + Docker; Python 3.13 app; Judge0 CE

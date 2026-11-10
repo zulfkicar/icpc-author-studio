@@ -1,0 +1,12 @@
+{
+  "date": "2026-11-10",
+  "markdownFilesChecked": 13,
+  "localLinksChecked": 75,
+  "findings": 37,
+  "p0Findings": 6,
+  "implementationTasks": 56,
+  "trackedFilesCovered": 316,
+  "nonDocumentSourceHashesChecked": 254,
+  "dependencyGraphAcyclic": true,
+  "errors": []
+}

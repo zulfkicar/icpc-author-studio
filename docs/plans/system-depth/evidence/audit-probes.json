@@ -1,0 +1,70 @@
+{
+  "date": "2026-11-10",
+  "scope": "Offline source-level and synthetic behavior probes. No live sandbox or provider assurance.",
+  "results": [
+    {
+      "probe": "mcp-path-alias",
+      "syntheticProtectedContentReturned": true
+    },
+    {
+      "probe": "agent-path-alias",
+      "syntheticProtectedContentReturned": true
+    },
+    {
+      "probe": "output-fixture-snapshot",
+      "changedOutFixtureChangesSnapshot": false
+    },
+    {
+      "probe": "measurement-invalidation",
+      "limitsMeasuredAfterReferenceChange": true
+    },
+    {
+      "probe": "corrupt-consent",
+      "enabled": true,
+      "allToolsEnabled": true
+    },
+    {
+      "probe": "interactive-control-flow",
+      "method": "mocked prerequisite checks, real verify dispatch",
+      "status": "verified",
+      "hasSnapshot": false,
+      "reportPersisted": false,
+      "statementChecked": false,
+      "negativeStatuses": [
+        "proposal"
+      ]
+    },
+    {
+      "probe": "duplicate-tool-renderer",
+      "declarationLines": [
+        982,
+        1137
+      ]
+    },
+    {
+      "probe": "native-execution-default",
+      "remoteExecutorRequiredByDefault": false
+    },
+    {
+      "probe": "worker-limit-controls",
+      "processStackAndOpenFileOverridesChangeParsedLimits": false,
+      "parsedFields": [
+        "fsize",
+        "memory",
+        "time",
+        "wall"
+      ]
+    },
+    {
+      "probe": "queued-judge0-result",
+      "status": "In Queue",
+      "ok": true
+    },
+    {
+      "probe": "parallel-skill-invariant",
+      "method": "two loads from same state followed by real reducer",
+      "activeCount": 3,
+      "configuredMaximum": 2
+    }
+  ]
+}

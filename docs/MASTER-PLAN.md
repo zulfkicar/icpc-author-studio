@@ -1,5 +1,15 @@
 # ICPC Author Agent — Master Plan
 
+> **Current forward plan (2026-11-10):** [Full system audit and implementation plan](plans/system-depth/README.md).
+> It covers the whole authoring app and incorporates the domain-depth extension.
+> This older plan remains a historical baseline where its backlog differs.
+
+> **Scope extension (2026-11-10):** [Domain depth and correctness](DOMAIN-DEPTH-PLAN.md)
+> adds substantive skills, proof obligations, executable refutation, structured
+> review and behavioral evaluation. This follow-up is scoped, not implemented.
+> Baseline gaps below are historical. See [Implementation Status](IMPLEMENTATION-STATUS.md)
+> for recorded implementation progress.
+
 Status: implementation plan
 Baseline: `f16ff8d`
 Design specification: [`DESIGN.md`](DESIGN.md)

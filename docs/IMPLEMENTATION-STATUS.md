@@ -15,6 +15,21 @@ Context-overflow incident: [`INCIDENT-CONTEXT-OVERFLOW.md`](INCIDENT-CONTEXT-OVE
 Judge0 decision: [`JUDGE0-EVALUATION.md`](JUDGE0-EVALUATION.md)
 Isolate backend: [`ISOLATE-BACKEND.md`](ISOLATE-BACKEND.md)
 
+## Scoped follow-up (2026-11-10, not implemented)
+
+The [full system audit and implementation plan](plans/system-depth/README.md)
+is the current forward backlog. Its [audit](plans/system-depth/01-AUDIT.md)
+records current integrity and coverage gaps, including issues reproduced despite
+passing selected checks. The historical completed entries below do not establish
+that every affected guarantee has passed the new audit requirements.
+
+[Domain depth and correctness](DOMAIN-DEPTH-PLAN.md) extends the scope to
+substantive skills, correctness/complexity arguments, source correspondence,
+reproducible counterexample search, structured findings and held-out behavioral
+evaluation. Existing skill-loading and reviewer infrastructure does not establish
+completion of this deeper domain work. The completed entries below describe the
+previous implementation scope.
+
 ## Completed
 
 ### Context and provider

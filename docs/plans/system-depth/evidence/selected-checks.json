@@ -1,0 +1,101 @@
+{
+  "date": "2026-11-10",
+  "note": "Offline selected checks. Recorded timing guard validates historical JSON, not current performance. No provider, live container, browser or DOMjudge test run.",
+  "results": [
+    {
+      "command": [
+        "node",
+        "--check",
+        "web/app.js"
+      ],
+      "exitCode": 0,
+      "seconds": 0.14,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "node",
+        "qa/test_state_machines.mjs"
+      ],
+      "exitCode": 0,
+      "seconds": 0.14,
+      "stdout": "STATE MACHINE TESTS PASSED\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "C:\\Users\\LocalUser\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-B",
+        "qa/test_skills.py"
+      ],
+      "exitCode": 0,
+      "seconds": 0.25,
+      "stdout": "  PASS all curated skills present\n  PASS index contains skill index\n  PASS load skill\n  PASS pinned skill\n  PASS max two active skills\n  PASS unload skill\n  PASS system includes index\n  PASS system does not dump skill body\nSKILL TESTS PASSED\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "C:\\Users\\LocalUser\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-B",
+        "qa/test_context_budget.py"
+      ],
+      "exitCode": 0,
+      "seconds": 4.47,
+      "stdout": "  PASS conservative estimate sees dense numeric data\n  PASS summarization trigger sees dense numeric data\n  PASS trimmed estimate fits the context budget\n  PASS tool output is bounded\n  PASS history does not start with an orphan tool message\n  PASS current user message is preserved\n  PASS secret input read is blocked\n  PASS sample input read remains allowed\n  PASS large non-secret read is truncated\n  PASS large non-secret read stays bounded\n  PASS search does not expose secret paths\n  PASS pinned context excludes secret tests\nCONTEXT BUDGET TESTS PASSED\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "C:\\Users\\LocalUser\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-B",
+        "qa/test_ui_contracts.py"
+      ],
+      "exitCode": 0,
+      "seconds": 0.2,
+      "stdout": "  PASS run output truncates\n  PASS run output is textContent\n  PASS log area scrolls\n  PASS status labels include text\n  PASS busy guard exists\n  PASS xss escape used\n  PASS test labels are textual\n  PASS tab close glyph\n  PASS no literal question-mark actions\n  PASS judge0 quick run wired\n  PASS isolate quick run wired\n  PASS group scoring rendered\n  PASS activity rail exists\n  PASS navigator exists\n  PASS editor group exists\n  PASS agent panel exists\n  PASS status bar exists\n  PASS regions are tagged\n  PASS agent panel is the chat\n  PASS editor group is central\n  PASS navigator holds the problem card\n  PASS grid uses navigator/agent widths\n  PASS no iframe editor\n  PASS status bar has backend health\n  PASS status bar has cursor and verify\n  PASS skip links exist\n  PASS activity rail has six sections\n  PASS no native prompt/confirm/alert\n  PASS ui id manifest resolves\n  PASS ui id manifest is populated\n  PASS dialog controller ships\n  PASS every dialog routes through the controller\n  PASS new-dialog exists\n  PASS new-dialog is labelled\n  PASS new-dialog is described\n  PASS settings-dialog exists\n  PASS settings-dialog is labelled\n  PASS settings-dialog is described\n  PASS context-dialog exists\n  PASS context-dialog is labelled\n  PASS context-dialog is described\n  PASS action-dialog exists\n  PASS action-dialog is labelled\n  PASS action-dialog is described\n  PASS palette-dialog exists\n  PASS palette-dialog is labelled\n  PASS palette-dialog is described\n  PASS tour-dialog exists\n  PASS tour-dialog is labelled\n  PASS tour-dialog is described\n  PASS dialog controller owns cancel\n  PASS quick open and command palette wired\n  PASS notification centre wired\n  PASS theme toggle wired\n  PASS onboarding tour wired\nUI CONTRACT TESTS PASSED\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "C:\\Users\\LocalUser\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-B",
+        "qa/test_event_ledger.py"
+      ],
+      "exitCode": 0,
+      "seconds": 0.24,
+      "stdout": "  PASS sequence ordering and duplicate suppression\n  PASS missing-event replay detection\nEVENT LEDGER TESTS PASSED\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "C:\\Users\\LocalUser\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-B",
+        "qa/test_adversarial_manifest.py"
+      ],
+      "exitCode": 0,
+      "seconds": 0.19,
+      "stdout": "  PASS 146 adversarial rows mapped\n  coverage: {'automated': 146}\nADVERSARIAL MANIFEST PASSED\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "C:\\Users\\LocalUser\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-B",
+        "qa/test_verification_timing.py"
+      ],
+      "exitCode": 0,
+      "seconds": 0.17,
+      "stdout": "  PASS timing artifact exists\n  PASS verification time was measured\n  PASS test count is representative\n  PASS verification is within the budget\n  PASS withinBudget flag agrees\n  PASS limits were measured\n  PASS verification passed\nVERIFICATION TIMING TESTS PASSED\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "ast.parse",
+        "first-party Python modules, qa, eval, sandbox"
+      ],
+      "exitCode": 0,
+      "files": 58
+    }
+  ]
+}
