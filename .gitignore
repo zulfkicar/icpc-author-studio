@@ -2,6 +2,11 @@
 .author-agent/
 workspaces/
 
+# Local reference and settings captures
+docs/design/captures/refero-*.png
+docs/design/captures/desk-settings-1600.png
+docs/design/references/refero-*.md
+
 # Python
 __pycache__/
 *.py[cod]

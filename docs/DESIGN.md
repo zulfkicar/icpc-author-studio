@@ -1,7 +1,15 @@
-# ICPC Author Agent — Design
+# ICPC Author Agent — Design specification
 
 Status: design specification
 Companion to [`MASTER-PLAN.md`](MASTER-PLAN.md)
+
+> **Scope note (2026-11-17):** this file is the product/behaviour design
+> specification written for the V0–V3 plan: event schemas, package format,
+> clarification and approval state machines. The canonical **visual and
+> interaction contract** for the current interface is the repository-root
+> [`DESIGN.md`](../DESIGN.md), with research, component decisions and verification
+> in [`design/`](design/). The two documents answer different questions and are
+> not duplicates.
 
 ## 1. Design thesis
 
