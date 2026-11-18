@@ -6,6 +6,6 @@
  * vendored `vs` root and load the worker main script.
  */
 self.MonacoEnvironment = {
-  baseUrl: self.location.origin + "/vendor/monaco/vs/",
+  baseUrl: self.location.origin + "/vendor/monaco/",
 };
 importScripts("/vendor/monaco/vs/base/worker/workerMain.js");

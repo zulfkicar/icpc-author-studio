@@ -6,6 +6,7 @@ and the UI can inspect or revert each change.
 """
 from __future__ import annotations
 
+import contextlib
 import difflib
 import hashlib
 import json
@@ -15,9 +16,14 @@ import shutil
 import threading
 import time
 import uuid
+import unicodedata
 import zipfile
 
+import yaml
+
+import package_workflow
 from config import TEMPLATES, WORKSPACES
+from problem_titles import latex_text, statement_title
 
 _LOCK = threading.RLock()
 
@@ -37,7 +43,7 @@ def now() -> str:
 
 def safe_slug(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
-    return (slug or "problem")[:48]
+    return (slug or "problem")[:48].rstrip("-")
 
 
 def validate_rel(rel: str) -> str:
@@ -112,6 +118,14 @@ def state(slug: str) -> dict:
     return _read_json(_state_dir(slug) / "state.json", {})
 
 
+def export_filename(slug: str, title: str | None = None) -> str:
+    st = state(slug)
+    meta = st.get("meta", {})
+    title = title if title is not None else (meta.get("name") if st.get("titleOwner") else "")
+    stem = re.sub(r"[\W_]+", "-", unicodedata.normalize("NFKC", title or "").casefold()).strip("-")[:48].rstrip("-")
+    return f"{stem or safe_slug(slug)}-domjudge.zip"
+
+
 def _save_state(slug: str, value: dict) -> None:
     _write_json(_state_dir(slug) / "state.json", value)
 
@@ -153,7 +167,8 @@ def create(name: str, idea: str = "", meta: dict | None = None) -> dict:
     slug = base
     counter = 2
     while (WORKSPACES / slug).exists():
-        slug = f"{base}-{counter}"
+        suffix = f"-{counter}"
+        slug = base[:48 - len(suffix)].rstrip("-") + suffix
         counter += 1
     root = WORKSPACES / slug
     root.mkdir(parents=True)
@@ -167,9 +182,9 @@ def create(name: str, idea: str = "", meta: dict | None = None) -> dict:
     rights = str(meta.get("rightsOwner") or author)
     color = str(meta.get("color") or "#000000")
 
-    def sub(text: str) -> str:
+    def sub(text: str, suffix: str) -> str:
         values = {
-            "{{PROBLEM_NAME}}": name,
+            "{{PROBLEM_NAME}}": latex_text(name) if suffix == ".tex" else json.dumps(name, ensure_ascii=False)[1:-1],
             "{{PROBLEM_ID}}": short,
             "{{AUTHOR}}": author,
             "{{TIME_LIMIT}}": f"{timelimit} seconds",
@@ -187,9 +202,7 @@ def create(name: str, idea: str = "", meta: dict | None = None) -> dict:
             "{{CONSTRAINTS}}": r"\item Replace with the real constraints.",
             "{{NOTES}}": "Replace with notes, if any.",
         }
-        for key, value in values.items():
-            text = text.replace(key, value)
-        return text
+        return re.sub("|".join(map(re.escape, values)), lambda match: values[match[0]], text)
 
     template_files = {
         "problem.yaml": TEMPLATES / "problem.yaml",
@@ -202,7 +215,7 @@ def create(name: str, idea: str = "", meta: dict | None = None) -> dict:
     for rel, src in template_files.items():
         target = root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(sub(src.read_text("utf-8")).encode("utf-8"))
+        target.write_bytes(sub(src.read_text("utf-8"), target.suffix).encode("utf-8"))
 
     for rel in (
         "data/secret/.keep", "submissions/accepted/.keep",
@@ -261,6 +274,7 @@ def create(name: str, idea: str = "", meta: dict | None = None) -> dict:
         "lastStatus": "unverified",
         "lastReport": None,
         "lastReview": None,
+        "reviewedSnapshot": None,
         "limitsMeasured": False,
         "measuredLimits": None,
     }
@@ -272,7 +286,11 @@ def create(name: str, idea: str = "", meta: dict | None = None) -> dict:
 def summary(slug: str) -> dict:
     st = state(slug)
     report = st.get("lastReport")
-    stale = bool(report and report.get("snapshot") and report.get("snapshot") != snapshot_hash(slug))
+    entries = tree(slug)
+    workflow = package_workflow.evaluate(snapshot_hash(slug, entries=entries), st, sum(
+        1 for change in changes(slug) if not change.get("reviewed") and not change.get("reverted")
+    ))
+    stale = workflow["phase"] == "verification_stale"
     status = "stale" if stale else st.get("lastStatus", "unverified")
     return {
         "slug": safe_slug(slug),
@@ -280,12 +298,40 @@ def summary(slug: str) -> dict:
         "lastStatus": status,
         "lastReport": report,
         "lastReview": st.get("lastReview"),
+        "previousVerification": st.get("previousVerification"),
         "limitsMeasured": bool(st.get("limitsMeasured")),
         "measuredLimits": st.get("measuredLimits"),
         "stale": stale,
-        "unreviewed": sum(1 for c in changes(slug) if not c.get("reviewed") and not c.get("reverted")),
-        "tree": tree(slug),
+        "unreviewed": workflow["unreviewedChanges"],
+        "snapshot": workflow["snapshot"],
+        "workflow": workflow,
+        "tree": entries,
     }
+
+
+def archive_status(slug: str, workflow: package_workflow.PackageWorkflow) -> dict:
+    filename = export_filename(slug)
+    folder = ws_path(slug) / ".agent" / "export"
+    target = folder / filename
+    archive_name = filename
+    if not target.is_file():
+        prior = sorted(folder.glob("*.zip"), key=lambda path: path.stat().st_mtime, reverse=True)
+        if prior:
+            target, archive_name = prior[0], prior[0].name
+    if not target.is_file():
+        return {"status": "not_generated" if workflow["canExport"] else "blocked", "filename": filename}
+    try:
+        with zipfile.ZipFile(target) as archive:
+            manifest = json.loads(archive.read("problem_statement/manifest.json"))
+        if not isinstance(manifest, dict):
+            raise ValueError("Invalid archive manifest")
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile):
+        return {"status": "invalid", "filename": filename}
+    ready = workflow["canExport"] and manifest.get("snapshot") == workflow["snapshot"] and archive_name == filename
+    return {"status": "ready" if ready else "stale", "filename": filename,
+            "archiveFilename": archive_name, "snapshot": manifest.get("snapshot"),
+            "verifiedAt": manifest.get("verifiedAt"), "createdAt": manifest.get("createdAt"),
+            "format": "DOMjudge ZIP"}
 
 
 def tree(slug: str) -> list[dict]:
@@ -351,7 +397,8 @@ def _line_stats(before: str | None, after: str | None) -> tuple[int, int]:
     return added, removed
 
 
-def _record(slug: str, action: str, rel: str, before: str | None, after: str | None, source: str) -> dict:
+def _record(slug: str, action: str, rel: str, before: str | None, after: str | None, source: str,
+            artifact_origin: dict | None = None) -> dict:
     with _LOCK:
         items = changes(slug)
         added, removed = _line_stats(before, after)
@@ -368,6 +415,8 @@ def _record(slug: str, action: str, rel: str, before: str | None, after: str | N
             "reviewed": False,
             "reverted": False,
         }
+        if artifact_origin is not None:
+            entry["artifactOrigin"] = artifact_origin
         items.append(entry)
         if len(items) > 400:
             items = items[-400:]
@@ -375,7 +424,7 @@ def _record(slug: str, action: str, rel: str, before: str | None, after: str | N
         return entry
 
 
-def write_text(slug: str, rel: str, content: str, source: str = "agent") -> dict:
+def write_text(slug: str, rel: str, content: str, source: str = "agent", *, artifact_origin: dict | None = None) -> dict:
     rel = validate_rel(rel)
     if not isinstance(content, str):
         raise ValueError("Text content is required")
@@ -387,8 +436,92 @@ def write_text(slug: str, rel: str, content: str, source: str = "agent") -> dict
         return {"path": rel, "changed": False, "change": None}
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, "utf-8", newline="")
-    entry = _record(slug, "write", rel, before, content, source)
+    entry = _record(slug, "write", rel, before, content, source, artifact_origin)
     return {"path": rel, "changed": True, "change": entry, "diff": diff(before or "", content, rel)}
+
+
+def _yaml_problem_title(text: str, title: str) -> str:
+    try:
+        data = yaml.compose(text, Loader=yaml.SafeLoader)
+    except yaml.YAMLError as exc:
+        raise ValueError("Fix invalid problem.yaml before updating the title.") from exc
+    quoted = json.dumps(title, ensure_ascii=False)
+    if data is not None and not isinstance(data, yaml.MappingNode):
+        raise ValueError("problem.yaml must be a mapping to update the title.")
+    for key, value in (data.value if data is not None else []):
+        if key.value != "name":
+            continue
+        if isinstance(value, yaml.ScalarNode) and value.tag == "tag:yaml.org,2002:str" and value.value == title:
+            return text
+        start, end = value.start_mark.index, value.end_mark.index
+        if start < key.end_mark.index:
+            raise ValueError("Replace the name alias in problem.yaml before updating the title.")
+        if start == end:
+            quoted = " " + quoted
+        if text[start:end].endswith("\n"):
+            quoted += "\n"
+        return text[:start] + quoted + text[end:]
+    if isinstance(data, yaml.MappingNode) and data.flow_style:
+        prefix = data.start_mark.index + 1
+        return text[:prefix] + "name: " + quoted + (", " if data.value else "") + text[prefix:]
+    start = data.start_mark.index if data is not None else 0
+    return text[:start] + "name: " + quoted + "\n" + text[start:]
+
+
+def problem_title_edits(slug: str, title: str) -> tuple[list, bool]:
+    updates = []
+    statement_supported = False
+    for rel in ("problem.yaml", "domjudge-problem.ini", "problem_statement/problem.en.tex", "statement/problem.en.tex"):
+        path = resolve(slug, rel)
+        if not path.is_file():
+            if rel == "problem.yaml":
+                updates.append((rel, path, None, "name: " + json.dumps(title, ensure_ascii=False) + "\n"))
+            continue
+        before = path.read_bytes()
+        text = before.decode("utf-8")
+        if rel.endswith(".yaml"):
+            edited = _yaml_problem_title(text, title)
+        elif rel.endswith(".ini"):
+            line = "name = " + json.dumps(title, ensure_ascii=False)
+            edited, count = re.subn(r"^name[ \t]*=[^\r\n]*", lambda _: line, text, count=1, flags=re.M)
+            if not count:
+                edited = line + "\n" + edited
+        else:
+            edited = statement_title(text, title)
+            statement_supported |= edited != text or statement_title(text, title + " preview") != text
+        if edited != text:
+            updates.append((rel, path, before, edited))
+    return updates, statement_supported
+
+
+@contextlib.contextmanager
+def use_problem_title(slug: str, title: str, run_id: str):
+    """Apply tracked title edits and restore them if saving the link or run fails."""
+    with _LOCK:
+        st = state(slug)
+        meta = st.setdefault("meta", {})
+        if st.get("titleOwner") not in (None, run_id):
+            raise ValueError("This package already follows the title of another conversation.")
+        updates, _ = problem_title_edits(slug, title)
+        state_dir = _state_dir(slug)
+        backups = {path: path.read_bytes() if path.exists() else None
+                   for path in (state_dir / "state.json", state_dir / "changes.json")}
+        try:
+            for rel, path, before, edited in updates:
+                backups[path] = before
+                write_text(slug, rel, edited, source="problem-title")
+            if meta.get("name") != title or st.get("titleOwner") != run_id:
+                meta["name"] = title
+                st["titleOwner"] = run_id
+                _save_state(slug, st)
+            yield
+        except Exception:
+            for path, before in backups.items():
+                if before is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_bytes(before)
+            raise
 
 
 def delete_file(slug: str, rel: str, source: str = "agent") -> dict:
@@ -472,16 +605,97 @@ def revert(slug: str, change_id: str) -> dict:
     return entry
 
 
-def mark_reviewed(slug: str) -> dict:
+class SnapshotConflict(ValueError):
+    """The author or worker prepared an action for a different saved revision."""
+
+
+def mark_reviewed(slug: str, expected_snapshot: str | None = None) -> dict:
+    snapshot = require_snapshot(slug, expected_snapshot)
+    baseline = _review_baseline(slug, snapshot)
+    _write_json(_review_path(slug, snapshot), baseline)
+    require_snapshot(slug, snapshot)
     items = changes(slug)
     for entry in items:
         if not entry.get("reverted"):
             entry["reviewed"] = True
-    _write_json(_changes_path(slug), items)
     st = state(slug)
     st["lastReview"] = now()
+    st["reviewedSnapshot"] = snapshot
     _save_state(slug, st)
-    return {"reviewed": sum(1 for c in items if c.get("reviewed") and not c.get("reverted")), "at": st["lastReview"]}
+    _write_json(_changes_path(slug), items)
+    return {"reviewed": sum(1 for c in items if c.get("reviewed") and not c.get("reverted")),
+            "at": st["lastReview"], "snapshot": snapshot}
+
+
+def _review_path(slug: str, snapshot: str) -> pathlib.Path:
+    return _state_dir(slug) / "reviews" / f"{snapshot}.json"
+
+
+def _review_baseline(slug: str, snapshot: str) -> dict:
+    """Keep all file identities and a bounded set of text for cumulative review."""
+    root = ws_path(slug)
+    digest = hashlib.sha256()
+    budget = 768 * 1024
+    files = {}
+    for entry in sorted(tree(slug), key=lambda item: item["path"]):
+        if entry["type"] != "file":
+            continue
+        rel = entry["path"]
+        path = root / rel
+        data = path.read_bytes()
+        digest.update(rel.encode())
+        digest.update(data)
+        record = {"hash": hashlib.sha256(data).hexdigest()}
+        if len(data) <= min(48 * 1024, budget) and b"\0" not in data and path.resolve().is_relative_to(root):
+            try:
+                record["text"] = data.decode("utf-8")
+                budget -= len(data)
+            except UnicodeDecodeError:
+                pass
+        files[rel] = record
+    if digest.hexdigest() != snapshot:
+        raise SnapshotConflict("Package changed while preparing the review. Refresh and try again.")
+    return {"snapshot": snapshot, "files": files}
+
+
+def studio_review(slug: str, expected: str | None, path: str | None = None) -> dict:
+    snapshot = require_snapshot(slug, expected)
+    approved = state(slug).get("reviewedSnapshot")
+    baseline = (_read_json(_review_path(slug, approved), None)
+                if isinstance(approved, str) and re.fullmatch(r"[a-f0-9]{64}", approved) else None)
+    current = _review_baseline(slug, snapshot)["files"]
+    previous = baseline["files"] if baseline else {}
+    logged = {}
+    for entry in changes(slug):
+        if entry.get("reverted") or entry.get("reviewed"):
+            continue
+        logged.setdefault(entry["path"], []).append(entry)
+    rows = []
+    for rel in sorted(current.keys() | previous.keys()):
+        before, after = previous.get(rel), current.get(rel)
+        if baseline and (before or {}).get("hash") == (after or {}).get("hash"):
+            continue
+        entries = logged.get(rel, [])
+        source = (entries[-1].get("source") or "workspace") if entries else "outside change or unrecorded source"
+        if entries and isinstance(entries[-1].get("after"), str) and after and \
+                hashlib.sha256(entries[-1]["after"].encode()).hexdigest() != after["hash"]:
+            source = "outside change or unrecorded source"
+        kind = "saved" if not baseline else "removed" if after is None else "added" if before is None else "modified"
+        row = {"path": rel, "source": source, "kind": kind}
+        if source == "artifact copy" and entries[-1].get("artifactOrigin"):
+            row["artifactOrigin"] = entries[-1]["artifactOrigin"]
+        rows.append(row)
+    if path is None:
+        return {"snapshot": snapshot, "baseline": approved if baseline else None, "files": rows}
+    path = validate_rel(path)
+    if not any(row["path"] == path for row in rows):
+        raise FileNotFoundError("This file is not in the current review.")
+    before = previous.get(path, {})
+    after = current.get(path, {})
+    complete = bool(baseline) and (not before or "text" in before) and (not after or "text" in after)
+    return {"snapshot": snapshot, "path": path, "hasDiff": complete,
+            "diff": diff(before.get("text", ""), after.get("text", ""), path) if complete else None,
+            "current": after.get("text"), "present": bool(after), "hash": after.get("hash")}
 
 
 def checkpoint_path(slug: str) -> pathlib.Path:
@@ -751,6 +965,11 @@ def set_limits(slug: str, time_limit_seconds: float, memory_mb: int, details: di
 
 def set_report(slug: str, report: dict) -> None:
     st = state(slug)
+    previous = st.get("lastReport") or {}
+    if report.get("snapshot") != previous.get("snapshot"):
+        st.setdefault("reviewedSnapshot", None)
+        if previous.get("status") == "verified":
+            st["previousVerification"] = {key: previous.get(key) for key in ("status", "at", "snapshot", "counts")}
     st["lastReport"] = report
     st["lastStatus"] = report.get("status", "unverified")
     _save_state(slug, st)
@@ -920,10 +1139,10 @@ def restore_snapshot(slug: str, chat_id: str, snapshot_id: str) -> dict:
     return {"id": snapshot_id, "restored": True}
 
 
-def snapshot_hash(slug: str) -> str:
+def snapshot_hash(slug: str, *, entries: list[dict] | None = None) -> str:
     digest = hashlib.sha256()
     root = ws_path(slug)
-    for entry in sorted(tree(slug), key=lambda x: x["path"]):
+    for entry in sorted(tree(slug) if entries is None else entries, key=lambda x: x["path"]):
         if entry["type"] != "file":
             continue
         path = root / entry["path"]
@@ -935,3 +1154,10 @@ def snapshot_hash(slug: str) -> str:
         except OSError:
             pass
     return digest.hexdigest()
+
+
+def require_snapshot(slug: str, expected: str | None) -> str:
+    snapshot = snapshot_hash(slug)
+    if expected is not None and expected != snapshot:
+        raise SnapshotConflict("Package changed since this action was prepared. Refresh and try again.")
+    return snapshot

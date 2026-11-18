@@ -221,7 +221,7 @@ function applyTheme(theme, persist = true) {
     button.title = next === "light" ? "Switch to dark theme" : "Switch to light theme";
   }
   if (state.monaco) {
-    state.monaco.monaco.editor.setTheme(next === "light" ? "vs" : "vs-dark");
+    state.monaco.monaco.editor.setTheme("vs-dark");
   }
 }
 
@@ -316,7 +316,11 @@ async function api(path, options = {}) {
   setConnection(true);
   let payload = null;
   try { payload = await response.json(); } catch { payload = null; }
-  if (!response.ok) throw new Error((payload && payload.error) || `Request failed (${response.status})`);
+  if (!response.ok) {
+    const error = new Error((payload && payload.error) || `Request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
@@ -973,9 +977,8 @@ function renderExportResult(result) {
   card.innerHTML = `<b>Package exported</b>
     <div class="muted small" style="margin-top:4px">${result.files || 0} files · ${Math.round((result.size || 0) / 1024)} KiB</div>
     <button class="primary small" style="margin-top:8px">Download ZIP</button>`;
-  card.querySelector("button").addEventListener("click", () => {
-    window.location.href = `/api/workspaces/${state.slug}/download`;
-  });
+  const slug = state.slug;
+  card.querySelector("button").addEventListener("click", () => downloadPackage(slug, result.snapshot));
   addEventCard(card);
 }
 
@@ -1174,21 +1177,14 @@ function renderErrorEvent(data) {
 
 // ---------- status / problem ----------
 
-function exportPredicate() {
-  const summary = state.summary;
-  const verified = Boolean(summary && summary.lastStatus === "verified" && !summary.stale);
-  const reviewed = !summary || (summary.unreviewed || 0) === 0;
-  return { enabled: verified && reviewed, verified, reviewed };
-}
-
 function updateExportButton() {
-  const { enabled, verified, reviewed } = exportPredicate();
+  const workflow = state.summary?.workflow;
+  const enabled = Boolean(workflow?.canExport);
   const button = $("export-btn");
   button.disabled = !enabled;
   button.setAttribute("aria-disabled", enabled ? "false" : "true");
-  button.title = !verified
-    ? "Verify the package before exporting"
-    : !reviewed ? "Mark changes reviewed before exporting" : "Download the verified DOMjudge package";
+  button.title = enabled ? "Download the verified DOMjudge package"
+    : workflow?.blocker || "Open a problem to export its package";
 }
 
 function setStatus(status) {
@@ -1770,7 +1766,7 @@ async function ensureMonacoEditor() {
   const editor = monaco.editor.create(host, {
     value: "",
     language: "plaintext",
-    theme: state.theme === "light" ? "vs" : "vs-dark",
+    theme: "vs-dark",
     automaticLayout: true,
     minimap: { enabled: false },
     fontSize: 12,
@@ -2474,7 +2470,9 @@ function renderChanges() {
   const unreviewed = active.filter((c) => !c.reviewed);
   $("unreviewed-count").textContent = unreviewed.length;
   $("unreviewed-count").className = "badge" + (unreviewed.length ? "" : " zero");
-  $("approve-btn").disabled = !unreviewed.length;
+  const needsReview = state.summary?.workflow?.nextAction === "review";
+  $("approve-btn").disabled = !unreviewed.length && !needsReview;
+  $("approve-btn").textContent = needsReview && !unreviewed.length ? "Approve saved snapshot" : "Mark reviewed";
   $("revert-unreviewed").disabled = !unreviewed.length;
   machineSet("changes", unreviewed.length ? "unreviewed" : "clean", "render changes");
   updateExportButton();
@@ -2605,7 +2603,7 @@ async function toggleDiffMode() {
     host.hidden = false;
     if (!bundle.diffEditor) {
       bundle.diffEditor = monaco.editor.createDiffEditor(host, {
-        theme: state.theme === "light" ? "vs" : "vs-dark",
+        theme: "vs-dark",
         automaticLayout: true,
         readOnly: true,
         renderSideBySide: true,
@@ -3057,7 +3055,7 @@ function renderStageRail() {
     ["Measure", Boolean(summary.limitsMeasured)],
     ["Verify", summary.lastStatus === "verified"],
     ["Review", !summary.unreviewed],
-    ["Export", summary.lastStatus === "verified" && !summary.unreviewed],
+    ["Export", Boolean(summary.workflow?.canExport)],
   ];
   host.innerHTML = stages.map(([label, done], index) => `<span class="stage-chip ${done ? "done" : ""}" title="${escapeHtml(label)}: ${done ? "verified evidence present" : "not yet complete"}"><span class="stage-num">${index + 1}</span>${escapeHtml(label)}</span>`).join('<span class="stage-sep">&gt;</span>');
 }
@@ -3225,26 +3223,30 @@ function renderReport(report) {
 }
 
 async function loadReport() {
-  if (!state.slug) return;
+  const slug = state.slug;
+  if (!slug) return;
   try {
-    const report = await api(`/api/workspaces/${state.slug}/report`);
+    const report = await api(`/api/workspaces/${slug}/report`);
+    if (state.slug !== slug) return;
     renderReport(report);
     if (state.summary && state.summary.stale) setStatus("stale");
     else setStatus(report.status === "verified" || report.status === "failed" ? report.status : (state.summary && state.summary.lastStatus) || "unverified");
   } catch {
-    renderReport({ status: "none" });
+    if (state.slug === slug) renderReport({ status: "none" });
   }
 }
 
 // ---------- workspace ----------
 
 async function refreshWorkspace() {
-  if (!state.slug) return;
+  const slug = state.slug;
+  if (!slug) return;
   try {
     const [summary, changeData] = await Promise.all([
-      api(`/api/workspaces/${state.slug}`),
-      api(`/api/workspaces/${state.slug}/changes`),
+      api(`/api/workspaces/${slug}`),
+      api(`/api/workspaces/${slug}/changes`),
     ]);
+    if (state.slug !== slug) return;
     state.summary = summary;
     state.tree = summary.tree || [];
     state.changes = changeData.changes || [];
@@ -3256,7 +3258,7 @@ async function refreshWorkspace() {
     renderPlan();
     renderStageRail();
     renderChatList();
-  } catch (error) { toast(error.message, true); }
+  } catch (error) { if (state.slug === slug) toast(error.message, true); }
 }
 
 async function selectWorkspace(slug) {
@@ -3382,7 +3384,7 @@ async function loadState(selectSlug) {
     for (const item of data.workspaces) {
       const option = document.createElement("option");
       option.value = item.slug;
-      option.textContent = (item.status === "verified" ? "✓ " : "") + item.name;
+      option.textContent = item.name;
       select.appendChild(option);
     }
     const remembered = selectSlug || localStorage.getItem("author-agent-slug");
@@ -3401,10 +3403,15 @@ async function loadState(selectSlug) {
 
 // ---------- jobs ----------
 
+function downloadPackage(slug, snapshot) {
+  const query = snapshot ? "?snapshot=" + encodeURIComponent(snapshot) : "";
+  window.location.href = `/api/workspaces/${slug}/download${query}`;
+}
+
 function processJobEvents(job) {
-  const events = job.events || [];
-  for (let i = state.jobEvents; i < events.length; i += 1) {
-    const event = events[i];
+  for (const event of job.events || []) {
+    if (event.seq <= state.jobEvents) continue;
+    state.jobEvents = event.seq;
     const data = event.data || {};
     if (event.kind === "assistant") {
       finalizeAssistant(data.text);
@@ -3453,8 +3460,7 @@ function processJobEvents(job) {
       }
       if (job.state !== "running") renderReport(data);
     } else if (event.kind === "export") {
-      toast(`Exported ${data.files || 0} files`);
-      window.location.href = `/api/workspaces/${state.slug}/download`;
+      if (job.state === "done") renderExportResult(data);
     } else if (event.kind === "answers") {
       renderVerificationEvent({ stage: "answers", result: data });
     } else if (event.kind === "limits") {
@@ -3469,22 +3475,41 @@ function processJobEvents(job) {
       state.pendingApproval = data.interrupts || [];
     }
   }
-  state.jobEvents = events.length;
 }
 
 function pollJob(jobId, onDone) {
   if (state.pollTimer) clearTimeout(state.pollTimer);
   const jobSlug = state.slug;
+  const isCurrent = () => state.slug === jobSlug && state.jobId === jobId;
+  let missed = 0;
   const tick = async () => {
-    if (state.slug !== jobSlug) {
+    if (!isCurrent()) return;
+    let job;
+    try {
+      job = await api(`/api/jobs/${jobId}`);
+      missed = 0;
+    } catch (error) {
+      if (!isCurrent()) return;
+      if (error.status !== 404) {
+        missed += 1;
+        if (missed === 3) $("agent-state").textContent = "Connection lost · retrying job status";
+        state.pollTimer = setTimeout(tick, missed >= 3 ? 2500 : 700);
+        return;
+      }
+      state.jobId = null;
+      state.jobChatId = null;
       $("agent-state").textContent = "";
       $("send-btn").disabled = false;
+      machineSend("turn", "FAIL");
+      finishJobNotification("Job status lost. Check the saved package.", "error");
       return;
     }
+    if (!isCurrent()) return;
     try {
-      const job = await api(`/api/jobs/${jobId}`);
       processJobEvents(job);
       if (job.state === "running") {
+        if (job.phase === "queued") $("agent-state").textContent = "waiting for workspace…";
+        if (job.phase === "cancel_pending" || job.phase === "timeout_pending") $("agent-state").textContent = "stopping…";
         state.pollTimer = setTimeout(tick, 700);
         return;
       }
@@ -3510,22 +3535,26 @@ function pollJob(jobId, onDone) {
       $("agent-state").textContent = "";
       $("send-btn").disabled = false;
       const wasCancelled = job.state === "cancelled";
+      const failed = job.state === "error";
       state.jobId = null;
       state.jobChatId = null;
-      machineSend("turn", "DONE");
+      machineSend("turn", failed ? "FAIL" : "DONE");
       machineSend("approval", "CLEAR");
-      finishJobNotification(wasCancelled ? "Cancelled" : "Finished", wasCancelled ? "warn" : "success");
+      finishJobNotification(failed ? (job.error || "Job failed") : wasCancelled ? "Cancelled" : "Finished",
+        failed ? "error" : wasCancelled ? "warn" : "success");
       await refreshWorkspace();
       await loadReport();
       await loadChats(state.chatId);
       if (state.chatId) await loadConversation();
       else renderChatList();
+      if (state.slug !== jobSlug || state.jobId) return;
       if (wasCancelled) toast("Stopped");
       if (onDone) await onDone(job);
       const pending = state.pendingMessage;
       state.pendingMessage = null;
       if (pending && !state.jobId) await sendMessage(pending);
     } catch (error) {
+      if (state.slug !== jobSlug || (state.jobId && state.jobId !== jobId)) return;
       $("agent-state").textContent = "";
       $("send-btn").disabled = false;
       state.jobId = null;
@@ -3611,7 +3640,11 @@ async function runToolJob(kind, body) {
   if (!state.slug) return;
   if (state.jobId) { toast("Wait for the current job to finish", true); return; }
   try {
-    const job = await api(`/api/workspaces/${state.slug}/${kind}`, { method: "POST", body: body || {} });
+    const slug = state.slug;
+    const job = await api(`/api/workspaces/${slug}/${kind}`, {
+      method: "POST", body: { ...body, expectedSnapshot: state.summary?.snapshot },
+    });
+    if (state.slug !== slug) return;
     state.jobId = job.id;
     state.jobChatId = null;
     state.jobEvents = 0;
@@ -3632,12 +3665,16 @@ async function runToolJob(kind, body) {
         switchTab("report");
         if (finished.state === "done") toast(finished.result.status === "verified" ? "Package verified" : "Verification failed", finished.result.status !== "verified");
       }
-      if (kind === "answers") toast("Answers generated");
+      if (kind === "answers" && finished.state === "done") {
+        toast(finished.result.ok ? "Answers generated" : "Answer generation incomplete", !finished.result.ok);
+      }
       if (kind === "measure-limits") {
         switchTab("plan");
-        if (finished.state === "done") toast(`Limits: ${finished.result.timeLimitSeconds}s / ${finished.result.memoryMb} MiB`);
+        if (finished.state === "done" && finished.result.ok) {
+          toast(`Limits: ${finished.result.timeLimitSeconds}s / ${finished.result.memoryMb} MiB`);
+        }
       }
-      if (kind === "export") toast("Package exported");
+      if (kind === "export" && finished.state === "done") downloadPackage(slug, finished.result.snapshot);
     });
   } catch (error) { toast(error.message, true); }
 }
@@ -4059,6 +4096,16 @@ function openSettings() {
   form.outputPricePerMillion.value = settings.outputPricePerMillion ?? 0;
   form.clearKey.checked = false;
   form.reviewWrites.checked = Boolean(settings.reviewWrites);
+  form.engineLiveModel.checked = Boolean(settings.engineLiveModel);
+  form.openrouterApiKey.value = "";
+  form.openrouterModel.value = settings.openrouterModel || "";
+  form.clearOpenRouterKey.checked = false;
+  $("openrouter-key-status").textContent = settings.hasOpenRouterKey
+    ? "OpenRouter key saved. Restart after changing the key or model." : "OpenRouter key is optional.";
+  form.opencodeApiKey.value = "";
+  form.clearOpenCodeKey.checked = false;
+  $("opencode-key-status").textContent = settings.hasOpenCodeKey
+    ? "OpenCode key saved. Restart after replacing it." : "OpenCode key is optional.";
   $("key-status").textContent = settings.hasKey ? `A key ending in ${settings.keyHint} is saved.` : "No API key saved yet.";
   settingsSnapshot = settingsFormSnapshot();
   window.AuthorDialogs.open("settings-dialog", { focus: '[name="baseUrl"]' });
@@ -4086,9 +4133,15 @@ async function saveSettings(event) {
     inputPricePerMillion: Number(form.inputPricePerMillion.value || 0),
     outputPricePerMillion: Number(form.outputPricePerMillion.value || 0),
     reviewWrites: form.reviewWrites.checked,
+    engineLiveModel: form.engineLiveModel.checked,
+    openrouterModel: form.openrouterModel.value.trim(),
+    clearOpenRouterKey: form.clearOpenRouterKey.checked,
+    clearOpenCodeKey: form.clearOpenCodeKey.checked,
     clearKey: form.clearKey.checked,
   };
   if (form.apiKey.value.trim()) body.apiKey = form.apiKey.value.trim();
+  if (form.opencodeApiKey.value.trim()) body.opencodeApiKey = form.opencodeApiKey.value.trim();
+  if (form.openrouterApiKey.value.trim()) body.openrouterApiKey = form.openrouterApiKey.value.trim();
   if (form.fallbackApiKey.value.trim()) body.fallbackApiKey = form.fallbackApiKey.value.trim();
   if (form.judge0Token.value.trim()) body.judge0Token = form.judge0Token.value.trim();
   machineSend("settings", "SAVE");
@@ -4676,7 +4729,13 @@ function wire() {
   $("approve-btn").addEventListener("click", async () => {
     if (!state.slug) return;
     machineSend("changes", "REVIEW");
-    try { await api(`/api/workspaces/${state.slug}/review`, { method: "POST" }); await refreshWorkspace(); toast("Changes marked reviewed"); }
+    try {
+      await api(`/api/workspaces/${state.slug}/review`, {
+        method: "POST", body: { expectedSnapshot: state.summary?.snapshot },
+      });
+      await refreshWorkspace();
+      toast("Saved package approved");
+    }
     catch (error) { toast(error.message, true); }
   });
   $("revert-unreviewed").addEventListener("click", revertAllUnreviewed);
@@ -4843,4 +4902,6 @@ renderNotifications();
 syncDrawers();
 window.addEventListener("resize", () => { syncDrawers(); });
 updateStatusBar();
-loadState();
+loadState().then(() => {
+  if (location.hash === "#provider-settings") openSettings();
+});

@@ -6,10 +6,12 @@ Then open http://127.0.0.1:8787/
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import mimetypes
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -24,12 +26,20 @@ import agent
 import config
 import graph_agent
 import isolate_client
+import job_lifecycle
+import studio
+import studio_sample
 import judge0_adapter
 import mcp_consent
 import mcp_server
 import verify
 import winutil
 import workspace
+from engine.model import SingleRequestOpenAIAdapter
+from engine.policy import PolicyDenied
+from engine.service import EngineService
+from engine.store import IdempotencyConflict, LedgerError
+from engine.worker import FakeWorker, IsolateWorker
 
 ROOT = pathlib.Path(__file__).resolve().parent
 WEB = ROOT / "web"
@@ -39,6 +49,11 @@ CHAT_LOCK = threading.Lock()
 ACTIVE_CHATS: set[str] = set()
 WORKSPACE_LOCKS: dict[str, threading.Lock] = {}
 WORKSPACE_LOCKS_GUARD = threading.Lock()
+JOB_TIMEOUT_SECONDS = 20 * 60
+JOB_STOP_GRACE_SECONDS = 60
+ENGINE_SERVICE: EngineService | None = None
+CHAT_SERVICE = None
+ENGINE_LOCK = threading.Lock()
 
 
 def mcp_probe(slug: str, tool: str, arguments: dict) -> dict:
@@ -74,18 +89,42 @@ def mcp_probe(slug: str, tool: str, arguments: dict) -> dict:
 
 def workspace_lock(slug: str) -> threading.Lock:
     with WORKSPACE_LOCKS_GUARD:
-        return WORKSPACE_LOCKS.setdefault(slug, threading.Lock())
+        return WORKSPACE_LOCKS.setdefault(workspace.safe_slug(slug), threading.Lock())
 
 
 def now() -> str:
     return time.strftime("%H:%M:%S")
 
 
-def start_job(title: str, slug: str | None, fn, chat_id: str | None = None) -> dict:
+def _signal_job_stop(job: dict) -> None:
+    if job["workerActive"] and job.get("slug") and job.get("chatId"):
+        graph_agent.cancel_turn(job["slug"], job["chatId"])
+
+
+def request_job_cancel(job_id: str) -> dict | None:
+    with JOB_LOCK:
+        job = JOBS.get(job_id)
+        if job is None:
+            return None
+        accepted = job_lifecycle.transition(job, "cancel")
+        if accepted:
+            _signal_job_stop(job)
+        return {"ok": True, "jobId": job_id, "accepted": accepted, "phase": job["phase"]}
+
+
+def start_job(title: str, slug: str | None, fn, chat_id: str | None = None, *, owns_chat: bool = False,
+              studio_request: dict | None = None) -> dict:
+    request_id = (studio_request or {}).get("studioRequestId")
+    if request_id is not None and (not isinstance(request_id, str) or not re.fullmatch(r"[a-f0-9-]{36}", request_id)):
+        raise ValueError("Invalid Studio job request ID")
+    fingerprint = hashlib.sha256(json.dumps(studio_request, sort_keys=True).encode()).hexdigest() if request_id else None
     job_id = uuid.uuid4().hex[:12]
     job = {"id": job_id, "title": title, "slug": slug, "chatId": chat_id, "state": "running",
+           "phase": "queued", "workerActive": False,
            "cancelRequested": False, "createdAt": now(), "events": [], "nextSeq": 1,
            "result": None, "error": None}
+    if request_id:
+        job.update(requestId=request_id, requestHash=fingerprint)
 
     def append_event(kind: str, data) -> None:
         job["events"].append({"seq": job["nextSeq"], "at": now(), "kind": kind, "data": data})
@@ -95,64 +134,198 @@ def start_job(title: str, slug: str | None, fn, chat_id: str | None = None) -> d
 
     def emit(kind: str, data) -> None:
         with JOB_LOCK:
-            append_event(kind, data)
+            if job["state"] == "running":
+                append_event(kind, data)
 
     def cancelled() -> bool:
         return bool(job.get("cancelRequested"))
 
     run_lock = workspace_lock(slug) if slug else None
+    finished = threading.Event()
+
+    def record_timeout() -> None:
+        job["error"] = "Job exceeded the 20-minute limit."
 
     def run() -> None:
-        if run_lock is not None:
-            run_lock.acquire()
+        acquired = False
+        result = error = None
         try:
-            result = fn(emit, cancelled)
-            with JOB_LOCK:
-                if job.get("cancelRequested"):
-                    job["state"] = "cancelled"
-                elif isinstance(result, dict) and result.get("paused"):
-                    job["state"] = "paused"
-                else:
-                    job["state"] = "done"
-                job["result"] = result
-        except Exception as exc:  # noqa: BLE001 - job reports its own failure
-            if job.get("cancelRequested"):
-                with JOB_LOCK:
-                    job["state"] = "cancelled"
-                    append_event("cancelled", {})
-                return
-            traceback.print_exc()
-            with JOB_LOCK:
-                job["state"] = "error"
-                job["error"] = f"{type(exc).__name__}: {exc}"
-                append_event("error", {"error": job["error"]})
-        finally:
             if run_lock is not None:
-                run_lock.release()
+                while not cancelled() and not acquired:
+                    acquired = run_lock.acquire(timeout=0.1)
+            with JOB_LOCK:
+                job["workerActive"] = not cancelled() and job_lifecycle.transition(job, "start")
+            if job["workerActive"] and not cancelled():
+                result = fn(emit, cancelled)
+        except Exception as exc:  # noqa: BLE001 - job reports its own failure
+            if not cancelled():
+                traceback.print_exc()
+            error = f"{type(exc).__name__}: {exc}"
+        finally:
+            with JOB_LOCK:
+                job["workerActive"] = False
+                if owns_chat:
+                    with CHAT_LOCK:
+                        ACTIVE_CHATS.discard(slug)
+                if acquired:
+                    run_lock.release()
+                if job_lifecycle.settle(job, result, error):
+                    if job["phase"] == "timed_out":
+                        record_timeout()
+                    elif job["phase"] == "cancelled":
+                        append_event("cancelled", {})
+                    elif job["phase"] == "failed":
+                        append_event("error", {"error": error})
+            finished.set()
 
     with JOB_LOCK:
+        if request_id:
+            prior = next((item for item in JOBS.values() if item.get("requestId") == request_id), None)
+            if prior:
+                if (prior["slug"], prior["title"], prior["requestHash"]) != (slug, title, fingerprint):
+                    raise studio.EditConflict("This job request belongs to a different package or action.")
+                return json.loads(json.dumps(prior))
         JOBS[job_id] = job
         if len(JOBS) > 80:
             for key in list(JOBS)[:20]:
-                if JOBS[key]["state"] in ("done", "error", "cancelled"):
+                if JOBS[key]["state"] in ("done", "error", "cancelled") and not JOBS[key]["workerActive"]:
                     JOBS.pop(key, None)
 
     def watchdog() -> None:
-        time.sleep(20 * 60)
+        if finished.wait(JOB_TIMEOUT_SECONDS):
+            return
         with JOB_LOCK:
-            if job["state"] != "running":
+            if not job_lifecycle.transition(job, "deadline"):
                 return
-            job["cancelRequested"] = True
-            append_event("timeout", {"message": "Job exceeded the 20-minute limit and was stopped."})
-        time.sleep(60)
+            append_event("timeout", {"message": "Job exceeded the time limit. Cancellation was requested."})
+            _signal_job_stop(job)
+        if finished.wait(JOB_STOP_GRACE_SECONDS):
+            return
         with JOB_LOCK:
-            if job["state"] == "running":
-                job["state"] = "error"
-                job["error"] = "Job exceeded the 20-minute limit."
+            if job_lifecycle.transition(job, "grace_elapsed"):
+                record_timeout()
 
+    queued = {**job, "events": []}
     threading.Thread(target=run, daemon=True).start()
     threading.Thread(target=watchdog, daemon=True).start()
-    return job
+    return queued
+
+
+def engine_service() -> EngineService:
+    """Lazy engine service.
+
+    Demo mode is explicit (``AUTHOR_AGENT_ENGINE_DEMO=1``).  Without a live
+    model configuration or an explicit demo switch the service uses a visible
+    unconfigured adapter, so chat explains the missing model instead of
+    silently substituting the scripted demo.
+    """
+    global ENGINE_SERVICE
+    with ENGINE_LOCK:
+        if ENGINE_SERVICE is not None:
+            return ENGINE_SERVICE
+        root = pathlib.Path(os.environ.get("AUTHOR_AGENT_ENGINE_ROOT") or (ROOT / ".author-agent" / "engine"))
+        fixture_dir = str(ROOT / "qa" / "engine_contracts" / "fixtures" / "candidates")
+        model = None
+        demo = os.environ.get("AUTHOR_AGENT_ENGINE_DEMO") == "1"
+        decision = None
+        provider_models = {}
+        cfg = config.load()
+        live_override = os.environ.get("AUTHOR_AGENT_ENGINE_LIVE_MODEL")
+        live = live_override == "1" if live_override is not None else (
+            not demo and cfg.get("engineLiveModel") is True
+        )
+        if live:
+            try:
+                context_windows = json.loads(os.environ.get("AUTHOR_AGENT_CONTEXT_WINDOWS") or "{}")
+            except ValueError:
+                context_windows = {}
+            if not isinstance(context_windows, dict):
+                context_windows = {}
+            output_limit = max(1, min(
+                int(os.environ.get("AUTHOR_AGENT_ENGINE_MAX_OUTPUT_TOKENS") or 4096),
+                int(cfg.get("maxOutputTokens") or 4096),
+            ))
+            if cfg.get("openrouterApiKey"):
+                router_model = cfg.get("openrouterModel") or config.OPENROUTER_DEFAULT_MODEL
+                provider_models["openrouter"] = SingleRequestOpenAIAdapter(
+                    model=router_model,
+                    api_key=cfg["openrouterApiKey"],
+                    base_url="https://openrouter.ai/api/v1",
+                    max_output_tokens=output_limit,
+                    openrouter_flash=router_model == config.OPENROUTER_DEFAULT_MODEL,
+                    context_window=context_windows.get(router_model),
+                )
+            if cfg.get("opencodeApiKey"):
+                for provider, path in (("opencode", "inference"), ("opencode-go", "inference/go")):
+                    provider_models[provider] = SingleRequestOpenAIAdapter(
+                        model="glm-5.3-flash", api_key=str(cfg["opencodeApiKey"]),
+                        base_url=f"https://opencode.ai/{path}/openai/v1",
+                        max_output_tokens=output_limit, opencode=True,
+                        context_window=context_windows.get("glm-5.3-flash"),
+                    )
+            if cfg.get("apiKey"):
+                model = SingleRequestOpenAIAdapter(
+                    model=str(cfg.get("model") or "gpt-4.1-mini"),
+                    api_key=str(cfg["apiKey"]),
+                    base_url=str(cfg.get("baseUrl") or "") or None,
+                    max_output_tokens=output_limit,
+                    context_window=context_windows.get(str(cfg.get("model") or "gpt-4.1-mini")),
+                )
+                demo = False
+            decision_model = str(os.environ.get("AUTHOR_AGENT_DECISION_MODEL") or "").strip()
+            decision_key = str(os.environ.get("AUTHOR_AGENT_DECISION_API_KEY")
+                               or cfg.get("apiKey") or "").strip()
+            if decision_model and decision_key:
+                from engine.decisions import ModelDecisionAdapter
+                decision = ModelDecisionAdapter(SingleRequestOpenAIAdapter(
+                    model=decision_model,
+                    api_key=decision_key,
+                    base_url=str(os.environ.get("AUTHOR_AGENT_DECISION_BASE_URL")
+                                 or cfg.get("baseUrl") or "") or None,
+                    max_output_tokens=output_limit,
+                    context_window=context_windows.get(decision_model),
+                ))
+        worker = IsolateWorker() if isolate_client.configured() else FakeWorker()
+        budget_limits = None
+        if os.environ.get("AUTHOR_AGENT_ENGINE_MODEL_ATTEMPT_LIMIT"):
+            try:
+                budget_limits = {"model_attempts_limit": max(
+                    0, int(os.environ["AUTHOR_AGENT_ENGINE_MODEL_ATTEMPT_LIMIT"]))}
+            except ValueError:
+                budget_limits = None
+        ENGINE_SERVICE = EngineService(root, model_adapter=model, worker=worker,
+                                       fixture_dir=fixture_dir, demo=demo,
+                                       decision_adapter=decision,
+                                       default_budget_limits=budget_limits,
+                                       provider_models=provider_models)
+        return ENGINE_SERVICE
+
+
+def chat_service() -> "ChatService":
+    """One conversation facade per engine service (rebuilt if tests swap it)."""
+    global CHAT_SERVICE
+    service = engine_service()
+    with ENGINE_LOCK:
+        if CHAT_SERVICE is None or CHAT_SERVICE.service is not service:
+            from engine.chat import ChatService
+            CHAT_SERVICE = ChatService(service)
+        return CHAT_SERVICE
+
+
+def engine_error(exc: Exception, *, status: int = 400) -> tuple[dict, int]:
+    if isinstance(exc, PolicyDenied):
+        if exc.code == "bad_schema":
+            return {"error": str(exc), "code": exc.code, "supported": False}, 422
+        if exc.code == "oversized":
+            return {"error": str(exc), "code": exc.code, "supported": False}, 413
+        return {"error": str(exc), "code": exc.code, "supported": False}, 403
+    if isinstance(exc, IdempotencyConflict):
+        return {"error": str(exc), "code": "idempotency_conflict"}, 409
+    if isinstance(exc, LedgerError):
+        return {"error": str(exc), "code": "ledger_error"}, (404 if "Unknown" in str(exc) else 409)
+    if isinstance(exc, ValueError):
+        return {"error": str(exc), "code": "invalid_request"}, 422
+    return {"error": str(exc), "code": "internal_error"}, 500
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -212,8 +385,53 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("A JSON object is required")
         return value
 
+    def drain_body(self, limit: int = 6 * 1024 * 1024) -> None:
+        """Consume an ignored request body before an early response.
+
+        Leaving unread bytes on a loopback connection makes Windows return an
+        RST while the client reads the response.
+        """
+        length = int(self.headers.get("Content-Length", "0") or 0)
+        if length <= 0:
+            return
+        if length > limit:
+            self.close_connection = True
+            return
+        self.rfile.read(length)
+
+    def optional_json(self) -> dict:
+        return self.read_json() if int(self.headers.get("Content-Length", "0")) else {}
+
+    def send_package_download(self, slug, expected):
+        with workspace_lock(slug):
+            root = workspace.ws_path(slug)
+            if not root.is_dir():
+                return self.send_error_json("Workspace not found", 404)
+            target = root / ".agent" / "export" / workspace.export_filename(slug)
+            if not target.is_file():
+                return self.send_error_json("No export exists yet", 404)
+            workflow = workspace.summary(slug)["workflow"]
+            if not workflow["canExport"]:
+                return self.send_error_json(workflow["blocker"], 409)
+            if expected is not None and expected != workflow["snapshot"]:
+                return self.send_error_json("The saved package changed. Open Export ZIP for the current revision.", 409)
+            if workspace.archive_status(slug, workflow)["status"] != "ready":
+                return self.send_error_json("Generate a ZIP for the current revision before downloading.", 409)
+            data = target.read_bytes()
+        if target.name.isascii():
+            disposition = f'attachment; filename="{target.name}"'
+        else:
+            fallback = workspace.safe_slug(slug) + "-domjudge.zip"
+            disposition = f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{urllib.parse.quote(target.name)}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", disposition)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def static_file(self, path: str) -> None:
-        rel = "index.html" if path in ("/", "") else path.lstrip("/")
+        rel = {"/": "studio.html", "": "studio.html", "/workbench": "index.html"}.get(path, path.lstrip("/"))
         target = (WEB / rel).resolve()
         if not target.is_relative_to(WEB.resolve()) or not target.is_file():
             self.send_error_json("Not found", 404)
@@ -227,6 +445,38 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def send_statement_pdf(self, slug: str, rel: str, thumbnail: bool = False) -> None:
+        if rel not in ("problem.pdf", "problem_statement/problem.en.pdf", "statement/problem.en.pdf"):
+            return self.send_error_json("Select a generated statement PDF.", 404)
+        target = workspace.resolve(slug, rel)
+        with target.open("rb") as handle:
+            data = handle.read(32 * 1024 * 1024 + 1)
+        if len(data) > 32 * 1024 * 1024:
+            return self.send_error_json("The statement PDF exceeds the 32 MiB preview limit.", 413)
+        if not data.startswith(b"%PDF-"):
+            return self.send_error_json("The saved statement is not a PDF. Run Verify to rebuild it.", 422)
+        mime = "application/pdf"
+        if thumbnail:
+            converter = shutil.which("pdftocairo")
+            if not converter:
+                return self.send_error_json("Install Poppler for a first-page preview, or open the PDF separately.", 503)
+            try:
+                page = subprocess.run([converter, "-png", "-singlefile", "-f", "1", "-l", "1",
+                                       "-scale-to", "1400", "-", "-"], input=data,
+                                      capture_output=True, timeout=8, check=False)
+            except (OSError, subprocess.TimeoutExpired):
+                return self.send_error_json("The first page could not be rendered.", 503)
+            if page.returncode or not page.stdout.startswith(b"\x89PNG\r\n\x1a\n"):
+                return self.send_error_json("The first page could not be rendered.", 422)
+            data, mime = page.stdout, "image/png"
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        if not thumbnail:
+            self.send_header("Content-Disposition", 'inline; filename="problem.pdf"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_GET(self):
         if not self._host_ok():
@@ -250,6 +500,78 @@ class Handler(BaseHTTPRequestHandler):
                 })
             if path == "/api/settings":
                 return self.send_json(config.public())
+            if path == "/api/engine/capabilities":
+                return self.send_json(engine_service().capabilities())
+            if path == "/api/engine/runs":
+                return self.send_json({"runs": engine_service().list_runs()})
+            if path == "/api/engine/chat/receipt":
+                return self.send_json(chat_service().receipt(
+                    query.get("requestId", [""])[0], query.get("runId", [None])[0]))
+            if path.startswith("/api/engine/runs/"):
+                parts = [p for p in path.split("/") if p]
+                if len(parts) < 4:
+                    return self.send_error_json("Unknown engine route", 404)
+                run_id = parts[3]
+                if len(parts) == 4:
+                    return self.send_json(chat_service().view(run_id))
+                if len(parts) == 5 and parts[4] == "view":
+                    return self.send_json(chat_service().view(run_id, studio=query.get("studio") == ["1"]))
+                if len(parts) == 5 and parts[4] == "studio-sample":
+                    return self.send_json(studio_sample.fix(engine_service(), run_id))
+                if len(parts) == 5 and parts[4] == "studio-package":
+                    return self.send_json(studio.package_link(engine_service(), run_id))
+                if len(parts) == 5 and parts[4] == "events":
+                    try:
+                        after = max(0, int((query.get("after") or ["0"])[0]))
+                    except ValueError:
+                        after = 0
+                    return self.send_json(engine_service().events(run_id, after))
+                if len(parts) == 5 and parts[4] == "capabilities":
+                    return self.send_json(engine_service().capabilities(run_id))
+                if len(parts) == 5 and parts[4] == "chat":
+                    try:
+                        after = max(0, int((query.get("after") or ["0"])[0]))
+                    except ValueError:
+                        after = 0
+                    before = int(query["before"][0]) if "before" in query else None
+                    if before is not None and not 1 <= before < 2**63:
+                        raise ValueError("Invalid transcript cursor")
+                    return self.send_json(chat_service().transcript(run_id, after=after, before=before))
+                if len(parts) == 5 and parts[4] == "artifacts":
+                    store = engine_service().store(run_id)
+                    return self.send_json({"artifacts": [
+                        {"id": a["id"], "kind": a["kind"], "path": a["path"],
+                         "blobHash": a["blob_hash"], "revision": a["revision"],
+                         "sourceTurn": a["source_turn"], "current": a["current"],
+                         "generation": a["generation"], "validity": a["validity"],
+                         "validityReason": a["validity_reason"]}
+                        for a in store.list_artifacts(run_id)
+                    ]})
+                if len(parts) == 5 and parts[4] == "decisions":
+                    store = engine_service().store(run_id)
+                    return self.send_json({"decisions": store.list_decision_records(run_id)})
+                if len(parts) == 6 and parts[4] == "decisions":
+                    store = engine_service().store(run_id)
+                    try:
+                        return self.send_json(store.get_decision_record(parts[5]))
+                    except LedgerError as exc:
+                        return self.send_error_json(str(exc), 404)
+                if len(parts) == 6 and parts[4] == "artifacts":
+                    store = engine_service().store(run_id)
+                    try:
+                        artifact = store.get_artifact(parts[5])
+                        body = store.artifact_body(parts[5]).decode("utf-8", "replace")
+                    except LedgerError as exc:
+                        return self.send_error_json(str(exc), 404)
+                    return self.send_json({**artifact, "text": body})
+                if len(parts) == 6 and parts[4] == "responses":
+                    from engine.store import LedgerError as _LE
+                    try:
+                        store = engine_service().store(run_id)
+                        return self.send_json(store.get_response(parts[5]))
+                    except _LE as exc:
+                        return self.send_error_json(str(exc), 404)
+                return self.send_error_json("Unknown engine route", 404)
             if path.startswith("/api/jobs/") and path.endswith("/events"):
                 parts = [p for p in path.split("/") if p]
                 job_id = parts[2] if len(parts) > 2 else ""
@@ -262,9 +584,11 @@ class Handler(BaseHTTPRequestHandler):
                     events = [event for event in (job or {}).get("events", []) if int(event.get("seq") or 0) > since]
                     next_seq = int((job or {}).get("nextSeq") or 1)
                     state = (job or {}).get("state")
+                    phase = (job or {}).get("phase")
                 if job is None:
                     return self.send_json({"error": "Job not found"}, 404)
-                return self.send_json({"jobId": job_id, "state": state, "events": events, "nextSeq": next_seq})
+                return self.send_json({"jobId": job_id, "state": state, "phase": phase,
+                                       "events": events, "nextSeq": next_seq})
             if path.startswith("/api/jobs/"):
                 job_id = path.split("/")[-1]
                 with JOB_LOCK:
@@ -276,11 +600,34 @@ class Handler(BaseHTTPRequestHandler):
                 slug = parts[2] if len(parts) > 2 else ""
                 if len(parts) == 3:
                     return self.send_json(workspace.summary(slug))
+                if len(parts) == 4 and parts[3] == "studio":
+                    with workspace_lock(slug):
+                        info = workspace.summary(slug)
+                        return self.send_json({**info, "archive": workspace.archive_status(slug, info["workflow"])})
+                if len(parts) == 4 and parts[3] == "studio-review":
+                    with workspace_lock(slug):
+                        return self.send_json(workspace.studio_review(slug, (query.get("snapshot") or [None])[0],
+                                                                      (query.get("path") or [None])[0]))
+                if len(parts) == 4 and parts[3] == "studio-job":
+                    request_id = (query.get("requestId") or [None])[0]
+                    with JOB_LOCK:
+                        job = next((job for job in JOBS.values() if request_id and job.get("requestId") == request_id
+                                    and job["slug"] == slug), None)
+                        saved = json.loads(json.dumps(job)) if job else None
+                    return self.send_json(saved or {"error": "Job receipt unavailable"}, 200 if saved else 404)
+                if len(parts) == 4 and parts[3] == "answer-plan":
+                    with workspace_lock(slug):
+                        snapshot = workspace.require_snapshot(slug, (query.get("snapshot") or [None])[0])
+                        return self.send_json({**verify.answer_plan(slug), "snapshot": snapshot})
                 if len(parts) == 4 and parts[3] == "tree":
                     return self.send_json({"tree": workspace.tree(slug)})
                 if len(parts) == 4 and parts[3] == "file":
                     rel = (query.get("path") or [""])[0]
-                    return self.send_json(workspace.read_text(slug, rel))
+                    with workspace_lock(slug):
+                        return self.send_json({**workspace.read_text(slug, rel), "hash": studio.file_hash(slug, rel)})
+                if len(parts) == 4 and parts[3] == "statement-pdf":
+                    return self.send_statement_pdf(slug, (query.get("path") or [""])[0],
+                                                   query.get("preview") == ["first-page"])
                 if len(parts) == 4 and parts[3] == "changes":
                     return self.send_json({"changes": workspace.changes(slug)})
                 if len(parts) == 6 and parts[3] == "changes" and parts[5] == "diff":
@@ -328,21 +675,14 @@ class Handler(BaseHTTPRequestHandler):
                 if len(parts) == 4 and parts[3] == "report":
                     return self.send_json(workspace.state(slug).get("lastReport") or {"status": "none"})
                 if len(parts) == 4 and parts[3] == "download":
-                    target = workspace.ws_path(slug) / ".agent" / "export" / f"{workspace.safe_slug(slug)}-domjudge.zip"
-                    if not target.is_file():
-                        return self.send_error_json("No export exists yet", 404)
-                    body = target.read_bytes()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/zip")
-                    self.send_header("Content-Disposition", f'attachment; filename="{target.name}"')
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
-                    return
+                    return self.send_package_download(slug, query.get("snapshot", [None])[0])
                 return self.send_error_json("Unknown workspace route", 404)
             return self.static_file(path)
         except FileNotFoundError as exc:
             return self.send_error_json(str(exc), 404)
+        except (PolicyDenied, IdempotencyConflict, LedgerError) as exc:
+            payload, status = engine_error(exc)
+            return self.send_json(payload, status)
         except (ValueError, KeyError) as exc:
             return self.send_error_json(str(exc), 400)
         except Exception as exc:  # noqa: BLE001
@@ -351,12 +691,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_PATCH(self):
         if not self._host_ok() or not self._same_origin():
+            self.drain_body()
             return self.send_error_json("Invalid origin", 403)
         path = urllib.parse.urlparse(self.path).path
         parts = [p for p in path.split("/") if p]
         try:
             if len(parts) == 5 and parts[0] == "api" and parts[1] == "workspaces" and parts[3] == "chats":
-                slug, chat_id = parts[2], parts[4]
+                slug, chat_id = workspace.safe_slug(parts[2]), parts[4]
                 with CHAT_LOCK:
                     if slug in ACTIVE_CHATS:
                         return self.send_error_json("A chat turn is already running for this problem", 409)
@@ -374,12 +715,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         if not self._host_ok() or not self._same_origin():
+            self.drain_body()
             return self.send_error_json("Invalid origin", 403)
         path = urllib.parse.urlparse(self.path).path
         parts = [p for p in path.split("/") if p]
         try:
             if len(parts) == 5 and parts[0] == "api" and parts[1] == "workspaces" and parts[3] == "chats":
-                slug, chat_id = parts[2], parts[4]
+                slug, chat_id = workspace.safe_slug(parts[2]), parts[4]
                 with CHAT_LOCK:
                     if slug in ACTIVE_CHATS:
                         return self.send_error_json("A chat turn is already running for this problem", 409)
@@ -399,31 +741,115 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if not self._host_ok() or not self._same_origin():
+            self.drain_body()
             return self.send_error_json("Invalid origin", 403)
         path = urllib.parse.urlparse(self.path).path
         try:
+            if path == "/api/studio/editor-tool":
+                return self.send_json(studio.editor_tool(self.read_json()))
+            if path == "/api/studio/sample":
+                body = self.read_json()
+                return self.send_json(studio_sample.create(chat_service(), body.get("clientRequestId"), workspace_lock), 201)
+            if path == "/api/engine/chat":
+                body = self.read_json()
+                result = chat_service().start(
+                    str(body.get("message") or body.get("idea") or ""),
+                    client_request_id=body.get("clientRequestId"),
+                    model_provider=body.get("provider", "custom"),
+                    title=body.get("title"),
+                )
+                return self.send_json(result, 201)
+            if path == "/api/engine/runs":
+                body = self.read_json()
+                service = engine_service()
+                created = service.create_run(
+                    workspace_id=str(body.get("workspaceId") or "local"),
+                    idea=str(body.get("idea") or body.get("goal") or ""),
+                    client_request_id=body.get("clientRequestId"),
+                )
+                service.request_pump(created["runId"])
+                return self.send_json({**created, "capabilities": service.capabilities(created["runId"])}, 201)
+            if path.startswith("/api/engine/runs/"):
+                parts = [p for p in path.split("/") if p]
+                run_id = parts[3] if len(parts) > 3 else ""
+                service = engine_service()
+                if len(parts) == 5 and parts[4] == "title":
+                    return self.send_json(studio.rename_problem(service, run_id, self.read_json(), workspace_lock))
+                if len(parts) == 5 and parts[4] in ("title-preview", "studio-package-preview"):
+                    return self.send_json(studio.problem_preview(
+                        service, run_id, self.read_json(), workspace_lock, linking=parts[4] == "studio-package-preview"))
+                if len(parts) == 5 and parts[4] == "studio-package":
+                    return self.send_json(studio.link_package(service, run_id, self.read_json(), workspace_lock), 201)
+                if len(parts) == 5 and parts[4] == "inputs":
+                    body = self.read_json()
+                    return self.send_json(service.submit_input(run_id, body), 202)
+                if len(parts) == 5 and parts[4] == "messages":
+                    body = self.read_json()
+                    return self.send_json(chat_service().message(
+                        run_id, str(body.get("message") or ""),
+                        client_request_id=body.get("clientRequestId"),
+                        recover_input_id=body.get("recoverInputId"),
+                        expected_interaction_id=body.get("expectedInteractionId"),
+                    ), 200)
+                if len(parts) == 5 and parts[4] == "contributions":
+                    # Contributions must enter through the durable input/inbox
+                    # path so the barrier and idempotency apply before ack.
+                    self.drain_body()
+                    return self.send_error_json(
+                        "Use POST inputs with kind=contribute; direct contribution writes are not accepted",
+                        422)
+                if len(parts) == 7 and parts[4] == "interactions" and parts[6] == "responses":
+                    body = self.read_json()
+                    receipt = service.submit_response(run_id, parts[5], body)
+                    if receipt.get("status") == "conflict":
+                        return self.send_json(receipt, 409)
+                    return self.send_json(receipt, 200)
+                if len(parts) == 5 and parts[4] in ("exports", "restores", "approve-export",
+                                                    "export", "restore"):
+                    self.drain_body()
+                    return self.send_json(service.refuse(run_id, parts[4]), 501)
+                self.drain_body()
+                return self.send_error_json("Unknown engine route", 404)
             if path.startswith("/api/jobs/") and path.endswith("/cancel"):
+                self.drain_body()
                 parts = [p for p in path.split("/") if p]
                 job_id = parts[2] if len(parts) > 2 else ""
-                with JOB_LOCK:
-                    job = JOBS.get(job_id)
-                    if job is not None:
-                        job["cancelRequested"] = True
-                if job is None:
+                receipt = request_job_cancel(job_id)
+                if receipt is None:
                     return self.send_error_json("Job not found", 404)
-                if job.get("slug") and job.get("chatId"):
-                    graph_agent.cancel_turn(job["slug"], job["chatId"])
-                return self.send_json({"ok": True, "jobId": job_id})
+                return self.send_json(receipt)
             if path == "/api/settings":
                 body = self.read_json()
                 update = {}
                 for key in ("baseUrl", "model", "temperature", "maxToolRounds", "reviewWrites", "contextBudgetTokens", "modelWindowTokens", "maxOutputTokens", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion", "fallbackModel", "fallbackBaseUrl", "fallbackApiKey", "maxRetries", "requestTimeoutSeconds", "judge0Url"):
                     if key in body:
                         update[key] = body[key]
+                if "engineLiveModel" in body:
+                    if not isinstance(body["engineLiveModel"], bool):
+                        return self.send_error_json("Live model setting must be true or false.", 422)
+                    update["engineLiveModel"] = body["engineLiveModel"]
                 if body.get("clearKey"):
                     update["apiKey"] = ""
                 elif str(body.get("apiKey") or "").strip():
                     update["apiKey"] = str(body["apiKey"]).strip()
+                for field, clear_field, label in (
+                    ("opencodeApiKey", "clearOpenCodeKey", "OpenCode"),
+                    ("openrouterApiKey", "clearOpenRouterKey", "OpenRouter"),
+                ):
+                    if body.get(clear_field) is True:
+                        update[field] = ""
+                    elif str(body.get(field) or "").strip():
+                        key = str(body[field]).strip()
+                        if len(key) > 512 or any(char.isspace() for char in key):
+                            return self.send_error_json(f"Enter a single {label} API key.", 422)
+                        update[field] = key
+                if "openrouterModel" in body:
+                    model = str(body["openrouterModel"] or "").strip()
+                    if model and (
+                        len(model) > 160 or not re.fullmatch(r"[\w.-]+/[\w.:-]+", model, re.ASCII)
+                    ):
+                        return self.send_error_json("Enter an OpenRouter model ID in provider/model form.", 422)
+                    update["openrouterModel"] = model or config.OPENROUTER_DEFAULT_MODEL
                 config.save(update)
                 return self.send_json(config.public())
             if path == "/api/workspaces":
@@ -435,7 +861,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(result, 201)
             if path.startswith("/api/workspaces/"):
                 parts = [p for p in path.split("/") if p]
-                slug = parts[2]
+                slug = workspace.safe_slug(parts[2])
                 if len(parts) == 4 and parts[3] == "files":
                     body = self.read_json()
                     with workspace_lock(slug):
@@ -444,10 +870,38 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send_json(workspace.create_file(slug, str(body.get("path") or "")))
                 if len(parts) == 4 and parts[3] == "file":
                     body = self.read_json()
-                    result = workspace.write_text(slug, body.get("path", ""), body.get("content", ""), source="user")
-                    return self.send_json(result)
+                    rel = body.get("path", "")
+                    with workspace_lock(slug):
+                        if "expectedHash" in body and body["expectedHash"] != studio.file_hash(slug, rel):
+                            return self.send_error_json("This file changed on disk. Your draft has been kept.", 409)
+                        origin = body.get("artifactOrigin")
+                        if origin is None:
+                            result = workspace.write_text(slug, rel, body.get("content", ""), source="user")
+                        else:
+                            service = engine_service()
+                            if not isinstance(origin, dict) or not isinstance(origin.get("runId"), str):
+                                raise ValueError("Invalid artifact origin")
+                            run_id = origin["runId"]
+                            store = service.store(run_id)
+                            with store.tx() as conn:
+                                artifact = conn.execute(
+                                    "SELECT current, validity, revision FROM artifacts WHERE id=? AND run_id=?",
+                                    (origin.get("artifactId"), run_id),
+                                ).fetchone()
+                                if (not artifact or not artifact["current"] or artifact["validity"] not in ("current", "revalidated")
+                                        or artifact["revision"] != origin.get("revision")):
+                                    return self.send_error_json("The conversation artifact changed. Your draft was kept.", 409)
+                                result = workspace.write_text(slug, rel, body.get("content", ""), source="artifact copy",
+                                                              artifact_origin={key: origin[key] for key in ("runId", "artifactId", "revision")})
+                        return self.send_json({**result, "hash": studio.file_hash(slug, rel)})
                 if len(parts) == 4 and parts[3] == "review":
-                    return self.send_json(workspace.mark_reviewed(slug))
+                    body = self.optional_json()
+                    with workspace_lock(slug):
+                        try:
+                            reviewed = workspace.mark_reviewed(slug, body.get("expectedSnapshot"))
+                        except workspace.SnapshotConflict as exc:
+                            return self.send_error_json(str(exc), 409)
+                        return self.send_json(reviewed)
                 if len(parts) == 4 and parts[3] == "mcp":
                     body = self.read_json()
                     return self.send_json(mcp_consent.update(slug, body))
@@ -480,16 +934,12 @@ class Handler(BaseHTTPRequestHandler):
                         ACTIVE_CHATS.add(slug)
 
                     def run_chat(emit, cancelled):
-                        try:
-                            return graph_agent.run_turn(
-                                slug, chat_id, message, emit, cancelled,
-                                mode=mode, selected_context=selected_context,
-                            )
-                        finally:
-                            with CHAT_LOCK:
-                                ACTIVE_CHATS.discard(slug)
+                        return graph_agent.run_turn(
+                            slug, chat_id, message, emit, cancelled,
+                            mode=mode, selected_context=selected_context,
+                        )
 
-                    return self.send_json(start_job("Agent turn", slug, run_chat, chat_id=chat_id))
+                    return self.send_json(start_job("Agent turn", slug, run_chat, chat_id=chat_id, owns_chat=True))
                 if len(parts) == 8 and parts[3] == "chats" and parts[5] == "history" and parts[7] == "restore":
                     chat_id, checkpoint = parts[4], parts[6]
                     with CHAT_LOCK:
@@ -516,13 +966,9 @@ class Handler(BaseHTTPRequestHandler):
                         ACTIVE_CHATS.add(slug)
 
                     def run_resume(emit, cancelled):
-                        try:
-                            return graph_agent.resume_turn(slug, chat_id, decisions, emit, cancelled, clarification=clarification)
-                        finally:
-                            with CHAT_LOCK:
-                                ACTIVE_CHATS.discard(slug)
+                        return graph_agent.resume_turn(slug, chat_id, decisions, emit, cancelled, clarification=clarification)
 
-                    return self.send_json(start_job("Resume approval", slug, run_resume, chat_id=chat_id))
+                    return self.send_json(start_job("Resume approval", slug, run_resume, chat_id=chat_id, owns_chat=True))
                 if len(parts) == 5 and parts[3] == "chat" and parts[4] == "reset":
                     return self.send_json(workspace.create_chat(slug), 201)
                 if len(parts) == 4 and parts[3] == "verify":
@@ -530,28 +976,41 @@ class Handler(BaseHTTPRequestHandler):
                     write_answers = bool(body.get("writeAnswers"))
 
                     def run_verify(emit, cancelled):
+                        if "expectedSnapshot" in body:
+                            studio.require_snapshot(slug, body)
                         report = verify.verify(slug, write_answers=write_answers, cancelled=cancelled)
                         emit("report", report)
                         return report
 
-                    return self.send_json(start_job("Package verification", slug, run_verify))
+                    return self.send_json(start_job("Package verification", slug, run_verify, studio_request=body))
                 if len(parts) == 4 and parts[3] == "export":
+                    body = self.optional_json()
                     def run_export(emit, cancelled):
+                        studio.require_snapshot(slug, body)
                         result = verify.export_package(slug)
                         emit("export", result)
                         return result
 
-                    return self.send_json(start_job("Package export", slug, run_export))
+                    return self.send_json(start_job("Package export", slug, run_export, studio_request=body))
                 if len(parts) == 4 and parts[3] == "answers":
+                    body = self.optional_json()
                     def run_answers(emit, cancelled):
+                        if "expectedSnapshot" in body:
+                            studio.require_snapshot(slug, body)
                         result = verify.build_answers(slug, cancelled=cancelled)
                         emit("answers", result)
                         return result
 
-                    return self.send_json(start_job("Generate answers", slug, run_answers))
+                    return self.send_json(start_job("Generate answers", slug, run_answers, studio_request=body))
                 if len(parts) == 4 and parts[3] == "run":
                     body = self.read_json()
-                    return self.send_json(verify.run_source(slug, str(body.get("path") or ""), str(body.get("stdin") or "")))
+                    rel, stdin = str(body.get("path") or ""), str(body.get("stdin") or "")
+                    if body.get("asJob") is True:
+                        def run_code(emit, cancelled):
+                            snapshot = studio.require_snapshot(slug, body)
+                            return verify.run_case(slug, rel, body, snapshot)
+                        return self.send_json(start_job("Run code", slug, run_code, studio_request=body))
+                    return self.send_json(verify.run_source(slug, rel, stdin))
                 if len(parts) == 5 and parts[3] == "isolate" and parts[4] == "run":
                     body = self.read_json()
                     return self.send_json(isolate_client.run_file(
@@ -570,15 +1029,24 @@ class Handler(BaseHTTPRequestHandler):
                         time_limit=2.0, memory_mb=256,
                     ))
                 if len(parts) == 4 and parts[3] == "measure-limits":
+                    body = self.optional_json()
                     def run_limits(emit, cancelled):
+                        if "expectedSnapshot" in body:
+                            studio.require_snapshot(slug, body)
                         result = verify.measure_limits(slug, cancelled=cancelled)
                         emit("limits", result)
                         return result
 
-                    return self.send_json(start_job("Measure limits", slug, run_limits))
+                    return self.send_json(start_job("Measure limits", slug, run_limits, studio_request=body))
+            self.drain_body()
             return self.send_error_json("Unknown route", 404)
         except FileNotFoundError as exc:
             return self.send_error_json(str(exc), 404)
+        except studio.EditConflict as exc:
+            return self.send_error_json(str(exc), 409)
+        except (PolicyDenied, IdempotencyConflict, LedgerError) as exc:
+            payload, status = engine_error(exc)
+            return self.send_json(payload, status)
         except (ValueError, KeyError, json.JSONDecodeError) as exc:
             return self.send_error_json(str(exc), 400)
         except Exception as exc:  # noqa: BLE001

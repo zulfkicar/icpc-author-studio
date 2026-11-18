@@ -6,10 +6,13 @@
 <title>ICPC Author Agent</title>
 <script src="/theme.js"></script>
 <link rel="stylesheet" href="/vendor/highlight-dark.min.css">
+<link rel="stylesheet" href="/collab.css">
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/design.css">
 <script defer src="/vendor/highlight.min.js"></script>
 <script defer src="/machines.js"></script>
 <script defer src="/dialogs.js"></script>
+<script defer src="/engine.js"></script>
 <script defer src="/app.js"></script>
 </head>
 <body>
@@ -19,7 +22,7 @@
 <header class="topbar">
   <div class="brand">
     <span class="brand-mark" aria-hidden="true"><span></span></span>
-    <span class="brand-copy"><b>Author Agent</b><small>ICPC workbench</small></span>
+    <span class="brand-copy"><b>Author Agent</b><small>problem desk</small></span>
   </div>
   <div class="workspace-switch">
     <span class="switch-label">Problem</span>
@@ -34,9 +37,11 @@
   <button id="theme-btn" class="icon-btn" aria-label="Switch to light theme" title="Switch theme">&#9790;</button>
   <span id="status-pill" class="pill unverified">unverified</span>
   <div class="top-actions">
-    <button id="answers-btn" class="quiet">Build answers</button>
+    <a class="quiet" href="/">Author Studio</a>
+    <button id="collab-btn" class="primary desk-open" aria-controls="collab-panel" aria-expanded="false" title="Open the authoring desk">Authoring desk</button>
+    <button id="answers-btn" class="quiet">Answers</button>
     <button id="limits-btn" class="quiet" title="Measure time and memory from the reference solutions">Limits</button>
-    <button id="verify-btn" class="primary">Verify</button>
+    <button id="verify-btn" class="quiet verify-action">Verify</button>
     <button id="export-btn" class="quiet" disabled>Export</button>
     <button id="settings-btn" class="icon-btn" title="Provider settings" aria-label="Provider settings">&#9881;</button>
   </div>
@@ -50,6 +55,95 @@
     <button id="notifications-close" class="icon-btn" aria-label="Close notifications">&#215;</button>
   </div>
   <div id="notifications-list" class="notifications-list" role="log" aria-live="polite"></div>
+</section>
+
+<section id="collab-panel" class="collab-panel" hidden aria-label="Authoring desk">
+  <header class="collab-head">
+    <div class="desk-ident">
+      <div class="dialog-kicker">Authoring desk</div>
+      <h2>Problem correspondence</h2>
+      <p class="desk-sub">One problem. One continuous conversation.</p>
+    </div>
+    <div class="desk-head-right">
+      <span id="collab-status" class="pill">Idle</span>
+      <button id="collab-close" class="icon-btn" aria-label="Close authoring desk">&#215;</button>
+    </div>
+  </header>
+
+  <div class="desk-toolbar" role="group" aria-label="Conversation controls">
+    <label class="collab-label desk-toolbar-label" for="collab-run-select">Conversation</label>
+    <select id="collab-run-select" aria-label="Resume a conversation"></select>
+    <button id="collab-new" class="quiet small">New</button>
+    <button id="collab-refresh" class="quiet small">Refresh</button>
+  </div>
+
+  <details class="desk-disclosure" id="collab-disclosure-details">
+    <summary><span>Model, worker &amp; limits</span><span class="desk-disclosure-tag">demo-safe</span></summary>
+    <p id="collab-disclosure" class="collab-disclosure" role="note"></p>
+  </details>
+  <div id="collab-unconfigured" class="collab-section collab-unconfigured" hidden>
+    <div class="collab-section-title">No model configured</div>
+    <p class="muted small">Chat cannot run the authoring graph until a supported model is configured.
+      A scripted demo is used only when demo mode is explicitly enabled; no fake answer is substituted.</p>
+  </div>
+
+  <div id="collab-transcript" class="collab-transcript" role="log" aria-live="polite"
+       aria-label="Conversation transcript"></div>
+
+  <div class="collab-composer">
+    <div class="composer-head">
+      <label class="collab-label" for="collab-composer">Reply to the desk</label>
+      <span class="desk-hint">Ctrl+Enter to send</span>
+    </div>
+    <textarea id="collab-composer" rows="3"
+      placeholder="Describe the idea, answer the question, paste a lemma, test or solution, or steer the work."></textarea>
+    <div class="collab-row composer-actions">
+      <button id="collab-send" class="primary small">Send</button>
+      <span id="collab-receipt" class="muted small" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+
+  <div class="desk-ledger" aria-label="Working ledger">
+    <div class="desk-ledger-head">
+      <span>Working ledger</span>
+      <span class="muted small">Open on demand</span>
+    </div>
+
+    <details class="collab-section" id="collab-artifacts-section">
+      <summary class="collab-section-title">Internal artifacts</summary>
+      <ul id="collab-artifacts" class="collab-list" aria-live="polite"></ul>
+      <pre id="collab-artifact-body" class="collab-diff" hidden></pre>
+    </details>
+
+    <details class="collab-section">
+      <summary class="collab-section-title">Inputs (received vs applied)</summary>
+      <ul id="collab-inputs" class="collab-list" aria-live="polite"></ul>
+    </details>
+
+    <details class="collab-section">
+      <summary class="collab-section-title">Contributions and attribution</summary>
+      <ul id="collab-contributions" class="collab-list"></ul>
+    </details>
+
+    <details class="collab-section">
+      <summary class="collab-section-title">Evidence and explanation</summary>
+      <div id="collab-evidence" class="collab-evidence"></div>
+    </details>
+
+    <details class="collab-section">
+      <summary class="collab-section-title">Stage handoff</summary>
+      <div id="collab-handoff" class="collab-evidence"></div>
+      <div class="collab-row">
+        <button id="collab-export" class="quiet small" title="Delivery is a V5 capability">Export (unsupported)</button>
+        <button id="collab-restore" class="quiet small" title="Restore mutations are a V5 capability">Restore mutation (unsupported)</button>
+      </div>
+    </details>
+
+    <details class="collab-section">
+      <summary class="collab-section-title">Durable events</summary>
+      <ul id="collab-events" class="collab-events" aria-live="polite"></ul>
+    </details>
+  </div>
 </section>
 
 <main class="layout">
@@ -225,7 +319,7 @@
   <section id="agent-panel" class="chat-pane agent-panel" data-region="agent" aria-label="Agent conversation">
     <div class="chat-head">
       <div class="chat-heading">
-        <div class="chat-kicker">Conversation</div>
+        <div class="chat-kicker">Classic agent</div>
         <div id="chat-title" class="chat-title">No conversation</div>
         <div id="chat-sub" class="chat-sub muted"></div>
       </div>
@@ -322,6 +416,14 @@
     <label>Model <input name="model" placeholder="deepseek-chat"></label>
     <label>API key <input name="apiKey" type="password" placeholder="Leave blank to keep the saved key" autocomplete="off"></label>
     <p id="key-status" class="muted small"></p>
+    <label class="check"><input name="engineLiveModel" type="checkbox"> Enable live Author Studio chat after restarting the server</label>
+    <label>OpenRouter API key <input name="openrouterApiKey" type="password" placeholder="Leave blank to keep the saved OpenRouter key" autocomplete="off"></label>
+    <label>OpenRouter model <input name="openrouterModel" maxlength="160" placeholder="deepseek/deepseek-v4.1-flash"></label>
+    <p id="openrouter-key-status" class="muted small"></p>
+    <label class="check"><input name="clearOpenRouterKey" type="checkbox"> Remove saved OpenRouter key</label>
+    <label>OpenCode API key <input name="opencodeApiKey" type="password" placeholder="Leave blank to keep the saved OpenCode key" autocomplete="off"></label>
+    <p id="opencode-key-status" class="muted small"></p>
+    <label class="check"><input name="clearOpenCodeKey" type="checkbox"> Remove saved OpenCode key</label>
     <div class="grid2">
       <label>Temperature <input name="temperature" type="number" step="0.1" min="0" max="2" value="0.2"></label>
       <label>Max tool rounds <input name="maxToolRounds" type="number" min="1" max="64" value="24"></label>

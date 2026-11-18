@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Author Studio</title>
+<script src="/theme.js"></script>
+<link rel="stylesheet" href="/collab.css">
+<link rel="stylesheet" href="/studio.css">
+<script defer src="/vendor/studio/marked.umd.js"></script>
+<script defer src="/vendor/studio/purify.min.js"></script>
+<script defer src="/studio-local.js"></script>
+<script defer src="/studio-navigation.js"></script>
+<script defer src="/engine.js"></script>
+<script defer src="/studio.js"></script>
+</head>
+<body class="studio">
+<a id="studio-skip" class="skip" href="#collab-composer">Skip to conversation</a>
+<div class="studio-frame">
+  <aside id="studio-conversations" class="studio-sidebar" aria-label="Conversations">
+    <div class="studio-brand"><span class="brand-mark" aria-hidden="true">a</span><strong>Author Studio</strong></div>
+    <button type="button" id="collab-new">New problem <span aria-hidden="true">+</span></button>
+    <button id="studio-open-problem" type="button" aria-keyshortcuts="Alt+P">Open problem <kbd aria-hidden="true">Alt+P</kbd></button>
+    <select id="collab-run-select" hidden aria-label="Resume a conversation"></select>
+    <div class="studio-sidebar-end"><a href="/workbench">Classic workbench &amp; settings</a></div>
+  </aside>
+  <main class="studio-main">
+    <header class="studio-header">
+      <button id="studio-nav" type="button" aria-label="Open problem" aria-haspopup="dialog">☰</button>
+      <div class="studio-problem-name">
+        <h1 id="studio-title">New problem</h1>
+        <button type="button" id="studio-name-problem" aria-label="Name problem" aria-haspopup="dialog">Name</button>
+      </div>
+      <span id="collab-status" class="pill">Idle</span>
+      <div class="studio-spacer"></div>
+      <div class="studio-presets" aria-label="Layout" role="group">
+        <button data-layout="chat" type="button">Chat</button>
+        <button data-layout="together" type="button">Together</button>
+        <button data-layout="editor" type="button">Workspace</button>
+      </div>
+      <button id="studio-commands" type="button" aria-haspopup="dialog" aria-keyshortcuts="Alt+K" title="Commands (Alt+K)">Commands</button>
+      <button id="studio-appearance-trigger" type="button" popovertarget="studio-appearance" aria-label="Appearance">Aa</button>
+    </header>
+    <nav class="studio-actions" aria-label="Problem actions">
+      <button id="studio-files" type="button" aria-haspopup="dialog" aria-keyshortcuts="Alt+O" title="Open file (Alt+O)">Open file</button>
+      <button id="studio-proof" type="button" disabled>Proof</button>
+      <button id="studio-ledger" type="button" aria-expanded="false">Activity</button>
+      <div class="studio-spacer"></div>
+      <button data-operation="run" type="button" disabled>Run</button>
+      <button data-operation="answers" type="button" disabled>Build expected answers</button>
+      <button data-operation="verify" type="button" disabled>Verify</button>
+      <button data-operation="export" type="button" disabled>Export ZIP</button>
+      <p id="studio-storage-warning" role="status" hidden>Draft recovery storage is unavailable. Keep this tab open or copy your work.</p>
+    </nav>
+    <div class="studio-scene" data-layout="chat">
+<section id="collab-panel" class="collab-panel" hidden aria-label="Conversation">
+  <details class="desk-disclosure" id="collab-disclosure-details">
+    <summary><span>Model, worker &amp; limits</span><span class="desk-disclosure-tag">demo-safe</span></summary>
+    <p id="collab-disclosure" class="collab-disclosure" role="note"></p>
+  </details>
+  <div id="collab-unconfigured" class="collab-section collab-unconfigured" hidden>
+    <div class="collab-section-title">No model configured</div>
+    <p class="muted small">Chat cannot run the authoring graph until a supported model is configured.
+      A scripted demo is used only when demo mode is explicitly enabled; no fake answer is substituted.</p>
+    <a href="/workbench#provider-settings">Open provider settings</a>
+  </div>
+
+  <div id="collab-transcript" class="collab-transcript" role="log" aria-live="polite"
+       aria-label="Conversation transcript"></div>
+  <button id="studio-jump-latest" type="button" hidden>Jump to latest</button>
+
+  <div class="collab-composer">
+    <div class="composer-head" hidden>
+      <label class="collab-label" for="collab-composer">Reply to the desk</label>
+      <span class="desk-hint">Ctrl+Enter to send</span>
+    </div>
+    <textarea id="collab-composer" rows="3"
+      placeholder="Describe the idea, answer the question, paste a lemma, test or solution, or steer the work."></textarea>
+    <div class="collab-row composer-actions">
+      <select id="studio-provider" aria-label="Chat provider"><option value="custom">Saved provider</option></select>
+      <button type="button" id="studio-context-trigger" popovertarget="studio-context" aria-controls="studio-context" title="Inspect context usage"><span class="context-track"></span> Context</button>
+      <span class="studio-spacer"></span>
+      <button id="collab-send" class="primary">Send</button>
+      <span id="collab-receipt" class="muted small" role="status" aria-live="polite"></span>
+    </div>
+    <div id="studio-outbox" class="studio-outbox" aria-label="Pending messages" hidden></div>
+  </div>
+
+  <div class="desk-ledger" hidden aria-label="Working ledger">
+    <div class="desk-ledger-head">
+      <span>Working ledger</span>
+      <span class="muted small">Open on demand</span>
+    </div>
+
+    <details class="collab-section" id="collab-artifacts-section">
+      <summary class="collab-section-title">Internal artifacts</summary>
+      <ul id="collab-artifacts" class="collab-list" aria-live="polite"></ul>
+      <pre id="collab-artifact-body" class="collab-diff" hidden></pre>
+    </details>
+
+    <details class="collab-section">
+      <summary class="collab-section-title">Inputs (received vs applied)</summary>
+      <ul id="collab-inputs" class="collab-list" aria-live="polite"></ul>
+    </details>
+
+    <details class="collab-section">
+      <summary class="collab-section-title">Contributions and attribution</summary>
+      <ul id="collab-contributions" class="collab-list"></ul>
+    </details>
+
+    <details class="collab-section">
+      <summary class="collab-section-title">Evidence and explanation</summary>
+      <div id="collab-evidence" class="collab-evidence"></div>
+    </details>
+
+    <details class="collab-section">
+      <summary class="collab-section-title">Stage handoff</summary>
+      <div id="collab-handoff" class="collab-evidence"></div>
+      <div class="collab-row">
+        <button id="collab-export" class="quiet small" title="Delivery is a V5 capability">Export (unsupported)</button>
+        <button id="collab-restore" class="quiet small" title="Restore mutations are a V5 capability">Restore mutation (unsupported)</button>
+      </div>
+    </details>
+
+    <details class="collab-section">
+      <summary class="collab-section-title">Durable events</summary>
+      <ul id="collab-events" class="collab-events" aria-live="polite"></ul>
+    </details>
+  </div>
+</section>
+      <div id="studio-split" class="studio-split" role="separator" tabindex="0" aria-controls="studio-workspace" aria-orientation="vertical" aria-label="Resize chat and files" title="Arrow keys to resize. Home to reset." aria-valuemin="28" aria-valuemax="72" aria-valuenow="52"></div>
+      <section id="studio-workspace" class="studio-workspace" aria-label="Problem workspace">
+        <header class="studio-workspace-head">
+          <div><strong>Workspace</strong><small id="studio-package-label">Conversation artifacts</small></div>
+          <div class="studio-spacer"></div>
+          <button id="studio-toggle-tree" type="button" aria-controls="studio-tree" aria-expanded="true">Hide tree</button>
+          <button id="studio-package" type="button">Package…</button>
+          <button id="studio-link-recent" type="button" hidden>Link recent package</button>
+          <button id="studio-new-file" type="button" hidden>New file</button>
+          <button id="studio-hide-files" type="button" aria-label="Close workspace">×</button>
+        </header>
+        <div class="studio-workspace-body">
+          <nav id="studio-tree" aria-label="Workspace files" class="studio-tree"></nav>
+          <div class="studio-editor-stack">
+            <div class="studio-tab-header">
+              <div class="studio-tabs" id="studio-tabs" role="tablist" aria-label="Open files"></div>
+              <button id="studio-pin-tab" type="button" hidden>Pin tab</button>
+              <button id="studio-close-tab" type="button" hidden>×</button>
+              <button id="studio-reopen-tab" type="button" hidden>Reopen tab</button>
+            </div>
+            <div id="studio-file-actions" class="studio-file-actions" hidden>
+              <span id="studio-file-path"></span>
+              <span id="studio-file-state" class="muted"></span>
+              <span id="studio-file-feedback" role="status" hidden></span>
+              <div class="studio-spacer"></div>
+              <button id="studio-copy" type="button" hidden>Copy to package</button>
+              <button id="studio-discuss-file" type="button">Discuss</button>
+              <button id="studio-save" type="button">Save</button>
+              <button id="studio-review-draft" type="button" hidden>Review saved copy</button>
+              <button data-editor-tool="format" type="button">Format</button>
+              <button data-editor-tool="check" type="button">Check</button>
+            </div>
+            <div id="studio-doc-views" class="studio-doc-views" role="group" aria-label="Markdown view" hidden>
+              <button type="button" data-doc-view="edit">Edit</button>
+              <button type="button" data-doc-view="preview">Preview</button>
+              <button type="button" data-doc-view="split">Split</button>
+            </div>
+            <div id="studio-document" class="studio-document" role="tabpanel" aria-label="File content" data-view="edit">
+              <div id="studio-file-empty" class="studio-empty">Open a conversation artifact or a package file.</div>
+              <div id="studio-monaco" class="studio-monaco" hidden></div>
+              <textarea id="studio-fallback" spellcheck="false" aria-label="Workspace text editor" hidden></textarea>
+              <article id="studio-markdown" class="studio-markdown" aria-label="Rendered Markdown"></article>
+              <section id="studio-pdf" class="studio-pdf" aria-label="Statement PDF" hidden>
+                <div><a id="studio-pdf-link" target="_blank" rel="noopener">Open PDF separately</a><p id="studio-pdf-status"></p></div>
+                <img id="studio-pdf-image" alt="First page of the statement">
+              </section>
+            </div>
+            <div id="studio-output-split" class="studio-output-split" role="separator" tabindex="0" aria-controls="studio-output" aria-orientation="horizontal" aria-label="Resize workspace output" title="Arrow keys to resize. Home to reset." aria-valuemin="150" aria-valuemax="550" aria-valuenow="228" hidden></div>
+            <section id="studio-output" class="studio-output" aria-labelledby="studio-output-title" hidden>
+              <header><h2 id="studio-output-title" tabindex="-1"></h2><button type="button" id="studio-close-output" aria-label="Close output">×</button></header>
+              <div id="studio-output-status" role="status"></div>
+              <div id="studio-output-body"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+<section id="studio-appearance" class="studio-context studio-appearance" popover aria-label="Appearance preferences">
+  <label for="studio-theme">Theme</label>
+  <select id="studio-theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  <label for="studio-reading-size">Reading size</label>
+  <input id="studio-reading-size" type="range" min="14" max="26" value="18" step="1">
+  <label for="studio-code-size">Code size</label>
+  <input id="studio-code-size" type="range" min="12" max="24" value="15" step="1">
+  <label for="studio-density">Workspace spacing</label>
+  <select id="studio-density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select>
+</section>
+<dialog id="studio-search-dialog" aria-labelledby="studio-search-title">
+  <form method="dialog"><button aria-label="Close search">×</button></form>
+  <h2 id="studio-search-title">Open file</h2>
+  <input id="studio-search-input" role="combobox" type="search" autocomplete="off" aria-autocomplete="list" aria-controls="studio-search-results" aria-expanded="false">
+  <p id="studio-search-count" role="status"></p>
+  <div id="studio-search-results" role="listbox" aria-labelledby="studio-search-title"></div>
+</dialog>
+<section id="studio-context" class="studio-context" popover aria-label="Context usage">
+  <h2>Context usage</h2>
+  <p id="studio-context-summary">The engine has not reported a context estimate for this conversation.</p>
+  <p id="studio-context-counts"></p>
+</section>
+<dialog id="studio-title-dialog" aria-labelledby="studio-title-dialog-heading">
+  <form method="dialog"><button aria-label="Close title dialog">×</button></form>
+  <h2 id="studio-title-dialog-heading">Name problem</h2>
+  <form id="studio-title-form">
+    <label for="studio-title-input">Problem title</label>
+    <input id="studio-title-input" maxlength="100" required>
+    <p id="studio-title-impact" aria-live="polite" hidden></p>
+    <button id="studio-title-refresh" type="button" hidden>Refresh preview</button>
+    <button type="submit" class="primary">Save title</button>
+    <p id="studio-title-error" role="alert"></p>
+  </form>
+</dialog>
+<dialog id="studio-package-dialog" aria-labelledby="package-dialog-title">
+  <form method="dialog"><button aria-label="Close package dialog">×</button></form>
+  <h2 id="package-dialog-title">Link a judge package</h2>
+  <p id="studio-package-help">Create a package for this conversation or link an existing workspace.</p>
+  <form id="studio-package-form">
+    <label for="studio-package-select">Existing package</label>
+    <select id="studio-package-select"></select>
+    <label for="studio-package-name">Package name</label>
+    <input id="studio-package-name" maxlength="120">
+    <p id="studio-link-impact" aria-live="polite" hidden></p>
+    <button id="studio-link-refresh" type="button" hidden>Refresh preview</button>
+    <label id="studio-sync-title-row" hidden><input id="studio-sync-title" type="checkbox"> Match the problem title</label>
+    <button id="studio-link-submit" type="submit" class="primary">Continue</button>
+    <p id="studio-link-error" role="alert"></p>
+  </form>
+</dialog>
+<dialog id="studio-file-dialog" aria-labelledby="studio-file-title">
+  <form method="dialog"><button aria-label="Close file dialog">×</button></form>
+  <h2 id="studio-file-title">New package file</h2>
+  <p id="studio-file-origin" hidden></p>
+  <form id="studio-file-form">
+    <label for="studio-new-path">Path in package</label>
+    <input id="studio-new-path" required maxlength="300" placeholder="submissions/accepted/solution.cpp">
+    <button class="primary" type="submit">Open draft</button>
+    <p id="studio-file-error" role="alert"></p>
+  </form>
+</dialog>
+<div id="studio-alert" role="status" hidden></div>
+</body>
+</html>

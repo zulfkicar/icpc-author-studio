@@ -1,0 +1,148 @@
+/* Collaborative stage (V0-V3).  Isolated additive styles; no layout rewrite. */
+.collab-panel {
+  position: fixed;
+  top: 56px;
+  right: 16px;
+  bottom: 34px;
+  width: min(520px, calc(100vw - 24px));
+  overflow-y: auto;
+  z-index: 60;
+  padding: 14px 16px 22px;
+  border: 1px solid var(--border, #2a3140);
+  border-radius: 14px;
+  background: var(--surface, #121722);
+  color: var(--text, #e6e9ef);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+}
+.collab-panel[hidden] { display: none; }
+.collab-head { display: flex; align-items: flex-start; gap: 10px; }
+.collab-head h2 { margin: 2px 0 0; font-size: 18px; }
+.collab-head .spacer { flex: 1; }
+.collab-head #collab-close { margin-left: auto; }
+.collab-disclosure {
+  margin: 10px 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px dashed #6b7280;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #c9d0dc;
+}
+.collab-section {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+}
+.collab-section-title { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; opacity: .75; margin-bottom: 8px; }
+.collab-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.collab-row select, .collab-row button { max-width: 100%; }
+.collab-label { font-size: 12px; opacity: .75; display: block; margin: 6px 0; }
+.collab-panel textarea, .collab-panel select, .collab-panel input {
+  width: 100%;
+  background: rgba(0, 0, 0, .22);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font: inherit;
+}
+.collab-panel textarea { resize: vertical; }
+.collab-prompt { font-size: 15px; margin: 4px 0 10px; line-height: 1.4; }
+.collab-options { display: grid; gap: 6px; margin-bottom: 8px; }
+.collab-option {
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .04);
+  color: inherit;
+  cursor: pointer;
+}
+.collab-option:hover, .collab-option:focus-visible { border-color: #6ea8fe; outline: none; }
+.collab-option b { display: block; margin-bottom: 2px; }
+.collab-option .muted { display: block; font-size: 12px; opacity: .7; }
+.collab-diff {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(0, 0, 0, .28);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.collab-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.collab-list li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12.5px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .035);
+}
+.collab-list li .state { font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1px solid currentColor; }
+.collab-list li .state.received { color: #d9a441; }
+.collab-list li .state.applied { color: #54c08a; }
+.collab-list li .state.conflict, .collab-list li .state.needs_disambiguation { color: #e07777; }
+.collab-list li .state.superseded, .collab-list li .state.cancelled { color: #8b93a3; }
+.collab-list li .txt { overflow-wrap: anywhere; }
+.collab-evidence { font-size: 13px; line-height: 1.5; }
+.collab-evidence h4 { margin: 6px 0 4px; font-size: 13px; }
+.collab-evidence code { font-size: 12px; opacity: .9; overflow-wrap: anywhere; }
+.collab-evidence .witness { margin: 6px 0; padding: 7px 9px; border-left: 3px solid #d9a441; background: rgba(217, 164, 65, .08); white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 12px; }
+.collab-events { list-style: none; margin: 0; padding: 0; max-height: 190px; overflow-y: auto; font-size: 11.5px; }
+.collab-events li { padding: 3px 0; border-bottom: 1px dotted rgba(255, 255, 255, .07); display: flex; gap: 6px; }
+.collab-events li .seq { opacity: .45; min-width: 28px; }
+.collab-events li .type { min-width: 120px; color: #8fb7ff; }
+
+/* Chat-native transcript and composer. */
+.collab-transcript {
+  margin: 4px 0 10px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, .16);
+  max-height: 46vh;
+  min-height: 140px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.collab-msg { display: flex; flex-direction: column; gap: 3px; max-width: 96%; }
+.collab-msg .who { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; opacity: .55; }
+.collab-msg .body {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .055);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.collab-msg.author { align-self: flex-end; align-items: flex-end; }
+.collab-msg.author .body { background: rgba(110, 168, 254, .16); border: 1px solid rgba(110, 168, 254, .3); }
+.collab-msg.finding .body { border-left: 3px solid #e07777; }
+.collab-msg.explanation .body { border-left: 3px solid #6ea8fe; }
+.collab-msg.handoff .body { border-left: 3px solid #54c08a; }
+.collab-msg.boundary .body, .collab-msg.notice .body, .collab-msg.clarify .body { opacity: .86; font-size: 12.5px; }
+.collab-msg.decision .body { border: 1px solid rgba(217, 164, 65, .45); background: rgba(217, 164, 65, .08); }
+.collab-msg .card-options { display: grid; gap: 6px; margin-top: 6px; }
+.collab-msg .card-options .collab-option { width: 100%; }
+.collab-msg .artifact-link { font-family: ui-monospace, monospace; font-size: 12px; text-decoration: underline; opacity: .9; }
+.collab-composer { margin: 8px 0 4px; }
+.collab-conversations { margin-top: 4px; }
+.collab-conversations select { flex: 1 1 160px; }
+.collab-section > summary { cursor: pointer; }
+.collab-section > summary::-webkit-details-marker { opacity: .6; }
+.collab-unconfigured { border-color: rgba(224, 119, 119, .5); }
+@media (max-width: 720px) {
+  .collab-panel { inset: 52px 6px 30px 6px; width: auto; }
+  .collab-transcript { max-height: 38vh; }
+}

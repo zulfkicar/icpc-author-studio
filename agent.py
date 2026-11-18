@@ -182,9 +182,11 @@ def _dispatch(slug: str, name: str, args: dict, emit) -> dict:
         secret = [r["path"] for r in rows if r["type"] == "file" and r["path"].startswith("data/secret/") and r["path"].endswith(".in")]
         return {"sample": sample, "secret": secret, "sampleCount": len(sample), "secretCount": len(secret)}
     if name == "report_summary":
-        report = workspace.state(slug).get("lastReport") or {"status": "none"}
+        info = workspace.summary(slug)
+        report = info.get("lastReport") or {"status": "none"}
         return {
             "status": report.get("status", "none"),
+            "workflow": info["workflow"],
             "errors": (report.get("errors") or [])[:12],
             "warnings": (report.get("warnings") or [])[:8],
             "counts": report.get("counts") or {},
@@ -264,8 +266,9 @@ def _dispatch(slug: str, name: str, args: dict, emit) -> dict:
             "checks": result["checks"],
         }
     if name == "read_report":
-        report = workspace.state(slug).get("lastReport")
-        return report or {"status": "none", "detail": "No verification has run yet"}
+        info = workspace.summary(slug)
+        report = info.get("lastReport") or {"status": "none", "detail": "No verification has run yet"}
+        return {**report, "workflow": info["workflow"]}
     if name == "export_package":
         return verify.export_package(slug)
     raise ValueError(f"Unknown tool: {name}")
@@ -274,6 +277,7 @@ def _dispatch(slug: str, name: str, args: dict, emit) -> dict:
 def _state_note(slug: str) -> str:
     summary = workspace.summary(slug)
     report = summary.get("lastReport") or {}
+    workflow = summary["workflow"]
     meta = summary.get("meta", {})
     lines = [
         "WORKSPACE STATE",
@@ -281,7 +285,10 @@ def _state_note(slug: str) -> str:
         f"- Idea: {meta.get('idea', '')[:600]}",
         f"- Last verification: {report.get('status', 'never')} at {report.get('at', '-')}",
         f"- Unreviewed changes: {summary.get('unreviewed', 0)}",
+        f"- Current package: {workflow['phase']}. Next action: {workflow['nextAction']}.",
     ]
+    if workflow["requiresHuman"]:
+        lines.append("- Review requires the author to approve the saved snapshot.")
     if report.get("errors"):
-        lines.append("- Current verification errors: " + "; ".join(str(e) for e in report["errors"])[:2000])
+        lines.append("- Errors recorded by the last verification: " + "; ".join(str(e) for e in report["errors"])[:2000])
     return "\n".join(lines)

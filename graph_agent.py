@@ -145,7 +145,10 @@ def cancel_turn(slug: str, chat_id: str) -> bool:
     if task is None:
         return False
     loop = task.get_loop()
-    loop.call_soon_threadsafe(task.cancel)
+    try:
+        loop.call_soon_threadsafe(task.cancel)
+    except RuntimeError:
+        return False
     return True
 
 

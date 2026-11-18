@@ -134,7 +134,8 @@ def call(slug: str, name: str, args: dict, consent: dict):
             "secretCount": sum(1 for r in rows if r["path"].startswith("data/secret/") and r["path"].endswith(".in")),
         }
     if name == "read_report":
-        return workspace.state(slug).get("lastReport") or {"status": "none"}
+        info = workspace.summary(slug)
+        return {**(info.get("lastReport") or {"status": "none"}), "workflow": info["workflow"]}
     raise ValueError(f"Unknown tool: {name}")
 
 

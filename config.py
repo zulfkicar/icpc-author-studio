@@ -14,13 +14,18 @@ import threading
 ROOT = pathlib.Path(__file__).resolve().parent
 STATE_DIR = ROOT / ".author-agent"
 CONFIG_PATH = STATE_DIR / "config.json"
-WORKSPACES = ROOT / "workspaces"
+WORKSPACES = pathlib.Path(os.environ.get("AUTHOR_AGENT_WORKSPACES_ROOT") or ROOT / "workspaces").resolve()
 TEMPLATES = ROOT / "templates"
+OPENROUTER_DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash"
 
 DEFAULTS = {
     "baseUrl": "https://api.example.invalid/v1",
     "model": "configured-model",
     "apiKey": "",
+    "opencodeApiKey": "",
+    "openrouterApiKey": "",
+    "openrouterModel": OPENROUTER_DEFAULT_MODEL,
+    "engineLiveModel": False,
     "temperature": 0.2,
     "maxToolRounds": 24,
     "reviewWrites": False,
@@ -112,7 +117,7 @@ def load() -> dict:
 def save(update: dict) -> dict:
     with _LOCK:
         data = load()
-        for key in ("baseUrl", "model", "apiKey", "temperature", "maxToolRounds", "reviewWrites", "contextBudgetTokens", "modelWindowTokens", "maxOutputTokens", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion", "fallbackModel", "fallbackBaseUrl", "fallbackApiKey", "fallbackModelWindowTokens", "maxRetries", "requestTimeoutSeconds", "judge0Url", "judge0Token"):
+        for key in ("baseUrl", "model", "apiKey", "opencodeApiKey", "openrouterApiKey", "openrouterModel", "engineLiveModel", "temperature", "maxToolRounds", "reviewWrites", "contextBudgetTokens", "modelWindowTokens", "maxOutputTokens", "summaryTriggerTokens", "summaryKeepMessages", "inputPricePerMillion", "outputPricePerMillion", "fallbackModel", "fallbackBaseUrl", "fallbackApiKey", "fallbackModelWindowTokens", "maxRetries", "requestTimeoutSeconds", "judge0Url", "judge0Token"):
             if key in update and update[key] is not None:
                 data[key] = update[key]
         data["temperature"] = max(0.0, min(2.0, float(data.get("temperature", 0.2))))
@@ -126,10 +131,11 @@ def redact(value) -> str:
     """Remove provider keys and obvious key-shaped tokens from diagnostics."""
     text = str(value)
     data = load()
-    for key in (data.get("apiKey"), data.get("fallbackApiKey")):
+    for field in ("apiKey", "fallbackApiKey", "opencodeApiKey", "openrouterApiKey"):
+        key = data.get(field)
         if key and len(str(key)) >= 8:
             text = text.replace(str(key), "[REDACTED_API_KEY]")
-    return re.sub(r"\b(?:xpl_|sk-)[A-Za-z0-9_-]{8,}\b", "[REDACTED_API_KEY]", text)
+    return re.sub(r"\b(?:xpl_|sk-|oc_sk_)[A-Za-z0-9_-]{8,}\b", "[REDACTED_API_KEY]", text)
 
 
 def public(data: dict | None = None) -> dict:
@@ -139,6 +145,10 @@ def public(data: dict | None = None) -> dict:
         "baseUrl": data.get("baseUrl", ""),
         "model": data.get("model", ""),
         "hasKey": bool(key),
+        "hasOpenCodeKey": bool(data.get("opencodeApiKey")),
+        "hasOpenRouterKey": bool(data.get("openrouterApiKey")),
+        "openrouterModel": data.get("openrouterModel") or OPENROUTER_DEFAULT_MODEL,
+        "engineLiveModel": data.get("engineLiveModel") is True,
         "keyHint": ("..." + key[-4:]) if len(key) >= 8 else ("" if not key else "set"),
         "temperature": data.get("temperature", 0.2),
         "maxToolRounds": data.get("maxToolRounds", 24),

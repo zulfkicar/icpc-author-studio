@@ -75,6 +75,16 @@ def _read_meta(slug: str) -> dict:
         pass
 
     def ini_value(key: str) -> str | None:
+        if key == "name":
+            line = re.search(r"^name[ \t]*=[ \t]*([^\r\n]+)", ini_text, re.M)
+            if line:
+                try:
+                    value = json.loads(line.group(1).strip())
+                except ValueError:
+                    pass
+                else:
+                    if isinstance(value, str):
+                        return value
         match = re.search(rf"^\s*{re.escape(key)}\s*=\s*[\"']?([^\"'\r\n]+)", ini_text, re.M)
         return match.group(1).strip() if match else None
 
@@ -284,6 +294,22 @@ def _check_cancel(cancelled, deadline: float | None = None) -> None:
         raise RuntimeError("Verification exceeded its 15-minute budget")
 
 
+def answer_plan(slug: str) -> dict:
+    root = workspace.ws_path(slug)
+    tests = _tests(slug)
+    return {"counts": {kind: sum(1 for test in tests if test["kind"] == kind)
+                       for kind in ("sample", "secret")},
+            "references": [row["path"] for row in _solutions(slug) if row["kind"] == "accepted"],
+            "outputs": [{"input": test["input"].relative_to(root).as_posix(),
+                         "answer": test["answer"].relative_to(root).as_posix(), "kind": test["kind"],
+                         "exists": test["answer"].is_file()} for test in tests]}
+
+
+def _answer_source_path(slug: str, answer_path: str) -> pathlib.Path:
+    key = hashlib.sha256(answer_path.encode()).hexdigest()
+    return workspace._state_dir(slug) / "answer-sources" / f"{key}.json"
+
+
 def build_answers(slug: str, cancelled=None) -> dict:
     winutil.prepare()
     deadline = time.monotonic() + VERIFY_BUDGET_SECONDS
@@ -301,6 +327,10 @@ def build_answers(slug: str, cancelled=None) -> dict:
         return {"ok": False, "errors": broken, "written": 0}
     written = 0
     reports = []
+    references = [solution["path"] for solution in accepted]
+    root = workspace.ws_path(slug)
+    reference_hashes = {row["path"]: hashlib.sha256(row["absolute"].read_bytes()).hexdigest() for row in accepted}
+    artifacts = []
     for test in tests:
         _check_cancel(cancelled, deadline)
         data = test["input"].read_bytes()
@@ -309,16 +339,23 @@ def build_answers(slug: str, cancelled=None) -> dict:
             result = _run(compiled[solution["path"]]["argv"], cwd=workspace.ws_path(slug), data=data,
                           timeout=meta["timeLimitSeconds"] + 2.0)
             if result["timedOut"] or not result["ok"] or result["returncode"] != 0:
-                return {"ok": False, "errors": [{"path": solution["path"], "error": "Reference failed on " + test["relative"]}], "written": written}
+                return {"ok": False, "errors": [{"path": solution["path"], "error": "Reference failed on " + test["relative"]}],
+                        "written": written, "references": references, "outputs": artifacts, "disagreements": reports}
             outputs.append((solution["path"], result["stdout"]))
         if len({tuple(_tokens(o)) for _, o in outputs}) > 1:
             reports.append({"test": test["relative"], "status": "reference_disagreement",
                             "solutions": [p for p, _ in outputs]})
             continue
-        workspace.write_text(slug, test["answer"].relative_to(workspace.ws_path(slug)).as_posix(),
-                             outputs[0][1].decode("utf-8", "replace"), source="verify")
+        answer_path = test["answer"].relative_to(root).as_posix()
+        workspace.write_text(slug, answer_path, outputs[0][1].decode("utf-8", "replace"), source="verify")
         written += 1
-    return {"ok": not reports, "written": written, "tests": len(tests), "disagreements": reports}
+        workspace._write_json(_answer_source_path(slug, answer_path), {
+            "hash": hashlib.sha256(test["answer"].read_bytes()).hexdigest(),
+            "references": references, "referenceHashes": reference_hashes, "inputHash": hashlib.sha256(data).hexdigest(),
+        })
+        artifacts.append({"path": answer_path, "test": test["relative"], "kind": test["kind"]})
+    return {"ok": not reports, "written": written, "tests": len(tests), "disagreements": reports,
+            "references": references, "outputs": artifacts}
 
 
 def _set_yaml_memory(text: str, memory_mb: int) -> str:
@@ -352,7 +389,7 @@ def _set_limits_in_files(slug: str, time_limit: float, memory_mb: int) -> None:
             workspace.write_text(slug, f"{folder}/problem.en.tex", text, source="verify")
 
 
-def run_source(slug: str, path: str, stdin: str = "") -> dict:
+def run_source(slug: str, path: str, stdin: str | bytes = "") -> dict:
     """Compile and run an arbitrary code file in the workspace for the user's own testing."""
     target = workspace.resolve(slug, path)
     if not target.is_file():
@@ -374,22 +411,82 @@ def run_source(slug: str, path: str, stdin: str = "") -> dict:
     result = winutil.run_measured(
         compiled["argv"],
         cwd=workspace.ws_path(slug),
-        data=str(stdin or "").encode("utf-8"),
+        data=stdin if isinstance(stdin, bytes) else str(stdin or "").encode("utf-8"),
         timeout=time_limit,
         env=winutil.python_env(),
     )
+    stdout_bytes = result["stdout"][:OUTPUT_CAP]
+    stdout = stdout_bytes.decode("utf-8", "replace")
     return {
         "ok": result["ok"],
         "stage": "run",
         "path": path,
         "language": language,
-        "stdout": result["stdout"][:OUTPUT_CAP].decode("utf-8", "replace"),
+        "stdout": stdout,
+        "stdoutComplete": len(result["stdout"]) < OUTPUT_CAP and stdout.encode() == stdout_bytes,
         "stderr": result["stderr"][:OUTPUT_CAP].decode("utf-8", "replace"),
         "exitCode": result["returncode"],
         "timedOut": result["timedOut"],
         "ms": round(result["ms"], 1),
         "diagnostic": winutil.diagnostic(result["returncode"]),
     }
+
+
+def _source_diagnostics(slug: str, path: str, stderr: str) -> list[dict]:
+    source = workspace.resolve(slug, path)
+    diagnostics = []
+    for match in re.finditer(r"(?m)^([^\r\n]+?):(\d+)(?::(\d+))?:\s*(?:fatal error|error|warning):|"
+                             r'File "([^"\r\n]+)", line (\d+)', stderr):
+        location = pathlib.Path(match[1] or match[4])
+        resolved = location.resolve() if location.is_absolute() else (workspace.ws_path(slug) / location).resolve()
+        if resolved == source:
+            diagnostics.append({"path": path, "line": int(match[2] or match[5]), "column": int(match[3] or 1)})
+            if len(diagnostics) == 12:
+                break
+    return diagnostics
+
+
+def run_case(slug: str, rel: str, body: dict, snapshot: str) -> dict:
+    source = workspace.resolve(slug, rel)
+    if not source.is_file():
+        raise FileNotFoundError("Source file not found")
+    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+    if body.get("expectedHash", source_hash) != source_hash:
+        raise workspace.SnapshotConflict("Saved source changed. Reopen the file before running it.")
+    stdin = body.get("stdin", "")
+    expected = body.get("expected")
+    if not isinstance(stdin, str) or len(stdin.encode()) > 256 * 1024:
+        raise ValueError("Standard input must be text of at most 256 KiB.")
+    if expected is not None and (not isinstance(expected, str) or len(expected.encode()) > 16 * 1024):
+        raise ValueError("Expected output must be text of at most 16 KiB.")
+    case = body.get("casePath")
+    run_input = stdin.encode()
+    if case:
+        root = workspace.ws_path(slug)
+        test = next((row for row in _tests(slug) if row["input"].relative_to(root).as_posix() == case), None)
+        if test is None or test["input"].read_text("utf-8", errors="replace") != stdin:
+            raise workspace.SnapshotConflict("The saved case changed. Reload it before running.")
+        run_input = test["input"].read_bytes()
+        if len(run_input) > 256 * 1024:
+            raise ValueError("Saved inputs may be at most 256 KiB for manual runs.")
+        # This manual runner uses token comparison. A custom checker is exercised by Verify.
+        expected = None
+        if test["answer"].is_file() and test["answer"].stat().st_size <= 16 * 1024:
+            try:
+                expected = test["answer"].read_bytes().decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+    result = run_source(slug, rel, run_input)
+    workspace.require_snapshot(slug, snapshot)
+    compared = expected is not None and result["ok"] and result.get("stdoutComplete")
+    comparison = None if not compared else {
+        "expected": expected, "matches": _compare(result["stdout"].encode(), expected.encode()),
+        "source": "stored answer" if case else "attached expectation", "method": "token comparison",
+    }
+    return {**result, "snapshot": snapshot, "sourceHash": source_hash,
+            "diagnostics": _source_diagnostics(slug, rel, result["stderr"]),
+            "evidenceSource": "local process", "casePath": case, "stdinHash": hashlib.sha256(run_input).hexdigest(),
+            "comparison": comparison}
 
 
 def measure_limits(slug: str, cancelled=None) -> dict:
@@ -520,6 +617,26 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
     package = package_model.load(slug)
     if package.is_interactive:
         return _verify_interactive(slug, package, cancelled)
+    built = {"ok": False, "written": 0, "errors": [], "disagreements": []}
+    if write_answers and any(solution["kind"] == "accepted" for solution in _solutions(slug)):
+        built = build_answers(slug, cancelled=cancelled)
+    # The verifier itself may write these PDFs. Pin all other files across
+    # compilation, then pin the complete deliverable for the remaining checks.
+    statement_outputs = {"problem.pdf", "problem_statement/problem.en.pdf", "statement/problem.en.pdf"}
+
+    def statement_inputs() -> str:
+        return workspace.snapshot_hash(slug, entries=[
+            entry for entry in workspace.tree(slug) if entry["path"] not in statement_outputs
+        ])
+
+    inputs = statement_inputs()
+    statement = _statement(slug)
+    snapshot = workspace.snapshot_hash(slug)
+    if statement_inputs() != inputs:
+        raise ValueError("The workspace changed during verification. Run Verify again.")
+    package = package_model.load(slug)
+    if package.is_interactive:
+        raise ValueError("The package type changed during verification. Run Verify again.")
     meta = _read_meta(slug)
     tests = _tests(slug)
     solutions = _solutions(slug)
@@ -563,10 +680,7 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
     if not limits_measured:
         errors.append("Limits have not been measured from the reference solutions. Run Measure limits.")
 
-    built = {"ok": False, "written": 0, "errors": [], "disagreements": []}
     if accepted and write_answers:
-        built = build_answers(slug, cancelled=cancelled)
-        tests = _tests(slug)
         if not built["ok"]:
             errors.append("Answer generation failed")
             warnings.extend(str(e) for e in built.get("errors", []))
@@ -630,20 +744,35 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
             errors.append("Input validator rejected " + ", ".join(r["test"] for r in invalid))
 
     test_results = []
+    validation = {row["test"]: row["valid"] for row in validator_results}
+    source_hashes = {row["path"]: hashlib.sha256(row["absolute"].read_bytes()).hexdigest() for row in accepted + negative}
+    diagnostics = {path: _source_diagnostics(slug, path, item.get("error") or "")
+                   for path, item in compiled.items() if not item["ok"]}
     answer_mismatch = []
     missing_answer = []
     for test in tests:
         _check_cancel(cancelled, deadline)
         expected = test["answer"].read_bytes() if test["answer"].is_file() else None
+        data = test["input"].read_bytes()
         if expected is None:
             missing_answer.append(test["relative"])
-        row = {"test": test["relative"], "kind": test["kind"], "solutions": []}
+        case_path = test["input"].relative_to(root).as_posix()
+        answer_path = test["answer"].relative_to(root).as_posix()
+        source_receipt = workspace._read_json(_answer_source_path(slug, answer_path), {})
+        known_source = expected is not None and source_receipt.get("hash") == hashlib.sha256(expected).hexdigest()
+        row = {"test": test["relative"], "kind": test["kind"], "group": test["group"], "path": case_path,
+               "validatorPassed": validation.get(test["relative"]), "solutions": [],
+               "expectedAnswer": {"path": answer_path, "present": expected is not None,
+                                  "references": source_receipt["references"] if known_source else [],
+                                  "referenceHashes": source_receipt.get("referenceHashes", {}) if known_source else {},
+                                  "inputMatchesBuild": known_source and source_receipt.get("inputHash") ==
+                                                       hashlib.sha256(data).hexdigest()}}
         for solution in accepted:
             comp = compiled[solution["path"]]
             if not comp["ok"]:
                 row["solutions"].append({"path": solution["path"], "verdict": "CE", "error": comp.get("error", "")[-1000:]})
                 continue
-            result = _run(comp["argv"], cwd=root, data=test["input"].read_bytes(),
+            result = _run(comp["argv"], cwd=root, data=data,
                           timeout=meta["timeLimitSeconds"] + 0.5)
             verdict = _verdict(result, expected, meta["timeLimitSeconds"], compare=lambda a, e: compare(a, e, test))
             row["solutions"].append({
@@ -652,6 +781,9 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
             })
             if verdict not in ("AC",):
                 answer_mismatch.append({"test": test["relative"], "path": solution["path"], "verdict": verdict})
+                if verdict == "WA":
+                    row["solutions"][-1]["actualPreview"] = result["stdout"][:1200].decode("utf-8", "replace")
+                    row["solutions"][-1]["expectedPreview"] = (expected or b"")[:1200].decode("utf-8", "replace")
         test_results.append(row)
     if missing_answer:
         errors.append("Missing answer files for: " + ", ".join(missing_answer) + ". Run Build answers.")
@@ -718,7 +850,6 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
             ),
         })
 
-    statement = _statement(slug)
     checks.append({"name": "Statement PDF", "status": statement["status"], "detail": statement["detail"]})
     if statement["status"] == "fail":
         errors.append("Statement PDF: " + statement["detail"].splitlines()[0])
@@ -745,6 +876,9 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
         warnings.append(f"Output validator contract: {checker_program.contract}; see the checker self-test evidence")
     warnings.append("Memory limit is recorded; the executor enforces it for isolated runs")
 
+    _check_cancel(cancelled, deadline)
+    if workspace.snapshot_hash(slug) != snapshot:
+        raise ValueError("The workspace changed during verification. Run Verify again.")
     status = "verified" if not errors else "failed"
     report = {
         "status": status,
@@ -756,6 +890,8 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
         "tests": test_results,
         "validator": validator_results,
         "accepted": [{"path": s["path"], "compiled": compiled[s["path"]]["ok"]} for s in accepted],
+        "sourceHashes": source_hashes,
+        "sourceDiagnostics": diagnostics,
         "negative": negative_results,
         "groups": group_score,
         "spec": spec,
@@ -768,28 +904,27 @@ def verify(slug: str, write_answers: bool = False, cancelled=None) -> dict:
             "negative": len(negative),
         },
         "limits": {"timeSeconds": meta["timeLimitSeconds"], "memoryMb": meta["memoryMb"]},
-        "snapshot": workspace.snapshot_hash(slug),
+        "snapshot": snapshot,
     }
     workspace.set_report(slug, report)
     return report
 
 
 def export_package(slug: str) -> dict:
-    st = workspace.state(slug)
-    report = st.get("lastReport")
-    if not report or report.get("status") != "verified":
-        raise ValueError("Export is blocked until package verification passes")
-    if report.get("snapshot") != workspace.snapshot_hash(slug):
-        raise ValueError("The workspace changed after the last verification. Run Verify again before exporting.")
-    if workspace.summary(slug).get("unreviewed"):
-        raise ValueError("Mark all changes reviewed before exporting")
+    info = workspace.summary(slug)
+    workflow = info["workflow"]
+    if not workflow["canExport"]:
+        raise ValueError(workflow["blocker"])
+    report = info["lastReport"]
     root = workspace.ws_path(slug)
     out_dir = root / ".agent" / "export"
     out_dir.mkdir(parents=True, exist_ok=True)
-    target = out_dir / f"{workspace.safe_slug(slug)}-domjudge.zip"
+    target = out_dir / workspace.export_filename(slug)
+    staged = out_dir / f".{target.name}.{uuid.uuid4().hex}.tmp"
     manifest = {
-        "problem": st.get("meta", {}),
+        "problem": info["meta"],
         "verifiedAt": report.get("at"),
+        "createdAt": workspace.now(),
         "snapshot": report.get("snapshot"),
         "counts": report.get("counts"),
         "files": {},
@@ -807,7 +942,7 @@ def export_package(slug: str) -> dict:
             data = data.replace(b"\r\n", b"\n")
         return data
 
-    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(staged, "w", zipfile.ZIP_DEFLATED) as zf:
         for name in include_roots:
             path = root / name
             if path.is_file():
@@ -819,11 +954,11 @@ def export_package(slug: str) -> dict:
                 manifest["files"][name] = hashlib.sha256(data).hexdigest()
             elif path.is_dir():
                 for item in sorted(path.rglob("*")):
-                    if item.is_dir() or item.name == ".keep" or "__pycache__" in item.parts:
+                    rel = item.relative_to(root).as_posix()
+                    if item.is_dir() or item.name == ".keep" or workspace.SKIP_DIRS.intersection(rel.split("/")):
                         continue
                     if item.suffix.lower() in (".aux", ".log", ".out", ".toc", ".synctex", ".gz", ".tmp"):
                         continue
-                    rel = item.relative_to(root).as_posix()
                     data = zip_payload(item)
                     info = zipfile.ZipInfo(rel, time.localtime()[:6])
                     info.external_attr = (item.stat().st_mode & 0xFFFF) << 16
@@ -843,10 +978,15 @@ def export_package(slug: str) -> dict:
             zf.writestr(info, data)
             manifest["files"]["input_validators/validate"] = hashlib.sha256(data).hexdigest()
         zf.writestr("problem_statement/manifest.json", json.dumps(manifest, indent=2))
+    latest = workspace.summary(slug)["workflow"]
+    if latest["snapshot"] != workflow["snapshot"] or not latest["canExport"]:
+        raise ValueError("The saved package or its approval changed during export. Review the current revision.")
+    staged.replace(target)
     return {
         "path": target.relative_to(root).as_posix(),
         "absolute": str(target),
         "size": target.stat().st_size,
         "files": len(manifest["files"]),
         "verifiedAt": report.get("at"),
+        "snapshot": workflow["snapshot"],
     }
