@@ -11,6 +11,7 @@
 <script defer src="/vendor/studio/purify.min.js"></script>
 <script defer src="/studio-local.js"></script>
 <script defer src="/studio-navigation.js"></script>
+<script defer src="/studio-context.js"></script>
 <script defer src="/engine.js"></script>
 <script defer src="/studio.js"></script>
 </head>
@@ -31,7 +32,8 @@
         <h1 id="studio-title">New problem</h1>
         <button type="button" id="studio-name-problem" aria-label="Name problem" aria-haspopup="dialog">Name</button>
       </div>
-      <span id="collab-status" class="pill">Idle</span>
+      <span id="collab-status" class="pill" role="status">Idle</span>
+      <span id="studio-sample-label" class="pill" hidden>Sample · scripted chat</span>
       <div class="studio-spacer"></div>
       <div class="studio-presets" aria-label="Layout" role="group">
         <button data-layout="chat" type="button">Chat</button>
@@ -65,6 +67,7 @@
     <a href="/workbench#provider-settings">Open provider settings</a>
   </div>
 
+  <button id="studio-chat-earlier" type="button" hidden>Load earlier messages</button>
   <div id="collab-transcript" class="collab-transcript" role="log" aria-live="polite"
        aria-label="Conversation transcript"></div>
   <button id="studio-jump-latest" type="button" hidden>Jump to latest</button>
@@ -78,7 +81,7 @@
       placeholder="Describe the idea, answer the question, paste a lemma, test or solution, or steer the work."></textarea>
     <div class="collab-row composer-actions">
       <select id="studio-provider" aria-label="Chat provider"><option value="custom">Saved provider</option></select>
-      <button type="button" id="studio-context-trigger" popovertarget="studio-context" aria-controls="studio-context" title="Inspect context usage"><span class="context-track"></span> Context</button>
+      <button type="button" id="studio-context-trigger" popovertarget="studio-context" aria-controls="studio-context" aria-expanded="false" title="Inspect context usage"><span class="context-track" aria-hidden="true"><span></span></span> Context</button>
       <span class="studio-spacer"></span>
       <button id="collab-send" class="primary">Send</button>
       <span id="collab-receipt" class="muted small" role="status" aria-live="polite"></span>
@@ -206,8 +209,12 @@
 </dialog>
 <section id="studio-context" class="studio-context" popover aria-label="Context usage">
   <h2>Context usage</h2>
-  <p id="studio-context-summary">The engine has not reported a context estimate for this conversation.</p>
-  <p id="studio-context-counts"></p>
+  <label for="studio-context-role" hidden>Request role</label>
+  <select id="studio-context-role" hidden></select>
+  <p id="studio-context-summary">No context receipt has been recorded for this problem.</p>
+  <div id="studio-context-map" aria-hidden="true"></div>
+  <div id="studio-context-categories" role="group" aria-label="Context categories"></div>
+  <p id="studio-context-detail" role="status"></p>
 </section>
 <dialog id="studio-title-dialog" aria-labelledby="studio-title-dialog-heading">
   <form method="dialog"><button aria-label="Close title dialog">×</button></form>

@@ -390,15 +390,14 @@
     const saved = state.files.filter(item => item.type === "file").map(({ path }) => ({
       path, group: navigation.category(path), key: fileKey(path), open: task(() => openFile(path)),
     }));
-    const drafts = state.slug
-      ? [...new Set(local.entries(fileDraftPrefix(state.slug)).map(([, draft]) => draft.path))] : [];
+    const drafts = new Set(state.slug ? local.entries(fileDraftPrefix(state.slug)).map(([, draft]) => draft.path) : []);
     const savedPaths = new Set(saved.map(row => row.path));
-    const openDrafts = drafts.filter(path => !savedPaths.has(path)).map(path => ({
+    const openDrafts = [...drafts].filter(path => !savedPaths.has(path)).map(path => ({
       path, group: "Unsaved drafts", key: fileKey(path), open: task(() => openFile(path)),
     }));
     return [...artifacts, ...saved, ...openDrafts].map(row => ({
       ...row, dirty: row.group === "Unsaved drafts" || dirty(models.get(row.key)) ||
-        (row.group !== "From conversation" && drafts.includes(row.path)),
+        (row.group !== "From conversation" && drafts.has(row.path)),
     }));
   }
 
@@ -418,13 +417,18 @@
       group.open = local.read(scope + label, true);
       group.append(node("summary", label + " · " + rows.length));
       group.ontoggle = () => local.write(scope + label, group.open);
+      const basenames = new Map();
+      for (const row of rows) {
+        const short = row.path.split("/").at(-1);
+        basenames.set(short, (basenames.get(short) || 0) + 1);
+      }
       for (const row of rows) {
         const short = row.path.split("/").pop();
         const item = button(short + (row.dirty ? " •" : ""), row.open);
         item.dataset.fileKey = row.key;
         item.title = row.path + (row.detail ? " · " + row.detail : "");
         item.setAttribute("aria-current", String(row.key === state.selected));
-        if (row.detail || rows.filter(candidate => candidate.path.split("/").pop() === short).length > 1) {
+        if (row.detail || basenames.get(short) > 1) {
           item.append(node("small", row.path + (row.detail ? " · " + row.detail : "")));
         }
         group.append(item);
@@ -655,6 +659,8 @@
       { title: "Open file", shortcut: "Alt+O", run: openFileSearch },
       { title: "Rename problem", shortcut: "F2", run: () => $("studio-name-problem").click() },
       { title: "New problem", run: () => $("collab-new").click() },
+      { title: "Open Canal Bookings sample", detail: "Scripted chat and a separate judge package", run: task(() => openSample()) },
+      { title: "Start a fresh sample", run: task(() => openSample(true)) },
       { title: "Run saved source", shortcut: "Alt+R", detail: "Choose a source and input before running", run: () => openOutput("run") },
       { title: "Build expected answers", keywords: "tests", run: () => openOutput("answers") },
       { title: "Verify package", run: () => openOutput("verify") },
@@ -672,6 +678,22 @@
       ...(closedTabs.length ? [{ title: "Reopen closed tab", shortcut: "Alt+Shift+O", run: reopenTab }] : []),
     ]);
   }
+  let openingSample = false;
+  async function openSample(fresh = false) {
+    if (openingSample) return;
+    const originalRun = state.runId;
+    const key = (!fresh && local.read("sample-request")) || crypto.randomUUID();
+    local.write("sample-request", key);
+    openingSample = true;
+    try {
+      const result = await api("/api/studio/sample", { clientRequestId: key });
+      if (state.runId === originalRun) {
+        window.dispatchEvent(new CustomEvent("studio-select-problem", { detail: result.runId }));
+        if (originalRun !== result.runId) showNotice("Sample opened. Choose how touching bookings work.");
+      } else showNotice("Sample created. Find it under Open problem.");
+    } finally { openingSample = false; }
+  }
+  window.addEventListener("studio-open-sample", task(() => openSample()));
   async function loadPackage(slug = state.slug) {
     if (!slug) return;
     const info = await api(packageApi("/studio", slug));
@@ -1116,8 +1138,27 @@
     for (const loc of data.diagnostics || []) outputBody.append(button(`Open ${loc.path.split("/").at(-1)}:${loc.line}`,
       task(() => openDiagnostic(data, loc))));
     if (data.casePath) outputBody.append(button("Open case", task(() => openFile(data.casePath, { pinned: true }))));
+    if (state.view?.capabilities?.provider === "studio-sample" && data.path === "submissions/accepted/reference.py" &&
+        data.comparison?.matches === false) outputBody.append(button("Load sample fix", task(stageSampleFix)));
     if (data.previewTruncated) outputBody.append(node("p", "Recovered a shortened copy of this output."));
     outputBody.append(button("Run again", () => data.runSetup ? prepareRun(data.runSetup) : openOutput("run", true)));
+  }
+  async function stageSampleFix() {
+    const { runId, slug } = state;
+    const draft = await api(runApi("/studio-sample", runId));
+    if (draft.slug !== slug || runId !== state.runId || slug !== state.slug) return;
+    await openFile(draft.path, { pinned: true });
+    const record = active();
+    if (runId !== state.runId || record?.slug !== slug || record.path !== draft.path) return;
+    if (record.hash !== draft.baseHash || dirty(record)) {
+      showNotice("The starter reference changed. Review your file before applying the sample fix.");
+      return;
+    }
+    edited(record, draft.content);
+    record.model?.setValue(draft.content);
+    paintEditor();
+    openOutput("run", true);
+    showNotice("Sample fix staged. Save & Run to test it against the same input.");
   }
   async function showSaveConflict(record) {
     openOutput("conflict");
@@ -1471,7 +1512,7 @@
     timeout_pending: "Time limit reached. Waiting for the job to stop." };
 
   function jobVisible(job) {
-    return job.sequence === latestJob && job.slug === state.slug &&
+    return job.sequence === latestJob && job.slug === state.slug && job.runId === state.runId &&
       currentOutput === job.mode && !$("studio-output").hidden;
   }
 
@@ -1480,7 +1521,7 @@
     outputStatus.textContent = job.connectionLost ? "Could not read the job status." : job.name + "…";
     if (job.connectionLost) {
       outputBody.append(node("p", "The job may still be running. Reconnect to check its result."),
-        button("Reconnect to job", task(() => watchJob(job))));
+        button("Reconnect to job", task(() => job.id ? watchJob(job) : recoverJob(job))));
     } else if (jobProgress[job.phase]) {
       outputBody.append(node("p", jobProgress[job.phase]));
     } else {
@@ -1516,21 +1557,75 @@
     if (state.job || !state.info) return;
     const slug = state.slug;
     const job = { slug, runId: state.runId, mode, name: operationNames[mode], sequence: ++latestJob,
+      requestId: crypto.randomUUID(),
       runSetup: mode === "run" ? readRunSetup() : null, startedAt: new Date().toISOString(),
       cancellable: ["verify", "answers", "measure-limits"].includes(mode) };
     state.job = job;
+    rememberJob(job);
     paintJob(job);
     let started;
     try {
-      started = await api(packageApi("/" + mode, slug), { ...params, expectedSnapshot: state.info.snapshot });
+      started = await api(packageApi("/" + mode, slug), { ...params, expectedSnapshot: state.info.snapshot,
+        studioRequestId: job.requestId });
       job.id = started.id;
+      rememberJob(job);
     } catch (error) {
+      if (!error.status) {
+        job.connectionLost = true;
+        if (jobVisible(job)) paintJob(job);
+        return;
+      }
+      forgetJob(job);
       state.job = null;
       if (jobVisible(job)) outputStatus.textContent = error.message;
       else showNotice(error.message);
       return;
     }
     await watchJob(job, started);
+  }
+
+  const jobTitles = { run: "Run code", verify: "Package verification", answers: "Generate answers",
+    "measure-limits": "Measure limits", export: "Package export" };
+  const jobKey = (runId, slug) => `pending-job:${runId || "manual"}:${slug}`;
+  function rememberJob(job) {
+    const { id, requestId, mode, runId, slug, runSetup, startedAt } = job;
+    local.write(jobKey(runId, slug), { id, requestId, mode, runId, slug, runSetup, startedAt });
+  }
+  function forgetJob(job) {
+    const key = jobKey(job.runId, job.slug);
+    if (local.read(key)?.requestId === job.requestId) local.write(key, null);
+  }
+  async function recoverJob(job) {
+    try {
+      const result = await api(packageApi("/studio-job?requestId=" + encodeURIComponent(job.requestId), job.slug));
+      if (state.job !== job) return;
+      if (result.slug !== job.slug || result.title !== jobTitles[job.mode] || (job.id && job.id !== result.id)) {
+        throw new Error("Saved job receipt did not match this workspace action.");
+      }
+      job.id = result.id;
+      rememberJob(job);
+      await watchJob(job, result);
+    } catch (error) {
+      if (state.job !== job) return;
+      if (error.status === 404) {
+        forgetJob(job);
+        state.job = null;
+        showNotice("The server has no receipt for this action. Check the saved package before trying again.");
+        if (jobVisible(job)) openOutput(job.mode);
+      } else {
+        job.connectionLost = true;
+        if (jobVisible(job)) paintJob(job);
+      }
+    }
+  }
+  function restoreJob() {
+    if (!state.slug || state.job) return;
+    const saved = local.read(jobKey(state.runId, state.slug));
+    if (!saved?.requestId || saved.slug !== state.slug || saved.runId !== state.runId || !jobTitles[saved.mode]) return;
+    const job = { ...saved, name: operationNames[saved.mode], sequence: ++latestJob,
+      cancellable: ["verify", "answers", "measure-limits"].includes(saved.mode) };
+    state.job = job;
+    recoverJob(job);
   }
 
   async function watchJob(job, result = null) {
@@ -1553,6 +1648,7 @@
           missed = 0;
         } catch (error) {
           if (error.status === 404) {
+            forgetJob(job);
             state.job = null;
             throw new Error("The server no longer has this job. Check the saved package before starting another action.");
           }
@@ -1573,6 +1669,7 @@
             (data.stderr?.length || 0) > 40000 });
       }
       state.job = null;
+      forgetJob(job);
       if (result.state !== "done") {
         const message = result.error || (result.state === "cancelled" ? "Job stopped." : result.state);
         if (jobVisible(job)) {
@@ -1751,6 +1848,8 @@
       if (link?.slug) await selectPackage(link.slug, true);
       if (request !== requests) return;
       state.linkState = "ready";
+      restoreJob();
+      if (!saved && state.view?.capabilities?.provider === "studio-sample") setLayout("chat", true);
       if (runId && !link?.slug) $("studio-link-recent").hidden = !local.read("manual-package");
       await restorePlace(request, saved, requestedLayout);
       if (request === requests && requestedLayout === layoutVersion) await applyAddress();
@@ -1770,12 +1869,12 @@
     const titleChanged = state.title !== title;
     state.title = title;
     state.view = view;
+    $("studio-sample-label").hidden = view?.capabilities?.provider !== "studio-sample";
     const artifacts = view?.artifacts || [];
     const changed = JSON.stringify(artifacts.map(a => [a.id, a.validity])) !== JSON.stringify(state.artifacts.map(a => [a.id, a.validity]));
     state.artifacts = artifacts;
     $("studio-proof").disabled = !currentProof();
     $("studio-proof").title = currentProof() ? "Open the current proof or editorial" : "Ask for a proof or editorial in chat";
-    $("studio-context-counts").textContent = `${view?.chatMessages?.length || 0} conversation turns and ${artifacts.length} artifacts stored. Inclusion in model context varies by request.`;
     if (runId === state.runId) {
       if (changed) {
         for (const artifact of artifacts) {

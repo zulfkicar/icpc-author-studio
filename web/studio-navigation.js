@@ -20,11 +20,8 @@
 
   function render() {
     const words = input.value.normalize("NFKC").toLocaleLowerCase().trim().split(/\s+/);
-    const matches = source().filter(row => {
-      const body = [row.title, row.detail, row.keywords].filter(Boolean).join(" ").normalize("NFKC").toLocaleLowerCase();
-      return words.every(word => body.includes(word));
-    });
-    results = matches.slice(0, 200);
+    const matches = source.filter(row => words.every(word => row.search.includes(word)));
+    results = matches.slice(0, 50);
     selected = 0;
     list.replaceChildren();
     for (const [index, row] of results.entries()) {
@@ -45,7 +42,7 @@
       option.addEventListener("click", () => choose(row));
       list.append(option);
     }
-    $("studio-search-count").textContent = matches.length > results.length ? "Showing 200 matches. Type to narrow the results."
+    $("studio-search-count").textContent = matches.length > results.length ? `Showing ${results.length} of ${matches.length} matches. Type to narrow the results.`
       : matches.length ? matches.length + (matches.length === 1 ? " match" : " matches") : "No matches.";
     highlight(false);
   }
@@ -58,7 +55,8 @@
 
   function open(mode, rows) {
     if (!dialog.open) invoker = document.activeElement;
-    source = rows;
+    source = rows().map(row => ({ ...row, search: [row.title, row.detail, row.keywords].filter(Boolean).join(" ")
+      .normalize("NFKC").toLocaleLowerCase() }));
     $("studio-search-title").textContent = labels[mode];
     input.setAttribute("aria-label", mode === "commands" ? "Search commands" : mode === "files" ? "Search files" : "Search problems");
     input.value = "";

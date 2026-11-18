@@ -86,6 +86,8 @@ h1, h2, h3, p { margin: 0; }
 .studio .collab-transcript { overflow-anchor: none; }
 .studio .collab-msg .body { overflow-wrap: anywhere; }
 #studio-jump-latest { flex: none; align-self: end; margin: 3px 12px; }
+#studio-chat-earlier { flex: none; align-self: start; margin: 4px 16px 0; }
+#studio-sample-label { display: inline; }
 .studio-artifact-links { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 .studio-artifact-links button { max-width: 100%; overflow-wrap: anywhere; text-align: left; }
 .studio-artifact-summary details { font-size: 14px; color: var(--muted); }
@@ -129,6 +131,23 @@ h1, h2, h3, p { margin: 0; }
 .studio-appearance select, .studio-appearance input { width: 100%; }
 #studio-context-trigger { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
 .context-track { width: 38px; height: 5px; border-radius: 4px; background: var(--border); }
+.context-track > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+#studio-context { --context-conversation: #478caa; --context-workspace: #548b73; --context-methods: #a476b8;
+  --context-instructions: #9a7649; --context-other: #818b98; max-height: min(65vh, 550px); overflow: auto; }
+#studio-context-summary { white-space: pre-line; overflow-wrap: anywhere; }
+#studio-context-role { margin-inline-start: 6px; }
+#studio-context-map:not(:empty) { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; margin-block: 9px; }
+#studio-context-map > span { height: 9px; border-radius: 2px; border: 1px solid transparent; }
+#studio-context-map .context-dim { opacity: .28; }
+#studio-context-categories { display: grid; gap: 3px; }
+#studio-context-categories button { text-align: start; border-inline-start: 4px solid var(--category); min-height: 30px; }
+#studio-context-categories button[aria-pressed="true"] { outline: 1px solid var(--accent); }
+#studio-context-detail:empty { display: none; }
+@media (forced-colors: active) {
+  #studio-context-map > span { border-color: CanvasText; background: Canvas !important; }
+  .context-track { border: 1px solid CanvasText; }
+  .context-track > span { forced-color-adjust: none; background: Highlight; }
+}
 .studio-workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--border); }
 .studio-workspace-head { padding: 7px 12px; }
 .studio-workspace-head small { display: block; color: var(--muted); font-size: 12px; }

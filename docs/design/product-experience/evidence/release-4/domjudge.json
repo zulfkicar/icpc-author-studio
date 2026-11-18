@@ -1,0 +1,15 @@
+{
+  "domjudge": "9.0.1",
+  "target": "disposable localhost",
+  "contest": "demo",
+  "id": "sample-canal-bookings-domjudge",
+  "name": "Sample · Canal Bookings",
+  "testCount": 2,
+  "statement": "R.pdf",
+  "timeLimit": 1.0,
+  "archiveSha256": "45e00b5bbb7d5f7241341d32dd8a61bfaddaa97180bd50326e799b67b0cccb30",
+  "warnings": [
+    "No jury solutions added: must associate team with your user first."
+  ],
+  "danger": []
+}

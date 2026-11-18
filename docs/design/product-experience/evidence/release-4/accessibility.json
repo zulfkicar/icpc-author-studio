@@ -1,0 +1,46 @@
+{
+  "browser": "Chrome/157.0.8103.79",
+  "layouts": [
+    {
+      "width": 320,
+      "pixelRatio": 1,
+      "theme": "dark",
+      "forcedColors": true
+    },
+    {
+      "width": 390,
+      "pixelRatio": 1,
+      "theme": "dark",
+      "forcedColors": true
+    },
+    {
+      "width": 640,
+      "pixelRatio": 2,
+      "theme": "dark",
+      "forcedColors": false
+    },
+    {
+      "width": 768,
+      "pixelRatio": 1,
+      "theme": "light",
+      "forcedColors": false
+    },
+    {
+      "width": 1280,
+      "pixelRatio": 1,
+      "theme": "light",
+      "forcedColors": false
+    },
+    {
+      "width": 1440,
+      "pixelRatio": 1,
+      "theme": "light",
+      "forcedColors": false
+    }
+  ],
+  "keyboard": true,
+  "touch": true,
+  "accessibilityTree": true,
+  "speechTested": false,
+  "conflict": true
+}

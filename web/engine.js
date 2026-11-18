@@ -33,12 +33,14 @@
   let defaultCapabilities = null;
   let optionsSignature = "";
   const providerPicker = $("studio-provider");
-  const providerLabels = { custom: "Saved provider", openrouter: "OpenRouter",
+  const providerLabels = { custom: "Saved provider", "studio-sample": "Sample (scripted)", openrouter: "OpenRouter",
     opencode: "OpenCode Console", "opencode-go": "OpenCode Go" };
   let newPending = studio && local.read("new-problem", Boolean(draftTitle && !currentRun), true);
   let transcriptSignature = "";
   let transcriptRun = null;
   let transcriptTimer;
+  let earlierRun = null, earlierMessages = [], earlierEvidence = {}, earlierBusy = false;
+  let detailsSignature = "";
   let runsSignature = "";
   let refreshVersion = 0;
   let pollInFlight = false;
@@ -129,6 +131,7 @@
     const pill = $("collab-status");
     if (!pill) return;
     const key = String(value || "idle").toLowerCase();
+    if (pill.dataset.state === key) return;
     pill.textContent = humanStatus(value);
     pill.dataset.state = key;
     pill.className = "pill status-" + key.replace(/[^a-z_]/g, "");
@@ -441,9 +444,14 @@
 
   function renderTranscript(messages) {
     const transcript = $("collab-transcript");
+    if (studio) {
+      if (earlierRun !== currentRun) { earlierRun = currentRun; earlierMessages = []; earlierEvidence = {}; }
+      messages = [...earlierMessages.filter(item => item.seq < (messages?.[0]?.seq || 0)), ...(messages || [])];
+      $("studio-chat-earlier").hidden = !messages.length || messages[0].seq <= 1;
+    }
     const inputStatuses = new Map((view?.inputs || []).map(item => [item.id, item.status]));
     const decisions = view?.collaboration?.decisions || [];
-    const evidence = view?.evidenceCards || {};
+    const evidence = { ...earlierEvidence, ...(view?.evidenceCards || {}) };
     const signature = JSON.stringify([currentRun, messages, view?.pendingDecision, [...inputStatuses], requestReceipts.size,
       evidence, decisions, view?.artifacts?.map(artifact => [artifact.kind, artifact.current])]);
     if (studio && signature === transcriptSignature) return;
@@ -480,6 +488,12 @@
         examples.append(button);
       });
       empty.append(examples);
+      if (studio) {
+        const sample = el("button", "desk-example", "Try Canal Bookings sample");
+        sample.type = "button";
+        sample.onclick = () => window.dispatchEvent(new Event("studio-open-sample"));
+        empty.append(sample);
+      }
       empty.append(el("p", "desk-empty-note", "No files or fixture names needed. The desk manages the internal run."));
       transcript.replaceChildren(empty);
       if (studio) $("studio-jump-latest").hidden = true;
@@ -626,6 +640,68 @@
     if (studio) updateLatestControl();
   }
 
+  async function loadEarlier() {
+    if (earlierBusy || !currentRun) return;
+    const before = earlierMessages[0]?.seq || view?.chatMessages?.[0]?.seq;
+    if (!before || before <= 1) return;
+    const runId = currentRun;
+    const button = $("studio-chat-earlier");
+    const transcript = $("collab-transcript");
+    const at = transcript.querySelector("[data-message-key]");
+    earlierBusy = button.disabled = true;
+    try {
+      const page = await api(`/api/engine/runs/${encodeURIComponent(runId)}/chat?before=${before}`);
+      if (runId !== currentRun || earlierRun !== runId) return;
+      addHistory(page);
+      renderTranscript(view.chatMessages);
+      if (at?.isConnected) at.scrollIntoView({ block: "nearest" });
+      if (button.hidden) {
+        transcript.tabIndex = -1;
+        transcript.focus({ preventScroll: true });
+      }
+      rememberTranscript();
+    } catch (error) {
+      receipt("Earlier messages could not be loaded. " + error.message);
+    } finally { earlierBusy = button.disabled = false; }
+  }
+  $("studio-chat-earlier")?.addEventListener("click", loadEarlier);
+
+  function addHistory(page) {
+    earlierMessages = [...page.messages, ...earlierMessages];
+    Object.assign(earlierEvidence, Object.fromEntries(Object.entries(page.evidenceCards || {}).map(([key, card]) =>
+      [key, { ...card, historical: true }])));
+  }
+
+  async function restoreTranscriptPages(runId, result, version) {
+    if (earlierRun === runId) {
+      if (!earlierMessages.length || view?.runId !== runId) return;
+      const first = result.chatMessages[0]?.seq;
+      const rolledOff = view.chatMessages.filter(item => item.seq < first);
+      if (rolledOff.length) {
+        earlierMessages.push(...rolledOff);
+        for (const message of rolledOff) {
+          const card = view.evidenceCards?.[message.dedupe_key];
+          if (card) earlierEvidence[message.dedupe_key] = { ...card, historical: true };
+        }
+      }
+      return;
+    }
+    const place = local.read("transcript:" + local.tab + ":" + runId);
+    const pages = [];
+    let before = result.chatMessages[0]?.seq;
+    while (!place?.follow && before > (place?.firstSeq || before) && pages.length < 5) {
+      const page = await api(`/api/engine/runs/${encodeURIComponent(runId)}/chat?before=${before}`).catch(() => null);
+      if (version !== refreshVersion) return;
+      if (!page?.messages.length) break;
+      pages.push(page);
+      before = page.messages[0].seq;
+    }
+    earlierRun = runId;
+    earlierMessages = [];
+    earlierEvidence = {};
+    for (const page of pages) addHistory(page);
+  }
+
   function updateLatestControl() {
     const transcript = $("collab-transcript");
     $("studio-jump-latest").hidden = !currentRun ||
@@ -636,6 +712,7 @@
     if (!transcriptRun || transcriptRun !== currentRun) return;
     const transcript = $("collab-transcript");
     local.write("transcript:" + local.tab + ":" + currentRun, { top: transcript.scrollTop,
+      firstSeq: Number(transcript.querySelector("[data-seq]")?.dataset.seq) || null,
       follow: transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 80 });
   }
 
@@ -793,8 +870,7 @@
   async function refresh() {
     const version = ++refreshVersion;
     try {
-      const caps = await api("/api/engine/capabilities");
-      const runs = await api("/api/engine/runs");
+      const [caps, runs] = await Promise.all([api("/api/engine/capabilities"), api("/api/engine/runs")]);
       if (version !== refreshVersion) return;
       defaultCapabilities = caps;
       renderRuns(runs.runs || []);
@@ -822,19 +898,29 @@
         paintTitle(currentRun ? selected?.title || selected?.idea?.trim().split("\n")[0].slice(0, 100) : draftTitle);
       }
       if (currentRun) {
-        const result = await api("/api/engine/runs/" + encodeURIComponent(currentRun) + "/view");
+        const result = await api("/api/engine/runs/" + encodeURIComponent(currentRun) + "/view" + (studio ? "?studio=1" : ""));
         if (version !== refreshVersion) return;
+        if (studio) {
+          await restoreTranscriptPages(currentRun, result, version);
+          if (version !== refreshVersion) return;
+        }
         view = result;
         showProvider(caps, view.capabilities || caps);
         setStatus(view.status);
         renderTranscript(view.chatMessages || []);
-        renderArtifacts(view.artifacts || []);
-        renderInputs(view.inputs);
-        renderContributions(view.contributions);
-        renderEvidence();
-        renderHandoff();
+        const details = JSON.stringify([currentRun, view.artifacts, view.inputs, view.contributions,
+          view.currentExplanation, view.budget, view.handoff, view.delegations]);
+        if (!studio || details !== detailsSignature) {
+          detailsSignature = details;
+          renderArtifacts(view.artifacts || []);
+          renderInputs(view.inputs);
+          renderContributions(view.contributions);
+          renderEvidence();
+          renderHandoff();
+        }
       } else {
         view = null;
+        detailsSignature = "";
         showProvider(caps);
         setStatus("idle");
         renderTranscript([]);

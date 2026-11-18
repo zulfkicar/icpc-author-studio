@@ -1,0 +1,19 @@
+{
+  "browser": "Chrome/157.0.8103.79",
+  "sample": {
+    "runId": "run-46643b840a90",
+    "slug": "sample-canal-bookings"
+  },
+  "archive": {
+    "snapshot": "cc0039e34853b7acb584cebbc5bc243cdef19cff091d5dc6cbcffea0e584a213",
+    "url": "http://127.0.0.1:8811/api/workspaces/sample-canal-bookings/download?snapshot=cc0039e34853b7acb584cebbc5bc243cdef19cff091d5dc6cbcffea0e584a213",
+    "bytes": 112979
+  },
+  "manual": {
+    "width": 390,
+    "manual": "verified",
+    "unsentDraftRestored": true
+  },
+  "recoveredJob": "3095c8b6d720",
+  "accessibilityTreeStatus": true
+}

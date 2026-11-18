@@ -1,0 +1,78 @@
+{
+  "browser": "Chrome/157.0.8103.79",
+  "providerCalls": 0,
+  "fixtures": [
+    {
+      "runId": "run-5e28b56c43c3",
+      "slug": "timing-fixture-100-turns",
+      "messages": 100,
+      "files": 50,
+      "tests": 120,
+      "displayed": 100,
+      "latest": true,
+      "reportToControl": 123.8,
+      "caretPreserved": true,
+      "composerHandler": {
+        "n": 30,
+        "p50": 0.3,
+        "p95": 0.9
+      },
+      "composerFrame": {
+        "n": 30,
+        "p50": 16.7,
+        "p95": 17.5
+      },
+      "fileOpenHandler": {
+        "n": 30,
+        "p50": 10,
+        "p95": 15.8
+      },
+      "fileFilterHandler": {
+        "n": 30,
+        "p50": 0.6,
+        "p95": 1
+      },
+      "reportFilterHandler": {
+        "n": 30,
+        "p50": 0.9,
+        "p95": 2.1
+      }
+    },
+    {
+      "runId": "run-79a9dd7c3a3b",
+      "slug": "timing-fixture-500-turns",
+      "messages": 500,
+      "files": 300,
+      "tests": 1200,
+      "displayed": 100,
+      "latest": true,
+      "reportToControl": 108.5,
+      "caretPreserved": true,
+      "composerHandler": {
+        "n": 30,
+        "p50": 0.2,
+        "p95": 0.3
+      },
+      "composerFrame": {
+        "n": 30,
+        "p50": 16.6,
+        "p95": 18.1
+      },
+      "fileOpenHandler": {
+        "n": 30,
+        "p50": 7,
+        "p95": 8.4
+      },
+      "fileFilterHandler": {
+        "n": 30,
+        "p50": 0.3,
+        "p95": 0.5
+      },
+      "reportFilterHandler": {
+        "n": 30,
+        "p50": 1.4,
+        "p95": 1.8
+      }
+    }
+  ]
+}
