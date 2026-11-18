@@ -8,8 +8,8 @@ key, or a judge server.
 On Windows PowerShell, run the following.
 
 ```powershell
-git clone https://github.com/zulfkicar/icpc-author-agent.git
-Set-Location icpc-author-agent
+git clone https://github.com/zulfkicar/icpc-author-studio.git
+Set-Location icpc-author-studio
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe server.py --port 8787
@@ -18,8 +18,8 @@ py -3.13 -m venv .venv
 On Linux or macOS, run the following.
 
 ```sh
-git clone https://github.com/zulfkicar/icpc-author-agent.git
-cd icpc-author-agent
+git clone https://github.com/zulfkicar/icpc-author-studio.git
+cd icpc-author-studio
 python3.13 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python server.py --port 8787

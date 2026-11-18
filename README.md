@@ -15,8 +15,8 @@ oracle, and review the saved files before exporting a DOMjudge package.
 Use Git and Python 3.13. On Linux or macOS, run the following in a terminal.
 
 ```sh
-git clone https://github.com/zulfkicar/icpc-author-agent.git
-cd icpc-author-agent
+git clone https://github.com/zulfkicar/icpc-author-studio.git
+cd icpc-author-studio
 python3.13 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python server.py --port 8787
