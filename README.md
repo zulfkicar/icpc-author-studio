@@ -1,483 +1,63 @@
-# ICPC Author Agent (local MVP)
+# ICPC Author Agent
 
-A small, runnable reduction of the Contest Studio author-assistant design. It
-takes an idea to a DOMjudge problem package with deterministic verification.
+Author Studio is a local workspace for creating programming contest problems.
+Develop a specification in chat, test the solution against an independent
+oracle, and review the saved files before exporting a DOMjudge package.
 
-Open one problem workspace, chat with an agent, and watch it edit files, compile
-solutions, run tests and build the statement. Every agent write is recorded as a
-reviewable change with a diff and a revert button. Export is blocked until the
-deterministic verifier passes.
+[**Watch the Canal Bookings walkthrough**](docs/design/product-experience/evidence/release-4/canal-bookings-walkthrough.webp) ·
+[**Local setup**](docs/SETUP.md) ·
+[**Architecture**](docs/ARCHITECTURE.md) ·
+[**Verification**](docs/README.md#verification-and-roadmap)
 
-> **Sharing status:** this is a single-user local developer preview, not a
-> multi-user service. Read [`docs/READINESS.md`](docs/READINESS.md) before
-> sharing it with other authors. Each author should run their own local
-> instance; do not expose port 8787 or share `.author-agent/`.
->
-> **Start here:** [`docs/USING.md`](docs/USING.md) is the complete local
-> authoring and DOMjudge workflow.
->
-> **Presenting:** [`docs/DEMO.md`](docs/DEMO.md) is the demo runbook;
-> [`docs/TECHNICAL-DEEP-DIVE.md`](docs/TECHNICAL-DEEP-DIVE.md) is the
-> architecture, decision log, coverage matrix and Q&A bank. The one-page
-> [`docs/MODULE-CHEAT-SHEET.md`](docs/MODULE-CHEAT-SHEET.md) is the printable
-> what-does-what map.
+## Quick start
 
-## Run
+Python 3.13 is the tested local version. From the repository root:
 
-```powershell
-cd icpc-author-agent
+```sh
 python -m pip install -r requirements.txt
 python server.py --port 8787
 ```
 
-Open <http://127.0.0.1:8787/>. The server binds loopback only.
-
-Commands run headless inside the selected workspace. On Windows the app hides
-child console windows, suppresses loader error dialogs, and captures stdout,
-stderr, exit code and duration into the chat. The agent also narrates each step;
-if the provider returns `reasoning_content` (for example a reasoner model), it is
-shown in collapsible **Thinking** cards.
-
-A small verified demo workspace (`workspaces/sum-test`) is present so the UI is
-not empty on first launch. Delete that folder if you want to start clean.
-
-Python 3.13 plus `g++` (MinGW) and `pdflatex` (MiKTeX). The agent runtime uses
-LangGraph (`langgraph` + `langchain-openai`) with the OpenAI-compatible provider.
-
-## Docker
-
-The default compose stack has three services:
-
-- `author-agent` ? UI, agent, checkpoints and provider key.
-- `icpc-author-executor` ? bwrap-isolated worker for statement PDF/LaTeX and
-  fallback execution.
-- `icpc-author-isolate` ? real Isolate 1.8.1 worker; the default executor for
-  the deterministic verifier, checkers, interactors and quick runs. It has g++,
-  the JDK and Python, **no provider key**, **no external network**, and runs
-  one Isolate box per request with CPU/wall/memory/file-size/stack/process
-  limits, a read-only root and only the selected workspace writable. It is
-  privileged and needs `seccomp=unconfined` for Isolate's mount namespace.
-  `POST /run` is the executor-compatible argv/workspace API; `POST /interact`
-  runs the two-process interaction harness; `POST /isolate/run` is the
-  source-run API used by the Run panel.
-
-The app routes every compile/run/verify command to the Isolate worker; only the
-statement PDF/LaTeX step goes to the bwrap executor. It never executes
-model-written code itself.
-
-```powershell
-docker compose up --build -d
-# open http://127.0.0.1:8787/
-docker compose logs -f author-agent
-docker compose logs -f executor
-docker compose down
-```
-
-After the first build, `docker compose up -d` and `docker compose down` are
-enough. Use `--build` again after changing source.
-
-### Windows / WSL reliability
-
-On this machine Docker runs inside the WSL `Ubuntu` distro. WSL shuts the VM
-down when idle, which also stops `dockerd` and the container. Use the wrapper
-scripts to keep the VM alive while the app is up:
-
-```powershell
-.\scripts\docker-up.ps1
-.\scripts\docker-down.ps1
-```
-
-`docker-up.ps1` starts a hidden WSL keepalive, ensures Docker is running, runs
-`docker compose up -d --build`, and waits for the health endpoint.
-`docker-down.ps1` runs compose down and stops the keepalive. Direct
-`docker compose up` / `down` still work while the keepalive is running. Use
-`-Distro <name>` if your WSL distro is not `Ubuntu`.
-
-By default the app bind-mounts `./workspaces` and `./.author-agent`; the
-executor mounts **only** `./workspaces`. `docker compose down` leaves them
-untouched. On Linux hosts, make those directories writable by UID 1000:
-
-```bash
-mkdir -p workspaces .author-agent
-sudo chown -R 1000:1000 workspaces .author-agent
-```
-
-If you prefer a clean, isolated install, replace the two volumes with named
-volumes and declare them at the bottom of `docker-compose.yml`:
-
-```yaml
-    volumes:
-      - author-workspaces:/app/workspaces
-      - author-state:/app/.author-agent
-volumes:
-  author-workspaces:
-  author-state:
-```
-
-To pass a provider key without opening Settings, copy `.env.example` to `.env`
-and fill it in; the key is injected into the container but `.env` is never
-committed or baked into the image. The Settings UI works too and writes to
-`.author-agent/config.json` (or the `author-state` volume).
-
-The container binds the published port to host `127.0.0.1` only. Change the
-`ports` mapping in `docker-compose.yml` if you intentionally want LAN access.
-
-## Execution isolation
-
-This follows the LeetCode-style split between the product server and the code
-worker. The app container has the provider key and database; the executor
-container has the compilers and sees only package files. A program that prints
-its hostname prints the executor container ID, not the app container ID. The
-full deterministic verifier (compiler, validator, reference, negative and
-statement PDF) runs through the executor.
-
-The default Isolate worker copies the selected workspace into an Isolate box,
-rewrites workspace paths to `/box/...`, and runs the command under Isolate with
-CPU / wall / address-space / stack / file-size / process limits and no network.
-The bwrap fallback still applies a read-only root, `/work`-only writes,
-`--unshare-all`, `--cap-drop ALL` and the same limits. `qa/test_isolate_contract.py` exercises these
-properties, including a process cap applied inside the user namespace.
-
-### Live Judge0 and Isolate backends
-
-The default compose starts the **real Isolate** worker (`isolate-worker`). Its
-Run-panel **Isolate** button calls `/api/workspaces/<slug>/isolate/run`; the
-service compiles and runs C++/C/Python/Java inside Isolate 1.8.1 with CPU,
-wall, memory, file-size, stack and process limits, a read-only root and no
-network. See [`docs/ISOLATE-BACKEND.md`](docs/ISOLATE-BACKEND.md).
-
-Judge0 CE is a separate live stack (server, worker, PostgreSQL, Redis):
-
-```bash
-docker compose -f docker-compose.judge0.yml up -d
-curl http://127.0.0.1:2358/about
-```
-
-The app then exposes a **Judge0** button in the Run panel. Judge0 is **not** a
-second verification authority; see
-[`docs/JUDGE0-EVALUATION.md`](docs/JUDGE0-EVALUATION.md).
-
-### Local DOMjudge import
-
-A pinned local DOMjudge 9.0.1 + MariaDB stack is provided for import testing:
-
-```powershell
-.\scripts\domjudge-up.ps1 -WithJudgehost
-# http://127.0.0.1:18080/  (admin password is printed)
-powershell -NoProfile -ExecutionPolicy Bypass -File .\qa\test_domjudge_import.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\qa\test_domjudge_judging.ps1
-.\scripts\domjudge-down.ps1
-```
-
-The import test exports the verified `sum-test` package, imports it into the
-local `demo` contest and verifies the problem, test count and statement. The
-judging test then submits accepted, wrong and slow C++ solutions and asserts
-**AC / WA / TLE** from a real `judgehost:9.0.1`. See
-[`docs/DOMJUDGE-LOCAL.md`](docs/DOMJUDGE-LOCAL.md).
-
-For a literal separate VM, run the executor on that VM and point the app at it
-with `AUTHOR_AGENT_EXECUTOR_URL`; the app must be able to reach the executor over
-a private network and both must share the workspace volume. This machine has no
-Hyper-V, Multipass or Docker Desktop installed, so the current implementation
-uses a dedicated Docker sandbox worker inside the WSL VM. `AUTHOR_AGENT_REQUIRE_EXECUTOR=1`
-makes local execution fail closed if the executor is unavailable.
-
-## MCP and the workbench
-
-MCP is enabled by default for a fresh workspace with every read-only tool and
-the `.` root, so relative paths such as `problem.yaml` and
-`data/sample/01.in` work immediately. Adjust tools and roots in the **MCP**
-inspector tab; secret tests and `.ans` files remain blocked.
-
-The UI was rebuilt from scratch: top bar, section rail, stage stepper, elevated
-composer, evidence inspector and per-tool MCP cards. Long chats now scroll with
-a visible scrollbar while the composer and file run panel stay in view, and all
-rename/delete/discard/restore flows use one accessible dialog. Screenshots and
-the audit are in [`docs/VISUAL-AUDIT.md`](docs/VISUAL-AUDIT.md). The state
-machine inventory is in [`docs/STATE-MACHINES.md`](docs/STATE-MACHINES.md) and
-the full Cline/VS Code/Judge0-informed IDE plan is in
-[`docs/UI-UX-REDESIGN.md`](docs/UI-UX-REDESIGN.md). The executable execution
-package (constitution, spec, architecture, tasks, test plan, rollout, research
-and goal prompt) is in
-[`docs/plans/ui-ux-ax-rework/README.md`](docs/plans/ui-ux-ax-rework/README.md).
-
-## Configure a provider
-
-Open **Settings** in the app and set:
-
-| Field | Default |
-|---|---|
-| Base URL | `https://api.example.invalid/v1` |
-| Model | `configured-model` |
-| API key | your Explabs key (`xpl_...`) |
-
-Any OpenAI-compatible chat-completions endpoint with tool calling works,
-including OpenRouter (`https://openrouter.ai/api/v1`, e.g.
-`deepseek/deepseek-chat`). The key is stored only in
-`.author-agent/config.json`, which is gitignored, and is never sent back to the
-browser. Environment overrides are also supported:
-
-```powershell
-$env:AUTHOR_AGENT_API_KEY = "xpl_..."
-$env:AUTHOR_AGENT_BASE_URL = "https://api.example.invalid/v1"
-$env:AUTHOR_AGENT_MODEL = "configured-model"
-```
-
-## Agent architecture
-
-The provider loop is a LangChain `create_agent` graph (`graph_agent.py`) with
-middleware. The model node calls a bounded tool registry; the built-in tool node
-executes it. Middleware adds:
-
-- `AsyncSqliteSaver` checkpoints per workspace (`<workspace>/.agent/checkpoints.sqlite`);
-  `thread_id` is the chat id.
-- `TodoListMiddleware` for `write_todos` (the Plan inspector mirrors it).
-- `PinnedContextMiddleware` for the brief, decisions, open questions, selected
-  context, mode and verifier evidence on every model call.
-- `HumanInTheLoopMiddleware` for export approval (and optionally every write).
-- `SummarizationMiddleware` for bounded history, plus `ModelCallLimitMiddleware`.
-- `ToolErrorMiddleware` so tool failures become `ToolMessage`s and the graph
-  does not abort.
-
-The runtime keeps one persistent event loop for provider clients, repairs
-incomplete tool-call groups left by a crashed turn, and streams v2 events to the
-UI (reasoning, narration, tool start/end, changes, verification, usage and
-approval requests). v3 streaming is deferred because it is beta in the pinned
-LangGraph release.
-
-Conversations are durable per workspace. **Chats** in the left sidebar are
-separate sessions with titles, timestamps and message counts. **New chat** no
-longer deletes the previous one; you can switch back at any time.
-
-Deterministic tools and the verifier remain the authority. The runtime pauses
-for human approval where configured, but it cannot mark a package verified or
-bypass the snapshot/review gate.
-
-## What the agent can do
-
-The model is given a bounded tool registry, not a raw host shell:
-
-- `list_files`, `read_file`, `write_file`, `delete_file`
-- `run_command` limited to `g++`, `gcc`, `python`, `javac`, `java`, `pdflatex`,
-  `latexmk`, with cwd pinned inside the workspace, no shell operators, no
-  redirection, a 120 s cap and output limits. Runs are headless; output is
-  returned to the agent and shown in the chat, never in a host terminal window.
-- `build_answers` (run the accepted reference on every input and write `.ans`)
-- `measure_limits` (run the accepted references on every test and write measured
-  time/memory limits)
-- `verify_package`, `read_report`, `export_package`
-- `search_workspace`, `read_file` with `start_line`/`end_line`, `list_tests`,
-  `report_summary` for bounded evidence gathering
-- `write_todos`, `update_brief`, `record_decision`, `set_focus` for durable
-  working memory
-- `review_package`, an independent read-only reviewer agent that returns
-  proposal-only findings and is blocked from secret tests/answers
-
-All tool calls go through the same workspace and verifier code used by the UI.
-The model cannot mark a report verified or export a package; only the
-deterministic verifier and an explicit user click can do that.
-
-## Context, modes and approvals
-
-- Pick **Author**, **Debug** or **Review** in the chat header. The mode changes
-  the pinned operating instructions for the next turn.
-- Use **+ context** to explicitly include workspace files. Selected files are
-  injected into the pinned context (bounded) and persisted with the chat.
-- `export_package` always pauses for approval. Enable **Review every file
-  write/delete** in Settings to gate risky edits too. Approve or reject in the
-  chat; the pending approval is stored per chat and survives reload.
-- Chats can be searched, renamed (pencil or double-click) and deleted from the
-  sidebar. Deleting a chat also removes its checkpoint thread.
-- **Stop** cancels the running asyncio task, which aborts the provider HTTP
-  stream rather than waiting for it to finish.
-- Token usage is shown per turn when the provider reports it. Optional input/
-  output prices in Settings add an estimated cost; missing usage is labelled as
-  unreported, never invented.
-
-## The workflow
-
-1. **New problem** creates a workspace from the ICPC template. It asks only for
-   the name, idea, author and short name. Time and memory limits are provisional
-   defaults at this stage; they are measured later from the actual solutions.
-2. Ask the agent to author the idea. It writes the statement, validator,
-   reference solution, tests and negative solutions.
-3. **Build answers** runs the reference solution on every input and writes the
-   expected `.ans` files. Multiple accepted references must agree.
-4. **Measure limits** runs the accepted references on every test, then writes the
-   measured time and memory limits into `problem.yaml`,
-   `domjudge-problem.ini` and the statement. Verification requires this step.
-5. **Verify** runs the full check.
-6. Review the **Changes** panel and diffs, revert anything unwanted, and mark
-   changes reviewed.
-7. **Export ZIP** builds the final DOMjudge package with
-   `problem_statement/manifest.json` containing hashes and the verification
-   timestamp. Export is refused while
-   changes are unreviewed or the workspace has changed since verification, so
-   the agent cannot publish its own work without human acknowledgment.
-
-## What verification actually checks
-
-- Required DOMjudge structure and metadata, plus an ICPC Problem Package Format
-  audit (`icpc_spec.py`).
-- Every sample/secret input is accepted by `input_validators/` (exit code 42 per
-  the ICPC spec).
-- Every accepted reference compiles and matches the stored answer on every test.
-- At least one sample, one secret test, one reference and one negative solution.
-- Every negative solution compiles and is killed by at least one test. A
-  negative program that gets AC on every test is reported as a survivor and
-  fails verification. A compile failure is reported but is not counted as a
-  kill.
-- `problem_statement/problem.en.tex` compiles with `pdflatex` (two passes) and
-  `problem.pdf` is produced. If `pdflatex` is unavailable the check is marked
-  skipped, not passed.
-- Limits have been measured from the accepted references, not guessed at
-  creation time. The measured values are written to the package metadata and the
-  statement.
-- Time limit is read from `domjudge-problem.ini`; memory is read from
-  `problem.yaml`. Reference and negative runs are bounded by the time limit.
-  Windows does not enforce the memory limit.
-
-Output comparison is token-based by default. Custom output validators/checkers,
-interactive problems, test groups and explicit float tolerance are supported
-through the deterministic verification modes; checker/interactor self-tests are
-required before verification can pass.
-
-Output validators follow the ICPC contract: `<validator> input answer feedback_dir`
-with team output on stdin, exit 42 for AC and 43 for WA. C++ `testlib.h`
-checkers and interactors are detected and invoked with their native contract.
-`output_validator/` and `output_validators/` are both supported. An interactive
-problem can add a transcript checker that validates the captured interaction and
-rejects a forged one. Test groups support `points` and dependency chains.
-
-## IDE and readable output
-
-- The **Files** tab is an expandable tree with persisted folder state, new file,
-  new folder, rename and delete actions.
-- The **File** inspector has a syntax-highlighted **View** mode and an **Edit**
-  mode with line numbers, language/cursor/status chrome and sample test tabs.
-  **Run tests** executes every `data/sample/*.in` against its `.ans` and shows
-  pass/fail cards; **Run** accepts custom stdin.
-- Code tool results and assistant code blocks are shown as highlighted code, not
-  raw JSON. File writes show compact change cards with `+/-` stats and a diff
-  link.
-- **Run** compiles and runs the selected C/C++/Python/Java file with your stdin
-  in the workspace, then shows stdout, stderr, exit code and timing. **Load
-  sample** fills stdin from `data/sample/01.in`.
-- The left, center and right panes have draggable splitters. Double-click a
-  splitter to reset it; widths are remembered in the browser.
-
-## Evaluation
-
-`eval/run_eval.py` runs a real-provider authoring baseline against a fixture,
-runs the deterministic verifier, and sends concrete verifier errors back for up
-to `--turns` repair turns. It writes JSON results under `eval/results/`:
-
-```
-python eval/run_eval.py --fixture sum --turns 3 --max-rounds 24
-```
-
-The `sum` baseline is verified. The first authoring turn hit the per-turn model
-call cap while trying to replace a negative solution that was actually correct
-for the stated constraints; the repair turn removed it, then verification went
-green. That case is now covered by a system-prompt rule and the eval repair
-loop. Eval runs use your configured key and cost provider usage; results and
-generated workspaces are not committed.
-
-The deterministic stress suite runs without provider tokens:
-
-```
-python qa/stress_agent.py
-```
-
-It covers durable two-turn memory, usage/cost, todo mirroring, HITL export,
-review-mode writes, checkpoint repair, summarization, concurrent workspaces,
-same-workspace serialization, cancellation (graph and server job), chat
-rename/delete and the reviewer.
-
-## Reduced from the full design
-
-This keeps the essential author-assistant loop from
-`platform-prototype/tooling/omp/AUTHOR-AGENT.md` and the seven-stage workflow in
-`docs/research/2026-11-05-interactive-coding/WORKFLOW.md`:
-
-Kept and expanded: durable SQLite checkpoints, pinned working memory, todo
-lists, context compaction, explicit file context, modes, human approval,
-typed tool registry, human-reviewed diffs, literal tests vs generators,
-reference/wrong-solution evidence, statement compilation, isolated execution,
-explicit verification, export gating and a real-provider eval loop.
-
-Deliberately dropped for now: multi-user auth/RBAC, the full contest platform,
-live DOMjudge adapters, managed cost accounting, a full Monaco/IDE session,
-and the Keycloak/Postgres stack. This is a single-user localhost tool, not the
-production platform.
-
-## Known MVP limits
-
-- `data/sample` and `data/secret` are flat; DOMjudge test groups are not modelled.
-- Default comparison is whitespace-token based. Float tolerance is explicit;
-  custom checkers and interactive problems use the verification-mode harness.
-  Import into local DOMjudge 9.0.1 and a real judgehost round-trip
-  (AC/WA/TLE) are tested; a multi-team contest under load is not.
-- Memory limits are measured but not enforced on Windows.
-- Limits are measured from the reference runtime and memory; they are not
-  manually chosen at problem creation.
-- One local user; no accounts, RBAC, audit trail or multi-tenant isolation.
-- The executor is a separate hardened container, not a hypervisor VM. A literal
-  separate VM requires running the same executor on that VM and sharing the
-  workspace over a private network.
-- Summary compaction is provider-dependent; pinned brief/decisions/todos carry
-  the facts that matter. The summary itself is not deterministic.
-- Token counts are shown when the provider reports them. Cost is an estimate
-  only when you provide input/output prices; there is no billing integration.
-- `review_package` is a nested read-only reviewer agent, not a separate graph
-  subgraph. Its findings are proposals; it cannot approve or export.
-- The eval harness requires a real provider key and is intentionally excluded
-  from CI.
-- Reference/negative languages: C++/C, Python, Java (the executor image provides
-  the toolchains).
-- The statement uses the local `icpcproblem.cls`; replace it with the official
-  ICPC class if your contest toolchain provides one.
-
-## Security note
-
-The `run_command` tool is allowlisted and path-confined. Model-written code runs
-in the separate executor container, not the app container or WSL host, with no
-provider key, no external network, a read-only root, dropped capabilities and
-resource limits. This is a single-user local tool and a hardened container
-boundary, not a multi-tenant microVM platform; run each hostile submission in a
-separate VM or disposable sandbox if that is your threat model.
-
-## Files
-
-```
-server.py            loopback HTTP API, static UI, background jobs
-graph_agent.py       create_agent runtime, middleware, checkpoints, streaming
-executor_server.py   isolated compiler/runner worker (no key, no external network)
-agent_state.py       typed AuthorState + bounded working-memory helpers
-agent_middleware.py  pinned context, context budget and tool-error middleware
-prompt_loader.py     composable prompt assembly
-skill_registry.py    progressive-disclosure SKILL.md registry
-package_model.py     Kattis/ICPC package discovery, validators and groups
-verification_modes.py checker/interactor/transcript self-tests
-icpc_spec.py         ICPC Problem Package Format audit
-scoring.py           group points and dependency scoring
-mcp_server.py        scoped read-only MCP stdio server
-mcp_consent.py       host consent and roots for MCP
-judge0_adapter.py    optional Judge0 quick-run adapter (not the verifier)
-isolate_worker.py    real Isolate worker service
-isolate_client.py    app client for the Isolate worker
-agent.py             bounded tool dispatch + system prompt
-verify.py            deterministic package checks and ZIP export
-workspace.py         path safety, scaffold, chats, plans, changes, diffs, revert
-config.py            local provider configuration
-winutil.py           headless Windows process execution
-sandbox/             sitecustomize for headless child Python processes
-templates/           ICPC statement class and DOMjudge scaffold
-web/                 workbench shell, editor, chat, inspector, state machines
-web/vendor/          locally bundled highlight.js and axe-core
-docs/                master plan, design, adversarial verification, status, eval, visual audit, state machines, IDE redesign, decisions
-eval/                real-provider authoring eval harness + fixtures
-qa/                  deterministic fake-model stress/regression suite
-scripts/             reliable WSL Docker up/down wrappers
-workspaces/          one directory per problem (gitignored)
-```
+Open [Author Studio](http://127.0.0.1:8787/) and choose
+**Commands → Open Canal Bookings sample**. Choose how touching bookings work,
+open the counterexample, and run the starter solution. The sample can stage
+a fix for you to inspect and save. It uses a separate workspace and scripted
+chat, so this path works without a provider key. Full verification uses the
+local language and statement toolchains described in [Setup](docs/SETUP.md).
+
+For your own problem, start with an idea in chat or open a saved package.
+Configure live chat under **Classic workbench & settings**. Local file editing,
+Run, Verify, and export are available independently of chat.
+
+## What you can do
+
+| Task | Where to work |
+| --- | --- |
+| Develop a problem | Use chat to choose rules, contribute code or a lemma, compare approaches, and inspect evidence. |
+| Edit and test | Open workspace files in Monaco, preview statements, run a saved solution, or build expected answers. |
+| Investigate a failure | Replay a counterexample, inspect expected and actual output, and trace a diagnostic back to the saved source. |
+| Release a package | Verify the saved revision, review the file changes, approve that snapshot, and generate its ZIP. |
+| Resume work | Reopen drafts, earlier chat pages, and interrupted local jobs from the same workspace. |
+
+## Evidence and scope
+
+- The scripted sample exercises the real editor, local runner, verifier,
+  review and export. Release 4 recorded **325 passing engine tests** and a
+  **DOMjudge 9.0.1** import of the sample statement and two cases.
+  [Release 4 record](docs/design/product-experience/RELEASE-4.md)
+- A separate bounded DeepSeek Flash and Isolate trial recorded a real
+  wrong answer, a live model repair, and a passing replay on the same
+  inputs. Live investigation record
+- The planned next engine milestone is broader correctness campaigns,
+  counterexample reduction, mutation testing, and validator audits.
+  [Engine roadmap](docs/research/agentic-engine-portfolio/07-ROADMAP-AND-PORTFOLIO.md)
+
+Author Studio is a single-user local preview. Run it on loopback and keep
+provider credentials, workspaces, and unsent drafts private.
+[Local trust and execution boundaries](SECURITY.md)
+
+## Develop
+
+See [Contributing](CONTRIBUTING.md) for local checks and documentation
+conventions. The [docs index](docs/README.md) links setup, architecture,
+release notes, and the underlying evidence.
