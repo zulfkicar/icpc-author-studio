@@ -1,12 +1,10 @@
 # V0–V3: collaborative ICPC engine implementation
 
-Status date: **2026-11-14**. IR01 follow-up (apostrophe/quotation lexing and affirmative-intent
-grammar) is recorded separately in
-`repairs/20261115-133719/README.md`. Independent-review repair IR01–IR05 is complete; see
-`repairs/20261114-205945/README.md`
-for the finding-by-finding repair matrix and before/after evidence. Scope: the bounded local, single-author
-collaborative problem-setting slice from the C2 design package
-(`docs/research/agentic-engine-portfolio`, revision C2).
+This report records the November 2026 V0–V3 implementation and the executable
+acceptance tests for the bounded, single-author engine. The follow-up fixes
+cover edit consent, semantic intent, model context, delegation receipts, and
+worker status normalization. Raw development records are maintained locally.
+[Current roadmap](../../../ROADMAP.md)
 
 This is an implementation report, not a claim of contest readiness, general
 mathematical correctness, autonomous model quality, C++ containment or delivery

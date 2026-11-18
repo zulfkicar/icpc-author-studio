@@ -1,6 +1,27 @@
 # Local agent state, private problem workspaces and credentials
 .author-agent/
 workspaces/
+/oc.txt
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+
+# Maintainer-only transcripts, raw captures and development handoffs
+/docs/design/captures/
+/docs/design/proposals/
+/docs/design/author-studio/live-openrouter*/
+/docs/design/author-studio/monaco-markdown.jpg
+/docs/design/author-studio/workspace-verification.jpg
+/docs/implementation/v0-v3/evidence/
+/docs/implementation/v0-v3/repairs/
+/docs/implementation/v0-v3/independent-*/
+/docs/research/agentic-engine-portfolio/evidence/
+/docs/ASTRA-*.md
+/docs/DEEPSEEK-*.md
+/docs/GOAL-PROMPT.md
+/qa/screenshots/
+/qa/engine_contracts/evidence/
 
 # Local reference and settings captures
 docs/design/captures/refero-*.png

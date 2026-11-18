@@ -31,3 +31,7 @@
 
 These reports describe the version and test mode recorded at the time. Start
 with the current setup and architecture guides for day-to-day use.
+
+The repository includes reproducible tests, selected synthetic screenshots,
+and summaries of live checks. Raw development transcripts, captured local
+state and private configuration belong in a local archive.

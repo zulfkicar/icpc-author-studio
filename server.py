@@ -264,12 +264,13 @@ def engine_service() -> EngineService:
                         context_window=context_windows.get("glm-5.3-flash"),
                     )
             if cfg.get("apiKey"):
+                compatible_model = str(cfg.get("model") or config.OPENAI_COMPATIBLE_DEFAULT_MODEL)
                 model = SingleRequestOpenAIAdapter(
-                    model=str(cfg.get("model") or "gpt-4.1-mini"),
+                    model=compatible_model,
                     api_key=str(cfg["apiKey"]),
                     base_url=str(cfg.get("baseUrl") or "") or None,
                     max_output_tokens=output_limit,
-                    context_window=context_windows.get(str(cfg.get("model") or "gpt-4.1-mini")),
+                    context_window=context_windows.get(compatible_model),
                 )
                 demo = False
             decision_model = str(os.environ.get("AUTHOR_AGENT_DECISION_MODEL") or "").strip()

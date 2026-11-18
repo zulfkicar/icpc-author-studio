@@ -1,7 +1,9 @@
 # Isolate backend
 
-A real Isolate worker is running alongside the app. It is not a simulation and
-it is not bwrap: it uses Isolate 1.8.1 from the Judge0 CE image.
+The optional Compose stack runs Isolate alongside the app. The pinned Judge0
+CE image provides Isolate 1.8.1. Native installs can point to this local worker
+with `AUTHOR_AGENT_ISOLATE_URL`. Start with the scripted sample to try Studio
+without a worker. [Local setup](SETUP.md)
 
 ## Service
 
@@ -42,8 +44,9 @@ the box that connects the validator and solution pipes, records the transcript,
 and enforces the wall-clock timeout.
 
 The app calls it through `isolate_client.py` and the Run-panel **Isolate**
-button (`/api/workspaces/<slug>/isolate/run`). The app container is on the
-internal `sandbox` network, so the worker has no external network.
+button (`/api/workspaces/<slug>/isolate/run`). The worker service joins the
+Compose networks. Candidate processes run in Isolate boxes without shared
+network access.
 
 The default `AUTHOR_AGENT_EXECUTOR_URL` is `http://isolate-worker:8790`, so the
 same worker receives the verifier's `argv`/workspace runs on `/run` and the

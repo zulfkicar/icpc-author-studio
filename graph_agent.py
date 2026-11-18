@@ -1013,7 +1013,7 @@ def _chat_model(cfg: dict, *, model: str, api_key: str, base_url: str) -> ChatOp
 def _model(cfg: dict) -> ChatOpenAI:
     return _chat_model(
         cfg,
-        model=str(cfg.get("model") or "configured-model"),
+        model=str(cfg.get("model") or config.OPENAI_COMPATIBLE_DEFAULT_MODEL),
         api_key=str(cfg.get("apiKey") or ""),
         base_url=str(cfg.get("baseUrl") or ""),
     )

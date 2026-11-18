@@ -12,11 +12,14 @@ oracle, and review the saved files before exporting a DOMjudge package.
 
 ## Quick start
 
-Python 3.13 is the tested local version. From the repository root:
+Use Git and Python 3.13. On Linux or macOS, run the following in a terminal.
 
 ```sh
-python -m pip install -r requirements.txt
-python server.py --port 8787
+git clone https://github.com/zulfkicar/icpc-author-agent.git
+cd icpc-author-agent
+python3.13 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python server.py --port 8787
 ```
 
 Open [Author Studio](http://127.0.0.1:8787/) and choose
@@ -24,7 +27,7 @@ Open [Author Studio](http://127.0.0.1:8787/) and choose
 open the counterexample, and run the starter solution. The sample can stage
 a fix for you to inspect and save. It uses a separate workspace and scripted
 chat, so this path works without a provider key. Full verification uses the
-local language and statement toolchains described in [Setup](docs/SETUP.md).
+local language and statement toolchains. [Windows, Docker, and optional tools](docs/SETUP.md)
 
 For your own problem, start with an idea in chat or open a saved package.
 Configure live chat under **Classic workbench & settings**. Local file editing,
@@ -46,9 +49,8 @@ Run, Verify, and export are available independently of chat.
   review and export. Release 4 recorded **325 passing engine tests** and a
   **DOMjudge 9.0.1** import of the sample statement and two cases.
   [Release 4 record](docs/design/product-experience/RELEASE-4.md)
-- A separate bounded DeepSeek Flash and Isolate trial recorded a real
-  wrong answer, a live model repair, and a passing replay on the same
-  inputs. Live investigation record
+- A bounded DeepSeek Flash and Isolate trial recorded a wrong answer, a model
+  repair, and a passing replay on the same inputs. [Verification scope](docs/design/author-studio/VERIFICATION.md)
 - T34 adds bounded weighted scheduling campaigns with seeded variants and
   a finite grid, recorded oracle checks, and a replay manifest.
   [Campaign guide](docs/implementation/T34-WEIGHTED-CAMPAIGNS.md)

@@ -17,10 +17,11 @@ CONFIG_PATH = STATE_DIR / "config.json"
 WORKSPACES = pathlib.Path(os.environ.get("AUTHOR_AGENT_WORKSPACES_ROOT") or ROOT / "workspaces").resolve()
 TEMPLATES = ROOT / "templates"
 OPENROUTER_DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash"
+OPENAI_COMPATIBLE_DEFAULT_MODEL = "gpt-4.1-mini"
 
 DEFAULTS = {
-    "baseUrl": "https://api.example.invalid/v1",
-    "model": "configured-model",
+    "baseUrl": "",
+    "model": OPENAI_COMPATIBLE_DEFAULT_MODEL,
     "apiKey": "",
     "opencodeApiKey": "",
     "openrouterApiKey": "",
@@ -34,8 +35,8 @@ DEFAULTS = {
     "maxOutputTokens": 393216,
     "summaryTriggerTokens": 500000,
     "summaryKeepMessages": 24,
-    "inputPricePerMillion": 0.375,
-    "outputPricePerMillion": 1.5,
+    "inputPricePerMillion": 0.0,
+    "outputPricePerMillion": 0.0,
     "fallbackModel": "",
     "fallbackBaseUrl": "",
     "fallbackApiKey": "",
@@ -46,12 +47,6 @@ DEFAULTS = {
     "judge0Token": "",
     "isolateUrl": "",
     "isolateToken": "",
-}
-
-MODEL_PRICING = {
-    "configured-model": {"input": 0.375, "output": 1.5},
-    "configured-model": {"input": 0.3, "output": 1.2},
-    "configured-model": {"input": 0.15, "output": 0.5},
 }
 
 _LOCK = threading.Lock()
@@ -65,11 +60,9 @@ def _ensure() -> None:
 def load() -> dict:
     _ensure()
     data = dict(DEFAULTS)
-    raw = {}
     try:
         loaded = json.loads(CONFIG_PATH.read_text("utf-8"))
         if isinstance(loaded, dict):
-            raw = loaded
             data.update(loaded)
     except FileNotFoundError:
         pass
@@ -87,12 +80,6 @@ def load() -> dict:
     isolate_url = os.environ.get("AUTHOR_AGENT_ISOLATE_URL")
     if isolate_url:
         data["isolateUrl"] = isolate_url
-    pricing = MODEL_PRICING.get(str(data.get("model") or ""))
-    if pricing:
-        if "inputPricePerMillion" not in raw:
-            data["inputPricePerMillion"] = pricing["input"]
-        if "outputPricePerMillion" not in raw:
-            data["outputPricePerMillion"] = pricing["output"]
     max_rounds = os.environ.get("AUTHOR_AGENT_MAX_TOOL_ROUNDS")
     if max_rounds:
         try:

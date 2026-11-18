@@ -30,12 +30,13 @@ def check(name, condition, detail=""):
 def main() -> int:
     # These checks construct a client and exercise middleware with fake responses.
     # They need neither a saved provider configuration nor a reachable endpoint.
-    cfg = {**config.DEFAULTS, "apiKey": "xpl_1234567890abcdef", "baseUrl": "https://example.invalid/v1"}
+    cfg = {**config.DEFAULTS, "apiKey": "sk-test-fixture", "baseUrl": "https://example.invalid/v1"}
     check("500k context", cfg["contextBudgetTokens"] == 500000, cfg)
     check("500k summary", cfg["summaryTriggerTokens"] == 500000, cfg)
     check("24 keep", cfg["summaryKeepMessages"] == 24, cfg)
     check("393k output", cfg["maxOutputTokens"] == 393216, cfg)
-    check("pricing", cfg["inputPricePerMillion"] == 0.375 and cfg["outputPricePerMillion"] == 1.5, cfg)
+    check("no private provider preset", config.DEFAULTS["baseUrl"] == "" and config.DEFAULTS["apiKey"] == "")
+    check("prices are opt-in", cfg["inputPricePerMillion"] == 0 and cfg["outputPricePerMillion"] == 0)
     check("key not public", "apiKey" not in config.public(cfg), config.public(cfg))
 
     model = graph_agent._model(cfg)
@@ -75,9 +76,9 @@ def main() -> int:
     check("fallback smaller context", graph_agent._context_window({**cfg, "fallbackModelWindowTokens": 100000}) == 100000, graph_agent._context_window({**cfg, "fallbackModelWindowTokens": 100000}))
     check("fallback supports tool binding", hasattr(fallbacks[0], "bind_tools"), fallbacks[0])
     check("system treats output as untrusted", "untrusted data" in agent.SYSTEM, agent.SYSTEM[:200])
-    key = cfg.get("apiKey") or "xpl_1234567890abcdef"
-    redacted = config.redact(f"prefix {key} suffix xpl_abcdef1234567890")
-    check("secret redaction", key not in redacted and "xpl_abcdef" not in redacted, redacted)
+    key = cfg["apiKey"]
+    redacted = config.redact(f"prefix {key} suffix sk-second-fixture")
+    check("secret redaction", key not in redacted and "sk-second-fixture" not in redacted, redacted)
     try:
         graph_agent._model({**cfg, "apiKey": ""})
     except RuntimeError:
