@@ -7,6 +7,7 @@ oracle, and review the saved files before exporting a DOMjudge package.
 [**Watch the Canal Bookings walkthrough**](docs/design/product-experience/evidence/release-4/canal-bookings-walkthrough.webp) ·
 [**Local setup**](docs/SETUP.md) ·
 [**Architecture**](docs/ARCHITECTURE.md) ·
+[**Roadmap**](ROADMAP.md) ·
 [**Verification**](docs/README.md#verification-and-roadmap)
 
 ## Quick start
@@ -35,7 +36,7 @@ Run, Verify, and export are available independently of chat.
 | --- | --- |
 | Develop a problem | Use chat to choose rules, contribute code or a lemma, compare approaches, and inspect evidence. |
 | Edit and test | Open workspace files in Monaco, preview statements, run a saved solution, or build expected answers. |
-| Investigate a failure | Replay a counterexample, inspect expected and actual output, and trace a diagnostic back to the saved source. |
+| Investigate a failure | Compare a weighted scheduling solution with an independent oracle, inspect the first mismatch, and reopen its frozen inputs and seed. |
 | Release a package | Verify the saved revision, review the file changes, approve that snapshot, and generate its ZIP. |
 | Resume work | Reopen drafts, earlier chat pages, and interrupted local jobs from the same workspace. |
 
@@ -48,9 +49,11 @@ Run, Verify, and export are available independently of chat.
 - A separate bounded DeepSeek Flash and Isolate trial recorded a real
   wrong answer, a live model repair, and a passing replay on the same
   inputs. Live investigation record
-- The planned next engine milestone is broader correctness campaigns,
-  counterexample reduction, mutation testing, and validator audits.
-  [Engine roadmap](docs/research/agentic-engine-portfolio/07-ROADMAP-AND-PORTFOLIO.md)
+- T34 adds bounded weighted scheduling campaigns with seeded variants and
+  a finite grid, recorded oracle checks, and a replay manifest.
+  [Campaign guide](docs/implementation/T34-WEIGHTED-CAMPAIGNS.md)
+- T35 is next in V4. It will replay and reduce counterexamples, followed by
+  mutation testing and validator audits. [Current roadmap](ROADMAP.md)
 
 Author Studio is a single-user local preview. Run it on loopback and keep
 provider credentials, workspaces, and unsent drafts private.

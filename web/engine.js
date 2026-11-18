@@ -517,6 +517,15 @@
       }
       body.textContent = displayText;
       node.append(body);
+      if (kind === "campaign" && /^campaign:ev-[a-f0-9]{14}$/.test(message.dedupe_key)) {
+        const link = el("a", "artifact-link quiet small", "Open campaign report");
+        link.href = `/api/engine/runs/${encodeURIComponent(currentRun)}/campaigns/${message.dedupe_key.slice(9)}`;
+        link.target = "_blank";
+        link.rel = "noopener";
+        const line = el("p", "small");
+        line.append(link);
+        body.append(line);
+      }
       if (studio && evidence[message.dedupe_key]) body.append(renderCaseCard(evidence[message.dedupe_key], currentRun));
       if (studio && role === "author") {
         const sent = requestReceipts.get(message.id);

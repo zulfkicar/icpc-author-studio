@@ -68,7 +68,9 @@ def evaluate_stage_return(store: ApplicationStore, run_id: str,
     if kind == "first_valid_witness":
         witness = [
             e for e in evidence
-            if e.get("classification") == "counterexample" and e.get("outcome") == "witness"
+            if e.get("classification") == "counterexample"
+            and (e.get("outcome") == "witness" or (e.get("domain") == "weighted_campaign"
+                 and (e.get("usage_observed") or {}).get("hasWitness")))
         ]
         evidence_refs = [e["id"] for e in witness]
         if not witness:
@@ -80,7 +82,7 @@ def evaluate_stage_return(store: ApplicationStore, run_id: str,
                 ref in contract.target_refs
                 for e in witness
                 for ref in (list(e.get("artifact_refs") or []) +
-                            [str((e.get("usage_observed") or {}).get("claimId") or "")])
+                            [(e.get("usage_observed") or {}).get(key) for key in ("claimId", "candidateRef", "candidateTarget")])
             )
             if not linked:
                 unresolved.append("witness receipt is not linked to the delegated target")
@@ -95,6 +97,9 @@ def evaluate_stage_return(store: ApplicationStore, run_id: str,
             and (e.get("domain") != "package_reference" or not contract.target_refs
                  or any((e.get("usage_observed") or {}).get(key) in contract.target_refs
                         for key in ("referenceId", "referencePath")))
+            and (e.get("domain") != "weighted_campaign" or not contract.target_refs
+                 or any((e.get("usage_observed") or {}).get(key) in contract.target_refs
+                        for key in ("claimId", "candidateRef", "candidateTarget")))
         ]
         evidence_refs = [e["id"] for e in campaigns]
         if not campaigns:

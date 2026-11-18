@@ -35,7 +35,8 @@ def project_cards(store, run_id, messages):
                 if not isinstance(payload, dict) or payload.get("kind") != "diagnostic_witness":
                     continue
                 cards[key] = _card(payload, evidence_id=evidence_id, worker=evidence.get("environment_ref"),
-                                   historical=evidence.get("freshness") != "current")
+                                   historical=evidence.get("freshness") != "current",
+                                   candidate_hash=payload.get("candidateHash"))
                 break
             if key in cards:
                 break

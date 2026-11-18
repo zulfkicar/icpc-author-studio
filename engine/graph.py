@@ -38,6 +38,7 @@ from .domain import (
     witness_two_touching,
     witness_weighted_greedy,
 )
+from .domain.differential import CampaignBudget, CampaignError, evaluate_receipt, prepare_campaign
 from .graph_state import (
     CollaborationInput,
     CollaborationOutput,
@@ -336,6 +337,11 @@ def _check_allowed_action(ctx: dict, plan: PlanV1) -> str | None:
     ops = set((grant or {}).get("operation_kinds") or [])
     permitted = set((delegation or {}).get("permitted_operations") or [])
     if plan.action == "investigate":
+        domain = (plan.args or {}).get("domain")
+        if isinstance(domain, dict) and domain.get("kind") == "weighted_campaign":
+            if "differential_search" not in ops or (delegation and "differential_search" not in permitted):
+                return "campaign requires a granted differential search"
+            return None
         needed = {"differential_search", "replay_diagnostic"}
         allowed = (ops | permitted) & needed
         if not allowed:
@@ -492,7 +498,9 @@ def build_parent(runtime: Runtime, checkpointer):
                                       "operation_id": operation_id, "args": continuation.get("args") or {}},
                         "next_route": "admit_action", "progress": ["resume_interpret"],
                     }
-                if _operation_expired(runtime, operation):
+                receipt = operation.get("raw_receipt") or {}
+                campaign_receipt = receipt.get("campaignWallMs") and receipt.get("status") != "pending"
+                if not campaign_receipt and _operation_expired(runtime, operation):
                     _expire_operation(runtime, operation)
                     return {"next_route": "handoff",
                             "child_result": {"status": "incomplete",
@@ -785,7 +793,11 @@ def build_parent(runtime: Runtime, checkpointer):
                  "edit": "editing", "review": "review"}[plan.action]
         phase = {"collaboration": "compose", "investigation": "design",
                  "editing": "draft", "review": "brief"}[child]
+        domain = (plan.args or {}).get("domain")
+        weighted_campaign = child == "investigation" and isinstance(domain, dict) and domain.get("kind") == "weighted_campaign"
         signature = sha256_text({"action": plan.action, "args": plan.args,
+                                 **({"budget": _admission_args(plan).get("requested_budget"),
+                                     "authorSeq": ctx["applied_author_seq"]} if weighted_campaign else {}),
                                  "generation": ctx["goal_generation"],
                                  "revision": ctx["revision"]})
         signatures = list(state.get("action_signatures") or []) + [signature]
@@ -793,9 +805,16 @@ def build_parent(runtime: Runtime, checkpointer):
             return {"child_result": {"status": "incomplete", "kind": "nonprogress"},
                     "next_route": "assess", "progress": ["nonprogress_stop"]}
         try:
+            if weighted_campaign:
+                CampaignBudget.model_validate(_admission_args(plan).get("requested_budget"))
             reservation = _reserve(runtime, run_id, action_id="action:" + signature, plan=plan)
         except BudgetExhausted:
             return {"child_result": {"status": "incomplete", "kind": "budget_exhausted"},
+                    "next_route": "assess"}
+        except ValueError as exc:
+            if not weighted_campaign:
+                raise
+            return {"child_result": {"status": "failed", "kind": "invalid_campaign", "error": str(exc)[:500]},
                     "next_route": "assess"}
         continuation = _set_continuation(
             runtime, run_id, action_id=signature, child=child, phase=phase,
@@ -861,7 +880,7 @@ def build_parent(runtime: Runtime, checkpointer):
                 return {"next_route": "handoff", "child_result": result,
                         "stage_return": stage.model_dump()}
         # A completed explanation ends the turn unless a new author goal exists.
-        if kind in ("explanation", "claim_challenge", "test_validation", "package_draft", "patch_rejected"):
+        if kind in ("explanation", "claim_challenge", "test_validation", "package_draft", "patch_rejected", "campaign"):
             return {"next_route": "handoff", "child_result": result,
                     "progress": ["turn_complete"]}
         if kind == "finish":
@@ -1586,11 +1605,19 @@ def _facts_from_evidence(runtime: Runtime, evidence: dict) -> dict:
                 f"The first violated invariant is: {payload.get('invariant') or payload.get('comparison')}."
             )
     if "input" not in facts and evidence["outcome"] == "campaign":
-        facts["headline"] = (
-            f"The candidate agreed with the subset oracle on the declared finite domain "
-            f"({evidence.get('usage_observed', {}).get('completed', '?')} cases completed). "
-            "This is bounded executable agreement, not a proof."
-        )
+        usage = evidence.get("usage_observed") or {}
+        if evidence["domain"] == "weighted_campaign":
+            facts["headline"] = (
+                f"Campaign outcome: {evidence['classification']}. "
+                f"{usage['completed']} of {usage['declared']} declared cases completed. "
+                "The general correctness argument remains a separate obligation."
+            )
+        else:
+            facts["headline"] = (
+                f"The candidate agreed with the subset oracle on the declared finite domain "
+                f"({usage.get('completed', '?')} cases completed). "
+                "This is bounded executable agreement, not a proof."
+            )
         facts["next_author_actions"] = ["inspect the campaign receipt", "state the remaining proof obligation"]
     return facts
 
@@ -1664,7 +1691,8 @@ def _operation_expired(runtime: "Runtime", operation: dict) -> bool:
         return False
     import datetime as _dt
 
-    deadline = started + _dt.timedelta(milliseconds=max(1, int(reservation["wall_ms"] or 90_000)))
+    recorded = (operation.get("raw_receipt") or {}).get("campaignWallMs")
+    deadline = started + _dt.timedelta(milliseconds=max(1, int(recorded or reservation["wall_ms"] or 90_000)))
     return runtime.clock.now() >= deadline
 
 
@@ -1850,6 +1878,8 @@ def _publish_diagnostic(runtime: Runtime, operation: dict, raw: dict, plan: dict
     run = runtime.store.get_run(operation["run_id"])
     allowed, reasons = _publication_fence(runtime, operation, writer_epoch, run)
     raw_blob = runtime.store.put_blob(canonical_json(raw).encode("utf-8"), kind="worker-receipt")
+    if plan.get("campaign_manifest"):
+        return _publish_weighted(runtime, run, operation, raw, plan, raw_blob, allowed, reasons, writer_epoch)
     if raw.get("status") == "outcome_unknown":
         result = OperationResultV1(
             operation_id=operation["operation_id"], request_hash=operation["request_hash"],
@@ -2016,6 +2046,57 @@ def _publish_diagnostic(runtime: Runtime, operation: dict, raw: dict, plan: dict
             "artifact": artifact, "artifactBlob": artifact_blob, "rawReceipt": raw_blob,
             "result": result.model_dump(), "evaluation": evaluation}
 
+
+def _publish_weighted(runtime: Runtime, run: dict, operation: dict, raw: dict, plan: dict,
+                      raw_blob: str, allowed: bool, reasons: list[str], writer_epoch: int) -> dict:
+    manifest_hash = plan["campaign_manifest"]
+    manifest = json.loads(runtime.store.get_blob(manifest_hash))
+    report = evaluate_receipt(manifest, raw)
+    if raw.get("status") in ("outcome_unknown", "cancelled"):
+        report.update(classification=raw["status"], termination=raw["status"], complete=False, firstMismatch=None)
+    claim = plan.get("claim_id") or "H1"
+    report.update(kind="weighted_campaign_report", manifest=manifest_hash, seed=manifest["spec"]["seed"],
+                  mode=manifest["spec"]["mode"], family=manifest["spec"]["family"],
+                  candidateRef=plan["candidate_ref"], candidateHash=plan["candidate_hash"], claimId=claim)
+    refs = [runtime.store.put_blob(canonical_json(report).encode(), kind="campaign")]
+    mismatch = report["firstMismatch"]
+    if mismatch:
+        witness = {**mismatch, "kind": "diagnostic_witness", "classification": "counterexample",
+                   "candidateRef": report["candidateRef"], "candidateHash": report["candidateHash"], "claimId": claim,
+                   "assumption": f"Frozen endpoint rule: {manifest['semantics']}",
+                   "invariant": "The candidate's answer differs from the independent subset optimum."}
+        refs.append(runtime.store.put_blob(canonical_json(witness).encode(), kind="witness"))
+    status = {"counterexample": "completed", "agreement": "completed", "cancelled": "cancelled",
+              "outcome_unknown": "outcome_unknown", "budget_exhausted": "incomplete",
+              "worker_incomplete": "incomplete"}.get(report["classification"], "failed")
+    usage = {"cases": report["attempted"], "complete": report["complete"], "completed": report["completed"],
+             "declared": report["declared"], "hasWitness": bool(mismatch), "claimId": claim,
+             "candidateRef": report["candidateRef"], "oracleSubsets": manifest["oracle"]["subsets"],
+             "candidateTarget": report["candidateRef"].removeprefix("contribution:").removeprefix("artifact:")}
+    evidence = EvidenceV1(
+        id="ev-" + sha256_text({"run": run["run_id"], "op": operation["operation_id"]})[:14],
+        producer_kind="deterministic", producer_version="weighted-campaign-v1", operation_id=operation["operation_id"],
+        input_refs=[manifest_hash], dependency_hashes={"candidate": report["candidateHash"], "manifest": manifest_hash},
+        domain="weighted_campaign", seed=report["seed"], enumeration_order=report["mode"],
+        budget_requested=manifest["limits"]["requested"], usage_observed=usage, outcome="campaign",
+        artifact_refs=refs, environment_ref=raw.get("worker_identity"), freshness="current" if allowed else "stale",
+        classification=report["classification"],
+    )
+    result = OperationResultV1(
+        operation_id=operation["operation_id"], request_hash=operation["request_hash"], input_revision=operation["input_revision"],
+        status=status if allowed else "incomplete", classification=report["classification"] if allowed else "stale",
+        actual_limits=plan["budget"], usage={**usage, "worker": raw.get("usage") or {"unknown": True}},
+        artifacts={"campaign": refs[0], "manifest": manifest_hash, "rawReceipt": raw_blob}, evidence_ids=[evidence.id],
+        worker_identity=raw.get("worker_identity"), retryability="not_retryable",
+    )
+    committed = runtime.store.commit_operation_result(operation["operation_id"], result, evidence,
+        evidence_epoch=(run["observed_revision"], int(run["goal_generation"]), int(run["steering_epoch"]), writer_epoch))
+    if committed["classification"] == "stale":
+        runtime.store.append_event(run["run_id"], "publication_denied", role="host",
+                                   payload={"operationId": operation["operation_id"], "reasons": reasons or ["publication_fence"]})
+        return {"status": "conflict", "kind": "stale_publication", "evidence_id": evidence.id}
+    return {"status": status, "kind": "campaign", "classification": report["classification"], "evidence_id": evidence.id}
+
 def build_investigation(runtime: Runtime):
     def route_phase(state: InvestigationInput) -> dict:
         phase = str(state.get("phase") or "design")
@@ -2051,6 +2132,12 @@ def build_investigation(runtime: Runtime):
             return {"result": {"status": "failed", "kind": "invalid_plan",
                                "error": "no candidate reference"}}
         domain = design["domain"]
+        admitted_domain = args.get("domain")
+        if isinstance(admitted_domain, dict) and admitted_domain.get("kind") == "weighted_campaign":
+            domain = design["domain"] = admitted_domain
+        elif isinstance(domain, dict) and domain.get("kind") == "weighted_campaign":
+            return {"result": {"status": "failed", "kind": "invalid_campaign",
+                               "error": "The campaign domain must come from the admitted plan."}}
         if isinstance(domain, dict) and "kind" not in domain and design.get("targeted_cases"):
             # Older live plans put actual cases beside a prose domain. Keep only
             # the explicit inputs and compute expectations independently.
@@ -2077,11 +2164,39 @@ def build_investigation(runtime: Runtime):
         ctx = state["ctx"]
         run_id = state["run_id"]
         try:
-            ref, _, label = runtime.candidate_source(run_id, plan["candidate_ref"])
+            ref, source, label = runtime.candidate_source(run_id, plan["candidate_ref"])
         except (LedgerError, ValueError) as exc:
             return {"result": {"status": "failed", "kind": "invalid_candidate",
                                "error": str(exc)[:500]}}
         plan["candidate_ref"] = ref
+        if (plan.get("domain") or {}).get("kind") == "weighted_campaign":
+            budget = runtime.store.get_budget(run_id)
+            delegate = (ctx.get("delegation") or {}).get("budget_ceiling") or {}
+            try:
+                endpoint_decision = _decision_map(ctx).get("endpoint_semantics", {})
+                semantics = endpoint_decision.get("optionId")
+                if plan.get("oracle_semantics") not in (None, semantics):
+                    raise CampaignError("invalid_campaign", "Campaign cannot override the author's endpoint rule.")
+                manifest = prepare_campaign(
+                    plan["domain"], plan.get("requested_budget"), semantics=semantics,
+                    case_ceiling=min(budget["cases_limit"] - budget["cases_used"], delegate.get("cases", budget["cases_limit"])),
+                    wall_ceiling=min(budget["wall_ms_limit"] - budget["wall_ms_used"],
+                                     delegate.get("wall_ms", budget["wall_ms_limit"])),
+                    worker_case_ceiling=getattr(runtime.worker, "batch_limit", 50),
+                )
+            except CampaignError as exc:
+                runtime.store.append_event(run_id, "campaign_rejected", role="host",
+                                           payload={"classification": exc.kind, "reason": str(exc)[:400]})
+                return {"result": {"status": "incomplete" if exc.kind == "budget_exhausted" else "failed",
+                                   "kind": exc.kind, "error": str(exc)[:500]}}
+            manifest["endpointDecisionId"] = endpoint_decision.get("id")
+            plan["campaign_manifest"] = runtime.store.put_blob(canonical_json(manifest).encode(), kind="campaign-manifest")
+            plan["candidate_hash"] = sha256_text(source)
+            plan["cases"] = [case["input"] for case in manifest["cases"]]
+            plan["budget"] = {"cases": len(manifest["cases"]), "wall_ms": manifest["limits"]["wall_ms"],
+                              "memory_mib": 256, "output_bytes": 4096}
+            _continuation_update(runtime, run_id, args=plan)
+            return {"plan": plan, "next_phase": "dispatch"}
         case_cap = int((plan.get("requested_budget") or {}).get("cases") or 1)
         delegation = ctx.get("delegation")
         if delegation:
@@ -2134,31 +2249,49 @@ def build_investigation(runtime: Runtime):
             return {"result": {"status": "failed", "kind": "invalid_candidate",
                                "error": str(exc)[:500]}}
         run = runtime.store.get_run(run_id)
+        campaign = plan.get("campaign_manifest")
+        if campaign and sha256_text(source) != plan["candidate_hash"]:
+            return {"result": {"status": "conflict", "kind": "candidate_changed"}}
         request_hash = sha256_text({
             "candidate": plan.get("candidate_ref"),
             "cases": plan.get("cases"),
             "revision": run["observed_revision"],
             "generation": run["goal_generation"],
             "oracleSemantics": plan.get("oracle_semantics") or "half_open",
+            **({"manifest": campaign, "sourceHash": plan["candidate_hash"],
+                "authorSeq": run["applied_author_seq"]} if campaign else {}),
         })
         existing = (state.get("continuation") or {}).get("operation_id")
         operation_id = existing or ("op-" + request_hash[:16])
-        operation, created = runtime.store.admit_operation(
-            run_id, operation_id=operation_id, kind="differential_search",
-            request_hash=request_hash, input_revision=run["observed_revision"],
-            goal_generation=int(run["goal_generation"]),
-            steering_epoch=int(run["steering_epoch"]),
-            controller_epoch=int(run["controller_epoch"]),
-            reservation_id=reservation_id,
-        )
+        try:
+            operation, created = runtime.store.admit_operation(
+                run_id, operation_id=operation_id, kind="differential_search",
+                request_hash=request_hash, input_revision=run["observed_revision"],
+                goal_generation=int(run["goal_generation"]), steering_epoch=int(run["steering_epoch"]),
+                controller_epoch=int(run["controller_epoch"]), reservation_id=reservation_id,
+                case_charge=len(instances) if campaign else 0,
+                wall_charge=plan["budget"]["wall_ms"] if campaign else 0,
+            )
+        except PublicationBlocked:
+            return {"result": {"status": "conflict", "kind": "campaign_superseded"}}
+        except LedgerError as exc:
+            if not campaign:
+                raise
+            return {"result": {"status": "incomplete", "kind": "budget_exhausted", "error": str(exc)[:500]}}
         _continuation_update(runtime, run_id, phase="dispatch", operation_id=operation_id,
                              request_hash=request_hash, args={**plan, "candidate_label": plan.get("candidate_label")})
         if created:
-            runtime.store.add_case_usage(run_id, len(instances))
+            if not campaign:
+                runtime.store.add_case_usage(run_id, len(instances))
             runtime.store.append_event(run_id, "operation_dispatched", role="host", payload={
                 "operationId": operation_id, "cases": len(instances), "kind": "differential_search",
             })
         raw = operation.get("raw_receipt")
+        if campaign and operation.get("result"):
+            return {"plan": plan, "operation_id": operation_id, "next_phase": "interpret", "result": None}
+        if campaign and raw and raw.get("status") == "pending":
+            return {"result": {"status": "pending", "kind": "worker_pending", "pending_operation": True,
+                               "operation_id": operation_id}}
         if raw is None:
             job = {
                 "job_id": "job:" + operation_id,
@@ -2168,30 +2301,33 @@ def build_investigation(runtime: Runtime):
                           for i, instance in enumerate(instances)],
                 "budget": plan.get("budget") or {"cases": len(instances)},
             }
+            if campaign:
+                manifest = json.loads(runtime.store.get_blob(campaign))
+                job["cases"] = [{"case_id": case["case_id"], "input": case["input"]} for case in manifest["cases"]]
+                job["campaign"] = campaign
+                # Preserve ambiguity across a crash instead of repeating a potentially sent batch.
+                runtime.store.stage_worker_receipt(operation_id, raw={"status": "outcome_unknown", "cases": [],
+                    "campaignWallMs": plan["budget"]["wall_ms"]}, job_id=job["job_id"], status="admitted")
             try:
                 raw = runtime.worker.submit(job)
-            except WorkerUnavailable as exc:
-                runtime.store.mark_operation_status(operation_id, "failed",
-                                                    classification="infrastructure_error")
-                runtime.store.commit_operation_result(operation_id, OperationResultV1(
-                    operation_id=operation_id, request_hash=request_hash,
-                    input_revision=run["observed_revision"], status="failed",
-                    classification="infrastructure_error", error_code=str(exc)[:1000],
-                    retryability="resumable",
-                ))
-                return {"result": {"status": "failed", "kind": "worker_unavailable",
-                                   "error": str(exc)[:1000]}}
-            except Exception as exc:  # noqa: BLE001
-                runtime.store.mark_operation_status(operation_id, "failed",
-                                                    classification="infrastructure_error")
-                runtime.store.commit_operation_result(operation_id, OperationResultV1(
-                    operation_id=operation_id, request_hash=request_hash,
-                    input_revision=run["observed_revision"], status="failed",
-                    classification="infrastructure_error", error_code=str(exc)[:1000],
-                    retryability="unknown",
-                ))
-                return {"result": {"status": "failed", "kind": "worker_error",
-                                   "error": str(exc)[:1000]}}
+            except Exception as exc:  # Worker boundary reports explicit infrastructure outcomes.
+                if campaign:
+                    raw = {"status": "failed", "classification": "infrastructure_error", "cases": [],
+                           "worker_identity": runtime.worker.identity, "error_code": str(exc)[:500]}
+                else:
+                    runtime.store.mark_operation_status(operation_id, "failed", classification="infrastructure_error")
+                    runtime.store.commit_operation_result(operation_id, OperationResultV1(
+                        operation_id=operation_id, request_hash=request_hash,
+                        input_revision=run["observed_revision"], status="failed",
+                        classification="infrastructure_error", error_code=str(exc)[:1000],
+                        retryability="resumable" if isinstance(exc, WorkerUnavailable) else "unknown",
+                    ))
+                    return {"result": {"status": "failed", "kind": "worker_unavailable" if isinstance(exc, WorkerUnavailable)
+                                       else "worker_error", "error": str(exc)[:1000]}}
+            if campaign:
+                if not isinstance(raw, dict):
+                    raw = {"status": "failed", "classification": "worker_protocol_error", "cases": []}
+                raw["campaignWallMs"] = plan["budget"]["wall_ms"]
             if raw.get("status") == "pending":
                 runtime.store.stage_worker_receipt(operation_id, raw=raw,
                                                    job_id=str(raw.get("job_id") or job["job_id"]),
@@ -2259,6 +2395,26 @@ def build_investigation(runtime: Runtime):
                 artifact = {}
         claim_id = plan.get("claim_id") or artifact.get("claimId") or "H1"
         classification = evidence["classification"]
+        if artifact.get("kind") == "weighted_campaign_report":
+            finding_id = None
+            mismatch = artifact.get("firstMismatch")
+            if mismatch and evidence["freshness"] == "current":
+                finding_id = "finding-" + sha256_text({"run": run_id, "op": operation_id})[:14]
+                finding = runtime.store.upsert_finding(run_id, FindingV1(
+                    id=finding_id, claim_id=claim_id, revision=operation["input_revision"],
+                    origin_role="host", severity="high", status="investigating", resolver_kind="deterministic",
+                    allegation=(f"On {mismatch['family']} case {mismatch['case_id']}, the candidate returned "
+                                f"{mismatch['actual']}. The independent optimum was {mismatch['expected']}."),
+                    evidence_refs=[evidence["id"]],
+                ), require_current_evidence=evidence["id"])
+                if not finding:
+                    return {"result": {"status": "conflict", "kind": "stale_publication", "evidence_id": evidence["id"]}}
+            return _done_interpret(runtime, run_id, {
+                "status": "complete" if result["status"] == "completed" else result["status"],
+                "kind": "campaign" if result["status"] == "completed" else classification,
+                "classification": classification, "operation_id": operation_id,
+                "evidence_id": evidence["id"], "finding_id": finding_id,
+            })
         model_outcome = _gateway(
             runtime, (state.get("admission") or {}).get("reservation_id"),
             run_id=run_id, node="investigation.interpret",

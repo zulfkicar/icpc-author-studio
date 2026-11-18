@@ -124,6 +124,7 @@ class FakeWorker:
                 cases_out.append({
                     "case_id": entry["case_id"],
                     "status": "ok",
+                    "exit": 0,
                     "output": str(int(value)),
                     "elapsed_ms": round((time.monotonic() - started) * 1000, 3),
                 })
@@ -177,35 +178,55 @@ class IsolateWorker:
             )
         source = job["candidate"]["source"]
         cases = job["cases"][: self.batch_limit]
+        campaign = bool(job.get("campaign"))
+        wall_seconds = float(job["budget"].get("wall_ms", 60000)) / 1000
+        deadline = time.monotonic() + wall_seconds
         out: list[dict] = []
+        stop = "batch_limit" if len(job["cases"]) > len(cases) else None
         for entry in cases:
+            remaining = deadline - time.monotonic()
+            if campaign and remaining <= 0:
+                stop = "deadline"
+                break
+            cpu_limit = wall_seconds / max(1, len(cases))
+            timeout_args = {}
+            if campaign:
+                cpu_limit = min(2.0, cpu_limit, remaining)
+                timeout_args = {"request_timeout": remaining, "wall_time": remaining}
             try:
                 result = isolate_client.run(
                     source, job["candidate"].get("language", "cpp"), entry["input"],
-                    time_limit=float(job["budget"].get("wall_ms", 60000)) / 1000.0 / max(1, len(cases)),
+                    time_limit=cpu_limit,
                     memory_mb=int(job["budget"].get("memory_mib", 256)),
-                    fsize_mb=4,
+                    fsize_mb=1 if campaign else 4,
+                    **timeout_args,
                 )
             except Exception as exc:  # noqa: BLE001
                 return {
-                    "status": "failed",
-                    "classification": "infrastructure_error",
+                    "status": "outcome_unknown" if campaign else "failed",
+                    "classification": "outcome_unknown" if campaign else "infrastructure_error",
                     "worker_identity": self.identity,
                     "protocolVersion": 1,
                     "cases": out,
                     "usage": {"cases": len(out), "unknown": True},
                     "error_code": f"{type(exc).__name__}: {exc}"[:1000],
                 }
-            normalized = normalize_isolate_case(result)
+            normalized = (normalize_isolate_case(result, output_limit=job["budget"]["output_bytes"])
+                          if campaign else normalize_isolate_case(result))
             normalized["case_id"] = entry["case_id"]
             out.append(normalized)
-        truncated = len(job["cases"]) > len(cases)
-        truncation = ({"requested": len(job["cases"]), "completed": len(cases),
-                       "reason": "batch_limit"} if truncated else {})
+            if campaign and time.monotonic() >= deadline:
+                stop = "deadline"
+                break
+            if campaign and normalized["status"] == "compile_error":
+                stop = "compile_error" if len(out) < len(cases) else stop
+                break
+        truncation = ({"requested": len(job["cases"]), "completed": len(out),
+                       "reason": stop} if stop else {})
         aggregate_result = aggregate(out, requested=len(job["cases"]),
-                                     completed=len(cases), truncation=truncation)
+                                     completed=len(out), truncation=truncation)
         aggregate_result.update({
-            "worker_identity": json_identity(),
+            "worker_identity": self.identity if campaign else json_identity(),
             "protocolVersion": 1,
             "cases": out,
             "usage": {

@@ -528,6 +528,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(engine_service().events(run_id, after))
                 if len(parts) == 5 and parts[4] == "capabilities":
                     return self.send_json(engine_service().capabilities(run_id))
+                if len(parts) == 6 and parts[4] == "campaigns":
+                    try:
+                        return self.send_json(engine_service().campaign_receipt(run_id, parts[5]))
+                    except LedgerError as exc:
+                        return self.send_error_json(str(exc), 404)
                 if len(parts) == 5 and parts[4] == "chat":
                     try:
                         after = max(0, int((query.get("after") or ["0"])[0]))

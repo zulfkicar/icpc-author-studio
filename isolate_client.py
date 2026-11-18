@@ -33,7 +33,7 @@ def health() -> dict:
 
 def run(source: str, language: str = "cpp", stdin: str = "", *,
         time_limit: float = 2.0, wall_time: float | None = None,
-        memory_mb: int = 256, fsize_mb: int = 4) -> dict:
+        memory_mb: int = 256, fsize_mb: int = 4, request_timeout: float | None = None) -> dict:
     body = json.dumps({
         "source": source,
         "language": language,
@@ -48,7 +48,8 @@ def run(source: str, language: str = "cpp", stdin: str = "", *,
         headers={"Content-Type": "application/json", **_headers()}, method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=float(wall_time or 20) + 30) as response:
+        timeout = request_timeout if request_timeout is not None else float(wall_time or 20) + 30
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")

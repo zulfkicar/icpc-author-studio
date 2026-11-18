@@ -23,8 +23,10 @@
 | --- | --- |
 | [Studio Releases 1–4](design/product-experience/README.md) | The 58-item experience plan, browser evidence and outstanding qualification |
 | [Engine V0–V3](implementation/v0-v3/README.md) | Stage contracts, offline graph tests and repair history |
+| [T34 weighted scheduling campaigns](implementation/T34-WEIGHTED-CAMPAIGNS.md) | Chat workflow, independent oracle, replay manifest, budgets and verification |
 | [Live verification](design/author-studio/VERIFICATION.md) | Scoped provider, worker and package experiments with their limitations |
-| [Engine roadmap](research/agentic-engine-portfolio/07-ROADMAP-AND-PORTFOLIO.md) | Next milestone for bounded correctness campaigns, followed by delivery and qualification |
+| [Current roadmap](../ROADMAP.md) | Upcoming engine versions, ordered items and release gates |
+| [C2 engine design](research/agentic-engine-portfolio/07-ROADMAP-AND-PORTFOLIO.md) | Original investigation, delivery and qualification plan |
 | [System audit](plans/system-depth/README.md) | Original integrity findings and the earlier engineering backlog |
 
 These reports describe the version and test mode recorded at the time. Start

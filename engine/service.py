@@ -22,7 +22,7 @@ from .decisions import (
     UnavailableDecisionAdapter,
 )
 from .demo import demo_script
-from .graph import Runtime
+from .graph import Runtime, _operation_expired
 from .input_service import InputService
 from .model import FakeModelAdapter, SingleRequestOpenAIAdapter, UnavailableModelAdapter
 from .owner import OwnerRegistry
@@ -317,7 +317,16 @@ class EngineService:
             settle = getattr(worker, "settle", None)
             if settle is None:
                 return {"error": "this worker does not support deferred settlement"}
+            campaign_wall = (operation.get("raw_receipt") or {}).get("campaignWallMs")
+            if campaign_wall is not None and operation.get("result"):
+                return {"error": "campaign already has a terminal receipt"}
+            if campaign_wall is not None and _operation_expired(runtime, operation):
+                if schedule:
+                    self.request_pump(run_id)
+                return {"error": "campaign execution deadline exceeded"}
             raw = settle(job_id)
+            if campaign_wall is not None:
+                raw["campaignWallMs"] = campaign_wall
             store.stage_worker_receipt(operation["operation_id"], raw=raw, job_id=job_id,
                                        status="admitted")
             store.enqueue_wake(run_id, wait_id="operation:" + operation["operation_id"],
@@ -342,6 +351,16 @@ class EngineService:
         view["capabilities"] = self.capabilities(run_id)
         view["events"] = runtime.store.events_after(run_id, 0, 200)
         return view
+
+    def campaign_receipt(self, run_id: str, evidence_id: str) -> dict:
+        store = self.store(run_id)
+        evidence = store.get_evidence(evidence_id)
+        if evidence["run_id"] != run_id or evidence["domain"] != "weighted_campaign":
+            raise LedgerError("Campaign receipt not found in this run")
+        report = json.loads(store.get_blob(evidence["artifact_refs"][0]))
+        manifest = json.loads(store.get_blob(report["manifest"]))
+        return {"evidenceId": evidence_id, "freshness": evidence["freshness"],
+                "workerIdentity": evidence["environment_ref"], "report": report, "manifest": manifest}
 
     def events(self, run_id: str, after: int = 0) -> dict:
         store, _ = self._get(run_id)
@@ -389,6 +408,8 @@ class EngineService:
             "workerConfigured": bool(described_worker.get("configured")),
             "workerQualified": bool(described_worker.get("qualified")),
             "workerQualification": described_worker.get("qualification"),
+            "weightedCampaign": {"modes": ["seeded", "exhaustive"], "maxSelectedCases": 50,
+                                 "requiresEndpointDecision": True},
             "delivery": {"supported": False, "profile": "v0-v3"},
             "restoreMutations": {"supported": False, "profile": "v0-v3"},
             "deferred": ["general reducers", "mutation campaigns", "AgentDriver",

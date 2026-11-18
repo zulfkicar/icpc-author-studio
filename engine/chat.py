@@ -939,6 +939,17 @@ class ChatService:
                 f"{finding['severity']}: {finding['allegation']}",
                 dedupe=f"finding:{finding['id']}",
             )
+        for evidence in store.list_evidence(run_id):
+            if evidence["domain"] != "weighted_campaign" or evidence["freshness"] != "current":
+                continue
+            report = json.loads(store.get_blob(evidence["artifact_refs"][0]))
+            outcome = report["classification"].replace("_", " ")
+            scope = "registered domain" if report["mode"] == "exhaustive" else "seeded sample"
+            worker = evidence["environment_ref"] or "worker unavailable"
+            self._assistant(run_id, "campaign",
+                            f"Weighted scheduling campaign, seed {report['seed']}: {outcome}. "
+                            f"Compared {report['completed']} of {report['declared']} inputs in the {scope}. "
+                            f"Worker: {worker}.", dedupe=f"campaign:{evidence['id']}")
         explanation = store.current_explanation(run_id)
         if explanation is not None:
             text = explanation["short_answer"]

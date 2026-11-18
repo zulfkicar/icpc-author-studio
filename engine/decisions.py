@@ -99,6 +99,8 @@ DECISION_PROMPT = (
     "contributions; keep negation, tentative/conditional wording, questions, quotations "
     "and reported third-party statements distinct; list multiple acts when present. "
     "A request to generate fresh draft code or test inputs in the conversation is request_work; "
+    "An affirmative request to run a weighted scheduling campaign on a solution is request_work "
+    "with requested_work set to weighted_campaign. It is a bounded investigation. "
     "publishing a change to saved files is a separate request. "
     "Use only candidate references visible in the context. Do not invent host IDs, "
     "permissions or file paths. A resolved reference is not permission. For an effect "
@@ -501,6 +503,12 @@ def _request_acts(text: str, context: dict) -> list[dict]:
     elif _EXPLAIN.search(lowered):
         acts.append({"kind": "information_request", "polarity": polarity, "text": text,
                      "reason": "information request"})
+    elif (re.match(r"\s*(?:please\s+)?run\s+(?:(?:a|the)\s+)?weighted\s+(?:interval\s+)?scheduling\s+campaign\b",
+                   unquoted(visible), re.I)
+          and not any(pattern.search(lowered) for pattern in (_NEGATION, _TENTATIVE, _CONDITIONAL, _REPORTED))
+          and "?" not in visible):
+        acts.append({"kind": "request_work", "polarity": "affirmative", "text": text,
+                     "requested_work": "weighted_campaign", "reason": "bounded weighted scheduling investigation"})
     elif re.fullmatch(r"\s*continue\s*[.!]?\s*", visible, re.I):
         acts.append({"kind": "request_work", "polarity": "affirmative", "text": text,
                      "requested_work": "continue", "reason": "continue the bounded stage"})

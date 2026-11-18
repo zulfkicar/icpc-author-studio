@@ -36,6 +36,13 @@ persists the inbox, receipts and revisions. Investigation results cite the
 candidate and the case actually checked. The independent oracle produces the
 expected result for the supported profile.
 
+For weighted scheduling campaigns, [`engine/domain/differential.py`](../engine/domain/differential.py)
+freezes the input set and computes expected answers by enumerating feasible
+subsets under the author's endpoint rule. The worker receives the candidate
+and input bytes. The ledger binds its results by case ID and checks the
+revision and steering state before publishing current evidence.
+[Campaign contract](implementation/T34-WEIGHTED-CAMPAIGNS.md)
+
 ## Workspace and export
 
 [`studio.py`](../studio.py) links a conversation to a package and manages naming

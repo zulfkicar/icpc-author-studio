@@ -1946,6 +1946,8 @@ class ApplicationStore:
         steering_epoch: int,
         controller_epoch: int,
         reservation_id: str,
+        case_charge: int = 0,
+        wall_charge: int = 0,
     ) -> tuple[dict, bool]:
         now = self.clock.now_iso()
         with self.tx() as conn:
@@ -1954,6 +1956,21 @@ class ApplicationStore:
                 if row["request_hash"] != request_hash:
                     raise LedgerError("operation id reused with different arguments")
                 return self.get_operation(operation_id), False
+            if case_charge or wall_charge:
+                run = conn.execute("SELECT observed_revision, goal_generation, steering_epoch, controller_epoch FROM runs WHERE run_id=?",
+                                   (run_id,)).fetchone()
+                barrier = conn.execute(
+                    "SELECT 1 FROM inputs WHERE run_id=? AND barrier=1 AND status IN ('received','interpreting')", (run_id,)
+                ).fetchone()
+                if not run or tuple(run) != (input_revision, goal_generation, steering_epoch, controller_epoch) or barrier:
+                    raise PublicationBlocked("Investigation changed before the campaign could start")
+                charged = conn.execute(
+                    """UPDATE budgets SET cases_used=cases_used+?, wall_ms_used=wall_ms_used+? WHERE run_id=?
+                       AND cases_used+?<=cases_limit AND wall_ms_used+?<=wall_ms_limit""",
+                    (case_charge, wall_charge, run_id, case_charge, wall_charge),
+                )
+                if not charged.rowcount:
+                    raise LedgerError("campaign case or wall budget exhausted")
             conn.execute(
                 """INSERT INTO operations(operation_id, run_id, kind, request_hash, input_revision,
                    goal_generation, steering_epoch, controller_epoch, reservation_id, status,
@@ -1979,6 +1996,11 @@ class ApplicationStore:
                              status: str = "pending") -> dict:
         now = self.clock.now_iso()
         with self.tx() as conn:
+            if raw.get("campaignWallMs") is not None:
+                operation = conn.execute("SELECT result_json FROM operations WHERE operation_id=?",
+                                         (operation_id,)).fetchone()
+                if operation and operation["result_json"]:
+                    return self.get_operation(operation_id)
             conn.execute(
                 """UPDATE operations SET raw_json=?, job_id=COALESCE(?,job_id), status=?,
                    dispatched_at=COALESCE(dispatched_at,?), updated_at=? WHERE operation_id=?""",
@@ -2012,7 +2034,7 @@ class ApplicationStore:
                                    "classification": classification})
 
     def commit_operation_result(self, operation_id: str, result: OperationResultV1,
-                                evidence: EvidenceV1 | None = None) -> dict:
+                                evidence: EvidenceV1 | None = None, *, evidence_epoch: tuple | None = None) -> dict:
         now = self.clock.now_iso()
         run_id = ""
         with self.tx() as conn:
@@ -2022,6 +2044,15 @@ class ApplicationStore:
             run_id = row["run_id"]
             if row["result_json"]:
                 return self.get_operation(operation_id)
+            if evidence_epoch and evidence is not None and evidence.freshness == "current":
+                run = conn.execute("SELECT observed_revision, goal_generation, steering_epoch, controller_epoch FROM runs WHERE run_id=?",
+                                   (run_id,)).fetchone()
+                barrier = conn.execute(
+                    "SELECT 1 FROM inputs WHERE run_id=? AND barrier=1 AND status IN ('received','interpreting')", (run_id,)
+                ).fetchone()
+                if not run or tuple(run) != evidence_epoch or barrier:
+                    evidence = evidence.model_copy(update={"freshness": "stale"})
+                    result = result.model_copy(update={"status": "incomplete", "classification": "stale"})
             conn.execute(
                 "UPDATE operations SET status=?, classification=?, result_json=?, updated_at=? WHERE operation_id=?",
                 (result.status, result.classification, canonical_json(result.model_dump()), now, operation_id),
@@ -2106,11 +2137,18 @@ class ApplicationStore:
         return invalidated
 
     # ---------------------------------------------------------------- findings / explanations / handoffs
-    def upsert_finding(self, run_id: str, finding: FindingV1) -> dict:
+    def upsert_finding(self, run_id: str, finding: FindingV1, *, require_current_evidence: str | None = None) -> dict:
         with self.tx() as conn:
             row = conn.execute("SELECT * FROM findings WHERE id=?", (finding.id,)).fetchone()
             if row is not None:
                 return dict(row)
+            if require_current_evidence:
+                current = conn.execute("SELECT 1 FROM evidence WHERE id=? AND run_id=? AND freshness='current'",
+                                       (require_current_evidence, run_id)).fetchone()
+                barrier = conn.execute("SELECT 1 FROM inputs WHERE run_id=? AND barrier=1 AND status IN ('received','interpreting')",
+                                       (run_id,)).fetchone()
+                if not current or barrier:
+                    return {}
             conn.execute(
                 """INSERT INTO findings(id, run_id, claim_id, revision, origin_role, origin_model,
                    severity, allegation, evidence_json, suggested_discriminator, status,
@@ -2351,6 +2389,8 @@ class ApplicationStore:
             "modelAttemptsRemaining": b["model_attempts_limit"] - b["model_attempts_used"],
             "casesLimit": b["cases_limit"],
             "casesUsed": b["cases_used"],
+            "campaignWallMsLimit": b["wall_ms_limit"],
+            "campaignWallMsReserved": b["wall_ms_used"],
             "activeSecondsLimit": b["active_seconds_limit"],
             "activeSecondsUsed": b["active_seconds_used"],
             "unknownUsage": self._unknown_usage(run_id),

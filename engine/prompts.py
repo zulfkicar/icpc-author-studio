@@ -31,6 +31,12 @@ PLAN_PROMPT = (
     "For investigate, copy a current contribution or artifact ID exactly as a string (contrib-... or art-...). "
     "Provide an executable domain such as {kind:'cases',instances:[{jobs:[[start,finish,reward],...]}]}, "
     "not a prose domain. Do not request execution of a candidate that does not exist yet. "
+    "For a weighted scheduling campaign, wait for the author's endpoint decision and provide args.domain "
+    "{kind:'weighted_campaign',mode:'seeded',seed:42,family:'mixed',target_cases:12} or "
+    "{kind:'weighted_campaign',mode:'exhaustive',seed:42,lengths:[1,2]}. Seeded family choices are mixed, "
+    "touching, nested_duplicates and wide_rewards. Pass cases (1–50), wall_ms (1000–60000), and "
+    "oracle_subsets (1–65536) in requested_budget. Honor the author's seed and limits. The host selects, "
+    "validates, and scores cases. Never propose oracle answers, oracle code, or a different endpoint rule. "
     "Choose ask only when a missing definition changes dependent work and is not already decided. Choose finish only when the "
     "current stage boundary is reached. Never propose delivery or export in V0-V3."
 )
@@ -58,7 +64,8 @@ INVESTIGATE_PROMPT = (
     "Design a bounded discriminator for one precise claim. Return JSON: candidate_ref, hypothesis_claim, claim_text, "
     "domain, expected_observation, failure_diagnostic. Copy candidate_ref verbatim as one string from a current "
     "code contribution or C++ artifact in the context. Use domain {kind:'cases',instances:[{jobs:[[start,finish,reward]]}]} "
-    "or {kind:'finite',types:[[start,finish,reward]],lengths:[1,2]}. Do not decide the result; the worker and oracle do."
+    "or {kind:'finite',types:[[start,finish,reward]],lengths:[1,2]}. For a bounded weighted_campaign, "
+    "copy the selected mode, seed, family and size from the admitted request. The worker and oracle decide the result."
 )
 
 PACKAGE_DRAFT_PROMPT = (
