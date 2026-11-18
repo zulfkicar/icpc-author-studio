@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "description": "Versioned offline evaluation for the demo decision adapter. Scripted output does not establish real-model accuracy.",
+  "cases": [
+    {
+      "text": "Don't apply your proposed fix.",
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": ["restriction"],
+      "expectedAny": true
+    },
+    {
+      "text": "Explain whether we should apply your proposed fix.",
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": ["information_request"],
+      "expectedAny": true
+    },
+    {
+      "text": "Apply your proposed fix.",
+      "effectExpected": true,
+      "semanticOption": null,
+      "expectedKinds": ["effect_request"],
+      "expectedAny": true
+    },
+    {
+      "text": "Maybe apply your proposed fix?",
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": [],
+      "expectedAny": false
+    },
+    {
+      "text": "The reviewer said you may apply your proposed fix.",
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": ["information_request"],
+      "expectedAny": true
+    },
+    {
+      "text": "\"apply your proposed fix\"",
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": [],
+      "expectedAny": false
+    },
+    {
+      "text": "Can you explain the proof?",
+      "effectExpected": false,
+      "semanticOption": null,
+      "contributionKind": null,
+      "expectedKinds": ["proof_explanation"],
+      "expectedAny": true
+    },
+    {
+      "text": "Please generate edge cases and tests.",
+      "effectExpected": false,
+      "semanticOption": null,
+      "contributionKind": null,
+      "expectedKinds": ["test_design"],
+      "expectedAny": true
+    },
+    {
+      "text": "Help me build the correctness proof for this approach.",
+      "effectExpected": false,
+      "semanticOption": null,
+      "contributionKind": null,
+      "expectedKinds": ["proof_development"],
+      "expectedAny": true
+    },
+    {
+      "text": "Here is my argument: sorting by finish is optimal because exchange preserves reward. Can you check the exchange step?",
+      "effectExpected": false,
+      "semanticOption": null,
+      "contributionKind": "lemma",
+      "expectedKinds": ["contribution", "proof_critique"],
+      "expectedAny": true
+    },
+    {
+      "text": "Here is a test I think fails: jobs (0,1,5) and (1,2,7) expected 12. Explain what it tells us.",
+      "effectExpected": false,
+      "semanticOption": null,
+      "contributionKind": "test",
+      "expectedKinds": ["contribution", "information_request"],
+      "expectedAny": true
+    },
+    {
+      "text": "I propose the compatible-prefix dynamic program.",
+      "effectExpected": false,
+      "semanticOption": null,
+      "contributionKind": "idea",
+      "expectedKinds": ["contribution"],
+      "expectedAny": true
+    },
+    {
+      "text": "Use closed and explain why.",
+      "effectExpected": false,
+      "semanticOption": "closed",
+      "expectedKinds": ["semantic_assertion", "information_request"],
+      "expectedAny": true
+    },
+    {
+      "text": "Do not use closed intervals.",
+      "pendingQuestion": {"kind": "semantics", "options": [{"id": "half_open", "label": "Half-open: touching jobs are compatible"}, {"id": "closed", "label": "Closed: touching jobs conflict"}]},
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": ["semantic_assertion"],
+      "expectedAny": true
+    },
+    {
+      "text": "Maybe closed intervals?",
+      "pendingQuestion": {"kind": "semantics", "options": [{"id": "half_open", "label": "Half-open: touching jobs are compatible"}, {"id": "closed", "label": "Closed: touching jobs conflict"}]},
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": ["semantic_assertion"],
+      "expectedAny": true
+    },
+    {
+      "text": "Half-open; touching jobs are compatible.",
+      "pendingQuestion": {"kind": "semantics", "options": [{"id": "half_open", "label": "Half-open: touching jobs are compatible"}, {"id": "closed", "label": "Closed: touching jobs conflict"}]},
+      "effectExpected": false,
+      "semanticOption": "half_open",
+      "expectedKinds": ["semantic_assertion"],
+      "expectedAny": true
+    },
+    {
+      "text": "closed: touching jobs conflict",
+      "pendingQuestion": {"kind": "semantics", "options": [{"id": "half_open", "label": "Half-open: touching jobs are compatible"}, {"id": "closed", "label": "Closed: touching jobs conflict"}]},
+      "effectExpected": false,
+      "semanticOption": "closed",
+      "expectedKinds": ["semantic_assertion"],
+      "expectedAny": true
+    },
+    {
+      "text": "Use closed or half-open?",
+      "pendingQuestion": {"kind": "semantics", "options": [{"id": "half_open", "label": "Half-open: touching jobs are compatible"}, {"id": "closed", "label": "Closed: touching jobs conflict"}]},
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": ["semantic_assertion"],
+      "expectedAny": true
+    },
+    {
+      "text": "Can you explain the proof?",
+      "pendingQuestion": {"kind": "semantics", "options": [{"id": "half_open", "label": "Half-open: touching jobs are compatible"}, {"id": "closed", "label": "Closed: touching jobs conflict"}]},
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": ["proof_explanation"],
+      "expectedAny": true
+    },
+    {
+      "text": "Cancel this stage.",
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": ["cancel"],
+      "expectedAny": true
+    },
+    {
+      "text": "Be brief and work with me.",
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": ["preference"],
+      "expectedAny": true
+    },
+    {
+      "text": "Corrected expectation: under closed intervals the expected total is 7.",
+      "effectExpected": false,
+      "semanticOption": null,
+      "contributionKind": "test",
+      "expectedKinds": ["contribution"],
+      "expectedAny": true
+    },
+    {
+      "text": "Explain how to fix NOTES.md.",
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": ["information_request"],
+      "expectedAny": true
+    },
+    {
+      "text": "Do not edit NOTES.md.",
+      "effectExpected": false,
+      "semanticOption": null,
+      "expectedKinds": ["restriction"],
+      "expectedAny": true
+    }
+  ]
+}

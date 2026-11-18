@@ -1,0 +1,67 @@
+{
+  "profile": "batch-exact-integer-v1",
+  "semantics": "half-open; finish <= start is compatible; empty subset allowed",
+  "instances": [
+    {
+      "name": "weighted_greedy",
+      "purpose": "Refutes the earliest-finish rule for the weighted objective",
+      "jobs": [[0, 2, 6], [2, 4, 6], [0, 4, 13]],
+      "expected": 13,
+      "greedyEarliestFinish": 12,
+      "handChecked": true
+    },
+    {
+      "name": "touching",
+      "purpose": "Legal touching boundary; strict predecessor defect returns 7",
+      "jobs": [[0, 1, 5], [1, 2, 7]],
+      "expected": 12,
+      "greedyEarliestFinish": 12,
+      "handChecked": true
+    },
+    {
+      "name": "contained",
+      "purpose": "Nested intervals; weight choice matters",
+      "jobs": [[0, 3, 5], [1, 2, 4], [0, 4, 9]],
+      "expected": 9,
+      "handChecked": true
+    },
+    {
+      "name": "duplicates",
+      "purpose": "Labelled duplicates are retained",
+      "jobs": [[0, 2, 3], [0, 2, 3], [2, 3, 4]],
+      "expected": 7,
+      "handChecked": true
+    },
+    {
+      "name": "large_reward",
+      "purpose": "Sum needs 64-bit width above 2^31",
+      "jobs": [[0, 1, 1000000000], [1, 2, 1000000000], [2, 3, 1000000000]],
+      "expected": 3000000000,
+      "handChecked": true
+    }
+  ],
+  "negativeControls": [
+    {
+      "name": "zero_duration",
+      "input": "1\n0 0 5\n",
+      "expected": "invalid_input",
+      "reason": "start < finish is required by the profile"
+    },
+    {
+      "name": "n_zero",
+      "input": "0\n",
+      "expected": "invalid_input",
+      "reason": "the first profile requires n >= 1"
+    },
+    {
+      "name": "omits_empty_choice_label",
+      "expected": "invalid_defect_label",
+      "reason": "with n >= 1 and strictly positive rewards the optimum is nonempty, so omitting the empty choice cannot by itself change the optimum"
+    },
+    {
+      "name": "dp_base_error",
+      "expected": "defect",
+      "reason": "an actual wrong predecessor index is observable and distinct from the empty-choice label"
+    }
+  ]
+}
