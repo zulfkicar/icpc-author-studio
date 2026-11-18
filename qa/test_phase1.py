@@ -28,7 +28,9 @@ def check(name, condition, detail=""):
 
 
 def main() -> int:
-    cfg = config.load()
+    # These checks construct a client and exercise middleware with fake responses.
+    # They need neither a saved provider configuration nor a reachable endpoint.
+    cfg = {**config.DEFAULTS, "apiKey": "xpl_1234567890abcdef", "baseUrl": "https://example.invalid/v1"}
     check("500k context", cfg["contextBudgetTokens"] == 500000, cfg)
     check("500k summary", cfg["summaryTriggerTokens"] == 500000, cfg)
     check("24 keep", cfg["summaryKeepMessages"] == 24, cfg)
