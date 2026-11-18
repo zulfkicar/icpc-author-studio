@@ -17,7 +17,7 @@ class CandidateFailure(RuntimeError):
         self.code = code
 
 
-def earliest_finish_greedy(instance: Instance) -> int:
+def earliest_finish_greedy(instance: Instance, *, touching: bool = True) -> int:
     """Pick the earliest-finishing compatible job repeatedly.
 
     Correct for unweighted cardinality, not for maximum reward.
@@ -26,7 +26,7 @@ def earliest_finish_greedy(instance: Instance) -> int:
     total = 0
     last_finish = None
     for job in jobs:
-        if last_finish is None or job.start >= last_finish:
+        if last_finish is None or job.start > last_finish or (touching and job.start == last_finish):
             total += job.reward
             last_finish = job.finish
     return total
@@ -91,10 +91,13 @@ def runtime_error(instance: Instance) -> int:
 
 BEHAVIORS = {
     "earliest_finish_greedy": earliest_finish_greedy,
+    "greedy_closed": lambda instance: earliest_finish_greedy(instance, touching=False),
     "dp_strict": dp_strict,
     "dp_correct": dp_correct,
     "dp_base_error": dp_base_error,
     "sweep_line_correct": sweep_line_correct,
+    "narrow_half_open": lambda instance: dp_correct(instance) % (1 << 31),
+    "narrow_closed": lambda instance: dp_strict(instance) % (1 << 31),
     "compile_error": compile_error,
     "runtime_error": runtime_error,
 }

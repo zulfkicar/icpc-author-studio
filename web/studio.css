@@ -214,6 +214,16 @@ h1, h2, h3, p { margin: 0; }
 .studio-case-card pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--code-size); }
 .studio-case-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 12px; margin: 6px 0; }
 .studio-case-facts dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.studio-mutant-options label { display: block; overflow-wrap: anywhere; }
+.studio-mutation-card { min-width: 0; }
+.studio-mutation-scroll { max-width: 100%; overflow-x: auto; margin-block: 8px; }
+.studio-mutation-table { border-collapse: collapse; width: 100%; }
+.studio-mutation-table caption { text-align: start; }
+.studio-mutation-table th, .studio-mutation-table td {
+  border: 1px solid var(--border); padding: 6px; text-align: start; vertical-align: top;
+  min-width: 6rem; overflow-wrap: anywhere;
+}
+.studio-mutation-table td[data-status="killed"] { font-weight: 700; }
 .studio-release-steps { padding-inline-start: 24px; line-height: 1.6; }
 .studio-review-file { margin: 6px 0 6px 10px; }
 .studio-review-file pre { max-height: 18rem; overflow: auto; }

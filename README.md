@@ -54,8 +54,9 @@ Run, Verify, and export are available independently of chat.
 - T34 adds bounded weighted scheduling campaigns with seeded variants and
   a finite grid, recorded oracle checks, and a replay manifest.
   [Campaign guide](docs/implementation/T34-WEIGHTED-CAMPAIGNS.md)
-- T35 is next in V4. It will replay and reduce counterexamples, followed by
-  mutation testing and validator audits. [Current roadmap](ROADMAP.md)
+- T35 replays and reduces counterexamples from chat with both inputs retained.
+- T36 shows which campaign tests catch each mutant. T37 adds validator audits
+  next. [Current roadmap](ROADMAP.md)
 
 Author Studio is a single-user local preview. Run it on loopback and keep
 provider credentials, workspaces, and unsent drafts private.

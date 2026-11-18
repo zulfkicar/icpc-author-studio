@@ -30,7 +30,10 @@ from .projection import ProjectionManager
 from .prompts import bundle_hash, validate_bundle
 from .schemas import sha256_text
 from .stage import refusal_payload
-from .store import ApplicationStore, LedgerError
+from .lockfile import FileLock
+from .mutation_service import MutationAction, run_action as run_mutation
+from .store import ApplicationStore, LedgerError, PublicationBlocked
+from .witness_service import WitnessAction, run_action
 from .worker import FakeWorker, IsolateWorker, available_worker
 
 
@@ -361,6 +364,23 @@ class EngineService:
         manifest = json.loads(store.get_blob(report["manifest"]))
         return {"evidenceId": evidence_id, "freshness": evidence["freshness"],
                 "workerIdentity": evidence["environment_ref"], "report": report, "manifest": manifest}
+
+    def counterexample_action(self, run_id: str, evidence_id: str, body: dict) -> dict:
+        return self._author_check(run_id, evidence_id, WitnessAction.model_validate(body), run_action)
+
+    def mutation_action(self, run_id: str, evidence_id: str, body: dict) -> dict:
+        return self._author_check(run_id, evidence_id, MutationAction.model_validate(body), run_mutation)
+
+    def _author_check(self, run_id, evidence_id, action, runner) -> dict:
+        with self._lock_for(run_id):
+            store, runtime = self._get(run_id)
+            lease = FileLock(store.root / "owner.lock")
+            if not lease.acquire():
+                raise PublicationBlocked("This conversation already has active work. Retry when it is ready.")
+            try:
+                return runner(runtime, run_id, evidence_id, action)
+            finally:
+                lease.release()
 
     def events(self, run_id: str, after: int = 0) -> dict:
         store, _ = self._get(run_id)

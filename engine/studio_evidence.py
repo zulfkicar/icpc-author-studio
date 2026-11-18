@@ -2,6 +2,8 @@
 import json
 
 from .store import LedgerError
+from .mutation_service import DOMAIN as MATRIX_DOMAIN
+from .witness_service import DOMAIN
 
 
 def _card(body, *, evidence_id, worker, historical, candidate_hash=None):
@@ -37,9 +39,38 @@ def project_cards(store, run_id, messages):
                 cards[key] = _card(payload, evidence_id=evidence_id, worker=evidence.get("environment_ref"),
                                    historical=evidence.get("freshness") != "current",
                                    candidate_hash=payload.get("candidateHash"))
+                cards[key]["replayable"] = (evidence["domain"] == "weighted_campaign" and
+                                          evidence["classification"] == "counterexample" and
+                                          evidence["freshness"] == "current")
                 break
             if key in cards:
                 break
+    for message in messages:
+        key = message["dedupe_key"] or ""
+        if key.startswith("mutation-matrix:ev-"):
+            evidence = store.get_evidence(key.split(":", 1)[1])
+            if evidence["run_id"] == run_id and evidence["domain"] == MATRIX_DOMAIN and evidence["visibility"] == "author":
+                report = json.loads(store.get_blob(evidence["artifact_refs"][0]))
+                cards[key] = {"matrix": report, "historical": evidence["freshness"] != "current", "reportId": evidence["id"]}
+            continue
+        if not key.startswith("counterexample:ev-"):
+            continue
+        evidence = store.get_evidence(key.split(":", 1)[1])
+        if evidence["run_id"] != run_id or evidence["domain"] != DOMAIN:
+            continue
+        report = json.loads(store.get_blob(evidence["artifact_refs"][0]))
+        basis = store.get_evidence(report["parentEvidenceId"])
+        original = {**report["original"], "candidateRef": report["candidateRef"], "claimId": report["claimId"]}
+        versions = [_card(original, evidence_id=basis["id"], worker=basis["environment_ref"],
+                          historical=basis["freshness"] != "current", candidate_hash=report["candidateHash"])]
+        versions[0]["title"] = "Original input"
+        checked = report["reduced"] or report["replay"]
+        if checked:
+            versions.append(_card({**checked, "candidateRef": report["candidateRef"]}, evidence_id=evidence["id"],
+                                  worker=report["worker"], historical=evidence["freshness"] != "current",
+                                  candidate_hash=report["candidateHash"]))
+            versions[-1]["title"] = "Reduced input" if report["reduced"] else "Replay result"
+        cards[key] = {"versions": versions, "reportId": evidence["id"]}
     for row in store.read_all(
         "SELECT receipt_json FROM package_checks WHERE run_id=? AND receipt_json IS NOT NULL", (run_id,)
     ):

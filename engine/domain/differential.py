@@ -67,7 +67,7 @@ _ORACLE_CONTROLS = (
 )
 
 
-def _checked_oracle(instance: Instance, semantics: str) -> int:
+def checked_oracle(instance: Instance, semantics: str) -> int:
     try:
         result = oracle_subset(instance, semantics=semantics)
         labels = result["best_subset"]
@@ -83,6 +83,21 @@ def _checked_oracle(instance: Instance, semantics: str) -> int:
         return result["value"]
     except Exception as exc:  # Oracle failure must never be charged to the candidate.
         raise CampaignError("oracle_invalid", f"Independent oracle failed: {exc}") from exc
+
+
+def qualify_oracle(semantics: str, limit: int) -> tuple[list[dict], int]:
+    audit = []
+    subsets = 0
+    for label, text, half_open, closed in _ORACLE_CONTROLS:
+        instance = parse_instance(text)
+        subsets += 1 << instance.n
+        if subsets > limit:
+            raise CampaignError("budget_exhausted", "Subset budget cannot cover the oracle controls.")
+        expected = half_open if semantics == "half_open" else closed
+        if checked_oracle(instance, semantics) != expected:
+            raise CampaignError("oracle_invalid", f"Oracle disagreed with the hand-derived {label} control.")
+        audit.append({"control": label, "expected": expected, "inputHash": sha256_text(text)})
+    return audit, subsets
 
 
 def prepare_campaign(domain: dict, budget: dict, *, semantics: str | None, case_ceiling: int,
@@ -108,17 +123,7 @@ def prepare_campaign(domain: dict, budget: dict, *, semantics: str | None, case_
     if selected_cap < 1 or wall_ms < 1000:
         raise CampaignError("budget_exhausted", "No case or execution time remains for this campaign.")
 
-    audit = []
-    subsets = 0
-    for label, text, half_open, closed in _ORACLE_CONTROLS:
-        check = parse_instance(text)
-        subsets += 1 << check.n
-        if subsets > limits.oracle_subsets:
-            raise CampaignError("budget_exhausted", "Subset budget cannot cover the oracle controls.")
-        expected = half_open if semantics == "half_open" else closed
-        if _checked_oracle(check, semantics) != expected:
-            raise CampaignError("oracle_invalid", f"Oracle disagreed with the hand-derived {label} control.")
-        audit.append({"control": label, "expected": expected, "inputHash": sha256_text(text)})
+    audit, subsets = qualify_oracle(semantics, limits.oracle_subsets)
 
     if spec.mode == "exhaustive":
         order = finite_domain(lengths=lengths)
@@ -143,7 +148,7 @@ def prepare_campaign(domain: dict, budget: dict, *, semantics: str | None, case_
             if subsets + cost > limits.oracle_subsets:
                 stop = "oracle_budget"
                 break
-            expected = _checked_oracle(instance, semantics)
+            expected = checked_oracle(instance, semantics)
             subsets += cost
             cases.append({"case_id": f"case-{len(cases):05d}", "family": family, "input": text,
                           "inputHash": sha256_text(text), "expected": expected, "subsets": cost})
@@ -162,6 +167,15 @@ def prepare_campaign(domain: dict, budget: dict, *, semantics: str | None, case_
             "declared": declared, "limits": {"requested": limits.model_dump(), "cases": len(cases),
                                               "wall_ms": wall_ms},
             "selectionStop": stop, "cases": cases}
+
+
+def exact_integer_output(row: dict) -> int | None:
+    output = row.get("output")
+    if (row.get("status") == "ok" and type(row.get("exit")) is int and row["exit"] == 0
+            and not row.get("outputTruncated") and isinstance(output, str)
+            and re.fullmatch(r"[+-]?[0-9]{1,24}", output.strip())):
+        return int(output)
+    return None
 
 
 def evaluate_receipt(manifest: dict, raw: dict) -> dict:
@@ -186,11 +200,10 @@ def evaluate_receipt(manifest: dict, raw: dict) -> dict:
             continue
         row = receipts[key]
         status = row.get("status")
-        output = row.get("output")
+        actual = exact_integer_output(row)
         if status == "ok" and type(row.get("exit")) is int and row["exit"] == 0 and not row.get("outputTruncated"):
-            if isinstance(output, str) and re.fullmatch(r"[+-]?[0-9]{1,24}", output.strip()):
+            if actual is not None:
                 report["completed"] += 1
-                actual = int(output)
                 if actual == case["expected"]:
                     report["matched"] += 1
                 elif report["firstMismatch"] is None:

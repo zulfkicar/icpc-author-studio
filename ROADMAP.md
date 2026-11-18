@@ -1,10 +1,9 @@
 # Author Studio roadmap
 
-The next item is **V4 · T35, counterexample replay and reduction**. T34 now
-finds reproducible mismatches in weighted interval scheduling. T35 will let
-the author rerun one against the exact source and shrink it into a case they
-can inspect, discuss, and keep as a regression. Version gates below give the
-delivery order. Calendar dates are open.
+The next item is **V4 · T37, the validator audit**. T34 finds reproducible
+mismatches in weighted interval scheduling. T35 keeps both witness versions in
+chat. T36 shows which saved tests catch each mutant and which mutants survive.
+Version gates below give the delivery order. Calendar dates are open.
 
 ## Where we are
 
@@ -19,8 +18,8 @@ delivery order. Calendar dates are open.
 | Order | Item | Done when |
 | --- | --- | --- |
 | ✓ | **T34 · Differential campaigns** | Weighted scheduling has a validated generator, independent subset oracle, seeded samples, a bounded exhaustive grid, and a saved receipt. |
-| 1 | **T35 · Replay and reduce counterexamples** | Replay the saved input against the recorded candidate and endpoint rule. Reduce it within an explicit budget while independently rechecking legality and the same failure. Keep both witnesses and make stale source and non-reproduction visible in chat. |
-| 2 | **T36 · Test-by-mutant matrix** | Show which cases catch each deliberately wrong solution and which mutants survive. Keep compile, worker and judging failures distinct from valid kills. Include a correct alternative as a control. |
+| ✓ | **T35 · Replay and reduce counterexamples** | Replay the saved input against the recorded candidate and endpoint rule. Check legal simplifications within a budget and keep both witnesses in chat. [Replay and reduction](docs/implementation/T35-COUNTEREXAMPLES.md) |
+| ✓ | **T36 · Test-by-mutant matrix** | Compare the correct control and each mutant against saved campaign tests. Keep valid kills, survivors, build failures and unresolved cells distinct. [Mutation matrix](docs/implementation/T36-MUTATION-MATRIX.md) |
 | 3 | **T37 · Validator audit** | Try legal boundary cases and malformed or relationally invalid inputs. Show where the validator disagrees with the stated constraints, crashes, or leaves a gap. |
 | 4 | **T39 · Scheduling relations** | Add a small set of relevant metamorphic checks with explicit preconditions, such as input permutation. An applicable check has bounded receipts and an inapplicable one is rejected visibly. The general registry follows in V7. |
 

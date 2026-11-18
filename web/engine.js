@@ -400,11 +400,125 @@
     return card;
   }
 
+  const witnessRequests = new Map();
+  const mutationRequests = new Map();
+
+  function mutationControls(runId, campaignId) {
+    const controls = el("div", "studio-evidence-actions");
+    const status = el("span", "muted");
+    status.setAttribute("role", "status");
+    const extras = (view?.artifacts || []).filter(item => item.current && ["current", "revalidated"].includes(item.validity) &&
+      ["solution", "negative"].includes(item.kind) && item.path.endsWith(".cpp"));
+    const choices = [];
+    if (extras.length) {
+      const targets = el("details", "studio-mutant-options");
+      targets.append(el("summary", null, "Include up to two authored mutants"));
+      for (const artifact of extras) {
+        const option = el("input");
+        option.type = "checkbox";
+        option.value = artifact.id;
+        const label = el("label");
+        label.append(option, document.createTextNode(" " + artifact.path));
+        choices.push(option);
+        targets.append(label);
+      }
+      controls.append(targets);
+    }
+    const button = el("button", "quiet", "Run mutation matrix");
+    button.type = "button";
+    const key = `${runId}:${campaignId}`;
+    button.disabled = mutationRequests.get(key)?.running || false;
+    button.onclick = async () => {
+      if (mutationRequests.get(key)?.running) return;
+      const mutantRefs = choices.filter(option => option.checked).map(option => option.value);
+      if (mutantRefs.length > 2) {
+        status.textContent = "Choose at most two authored mutants.";
+        return;
+      }
+      const selection = JSON.stringify(mutantRefs);
+      const saved = mutationRequests.get(key);
+      const request = saved?.selection === selection ? saved : { id: uid(), selection };
+      request.running = true;
+      button.disabled = true;
+      choices.forEach(option => { option.disabled = true; });
+      mutationRequests.set(key, request);
+      status.textContent = "Checking the control and mutants…";
+      try {
+        const result = await api(`/api/engine/runs/${encodeURIComponent(runId)}/mutation-matrices/${encodeURIComponent(campaignId)}`, {
+          method: "POST", body: { clientRequestId: request.id, mutantRefs },
+        });
+        mutationRequests.delete(key);
+        status.textContent = result.freshness === "stale" ? "The matrix is earlier evidence." : "Result saved in chat.";
+        await refresh();
+      } catch (error) {
+        if (error.status && error.status < 500) mutationRequests.delete(key);
+        status.textContent = error.message;
+      } finally {
+        request.running = false;
+        button.disabled = false;
+        choices.forEach(option => { option.disabled = false; });
+      }
+    };
+    controls.append(button, status);
+    return controls;
+  }
+
+  function renderMutationMatrix(item, runId) {
+    const matrix = item.matrix;
+    const statuses = { killed: "Caught", matched: "Matched", survived: "Survived", compile_error: "Compile error",
+      worker_failure: "Worker failure", not_run: "Not run", unresolved: "Unresolved", control_passed: "Control passed",
+      control_partial: "Control passed on checked tests", control_failed: "Control failed", control_mismatch: "Control mismatch",
+      invalid_output: "Invalid output", candidate_runtime_error: "Runtime error", time_limit: "Time limit",
+      memory_limit: "Memory limit", output_limit: "Output limit" };
+    const card = el("section", "studio-case-card studio-mutation-card");
+    const worker = matrix.worker?.includes("simulation") ? "Simulated worker" : matrix.worker ? "Worker receipt" : "No worker receipt";
+    card.append(el("b", null, "Test-by-mutant matrix"), el("p", "muted",
+      `${matrix.qualifiedTests} of ${matrix.tests.length} saved tests qualified · ${matrix.semantics.replace('_', '-')} · ` +
+      (item.historical ? "Earlier evidence" : matrix.termination.replaceAll('_', ' ')) + ` · ${worker}`));
+    const scroll = el("div", "studio-mutation-scroll");
+    scroll.tabIndex = 0;
+    scroll.setAttribute("role", "region");
+    scroll.setAttribute("aria-label", "Scrollable mutation results");
+    const table = el("table", "studio-mutation-table");
+    table.createCaption().textContent = "Per-test expected and observed outcomes";
+    const head = table.createTHead().insertRow();
+    for (const [label, outcome] of [["Test", null], ["Expected", null], ...matrix.columns.map(column => [column.label, column.status])]) {
+      const cell = el("th", null, label);
+      cell.scope = "col";
+      if (outcome) cell.append(el("div", "muted small", statuses[outcome]));
+      head.append(cell);
+    }
+    const body = table.createTBody();
+    matrix.tests.forEach((test, index) => {
+      const row = body.insertRow();
+      const label = el("th", null, test.case_id);
+      label.scope = "row";
+      const input = el("details");
+      input.append(el("summary", null, "Input"), el("pre", null, test.input));
+      label.append(input);
+      row.append(label, el("td", null, test.expected));
+      for (const column of matrix.columns) {
+        const check = column.cells[index];
+        const cell = el("td", null, statuses[check.status] + (check.actual === null ? "" : ` · ${check.actual}`));
+        cell.dataset.status = check.status;
+        if (check.detail) cell.append(el("div", "muted small", check.detail.replaceAll('_', ' ')));
+        row.append(cell);
+      }
+    });
+    const report = el("a", "artifact-link quiet small", "Open matrix report");
+    report.href = `/api/engine/runs/${encodeURIComponent(runId)}/mutation-matrices/${encodeURIComponent(item.reportId)}`;
+    report.target = "_blank";
+    report.rel = "noopener";
+    scroll.append(table);
+    card.append(scroll, report);
+    return card;
+  }
+
   function renderCaseCard(evidence, runId) {
     const card = el("section", "studio-case-card");
     const simulated = /simulat|fake/i.test(evidence.worker || "");
-    const title = evidence.classification === "shared_semantics_defect" ? "Shared assumption under review" :
-      ["counterexample", "wrong_answer"].includes(evidence.classification) ? "Counterexample" : "Case evidence";
+    const title = evidence.title || (evidence.classification === "shared_semantics_defect" ? "Shared assumption under review" :
+      ["counterexample", "wrong_answer"].includes(evidence.classification) ? "Counterexample" : "Case evidence");
     card.append(el("b", null, title));
     card.append(el("p", "muted", (simulated ? "Simulated worker" : evidence.worker ? "Worker receipt" : "Worker source unrecorded") +
       (evidence.historical ? " · earlier evidence" : "") + " · " + evidence.id));
@@ -429,7 +543,43 @@
       const run = el("button", "quiet", "Run this case");
       run.type = "button";
       run.onclick = () => window.dispatchEvent(new CustomEvent("studio-run-witness", { detail: { runId, card: evidence } }));
-      actions.append(copy, run, status);
+      actions.append(copy, run);
+      if (evidence.replayable && !evidence.historical) {
+        const prefix = `${runId}:${evidence.id}:`;
+        const buttons = [];
+        const isRunning = () => ["replay", "reduce"].some(action => witnessRequests.get(prefix + action)?.running);
+        for (const [action, label] of [["replay", "Replay original"], ["reduce", "Replay and reduce"]]) {
+          const check = el("button", "quiet", label);
+          check.type = "button";
+          check.disabled = isRunning();
+          check.onclick = async () => {
+            if (isRunning()) return;
+            const key = prefix + action;
+            const request = witnessRequests.get(key) || { id: uid() };
+            request.running = true;
+            witnessRequests.set(key, request);
+            buttons.forEach(button => { button.disabled = true; });
+            status.textContent = action === "reduce" ? "Replaying and checking smaller inputs…" : "Replaying the saved input…";
+            try {
+              const result = await api(`/api/engine/runs/${encodeURIComponent(runId)}/counterexamples/${encodeURIComponent(evidence.id)}`, {
+                method: "POST", body: { action, clientRequestId: request.id },
+              });
+              witnessRequests.delete(key);
+              status.textContent = result.freshness === "stale" ? "The check is earlier evidence." : "Result saved in chat.";
+              await refresh();
+            } catch (error) {
+              if (error.status && error.status < 500) witnessRequests.delete(key);
+              status.textContent = error.message;
+            } finally {
+              request.running = false;
+              buttons.forEach(button => { button.disabled = false; });
+            }
+          };
+          buttons.push(check);
+          actions.append(check);
+        }
+      }
+      actions.append(status);
       card.append(actions);
     }
     const details = el("details");
@@ -453,7 +603,7 @@
     const decisions = view?.collaboration?.decisions || [];
     const evidence = { ...earlierEvidence, ...(view?.evidenceCards || {}) };
     const signature = JSON.stringify([currentRun, messages, view?.pendingDecision, [...inputStatuses], requestReceipts.size,
-      evidence, decisions, view?.artifacts?.map(artifact => [artifact.kind, artifact.current])]);
+      evidence, decisions, view?.mutationCampaigns, view?.artifacts?.map(artifact => [artifact.id, artifact.path, artifact.kind, artifact.current, artifact.validity])]);
     if (studio && signature === transcriptSignature) return;
     transcriptSignature = signature;
     const sameRun = transcriptRun === currentRun;
@@ -525,8 +675,21 @@
         const line = el("p", "small");
         line.append(link);
         body.append(line);
+        const campaignId = message.dedupe_key.slice(9);
+        if (studio && view?.mutationCampaigns?.includes(campaignId)) body.append(mutationControls(currentRun, campaignId));
       }
-      if (studio && evidence[message.dedupe_key]) body.append(renderCaseCard(evidence[message.dedupe_key], currentRun));
+      if (studio && evidence[message.dedupe_key]) {
+        const item = evidence[message.dedupe_key];
+        if (item.matrix) body.append(renderMutationMatrix(item, currentRun));
+        else if (item.versions) {
+          for (const version of item.versions) body.append(renderCaseCard(version, currentRun));
+          const link = el("a", "artifact-link quiet small", "Open counterexample report");
+          link.href = `/api/engine/runs/${encodeURIComponent(currentRun)}/counterexamples/${encodeURIComponent(item.reportId)}`;
+          link.target = "_blank";
+          link.rel = "noopener";
+          body.append(link);
+        } else body.append(renderCaseCard(item, currentRun));
+      }
       if (studio && role === "author") {
         const sent = requestReceipts.get(message.id);
         const appliedChoice = message.response_id && local.read("choice:" + currentRun + ":" + message.id);

@@ -19,6 +19,8 @@ from .schemas import canonical_json, sha256_text
 from .service import EngineService
 from .store import IdempotencyConflict, LedgerError
 from .studio_evidence import project_cards
+from .mutation_service import DOMAIN as MATRIX_DOMAIN
+from .witness_service import DOMAIN
 
 _FAMILY = re.compile(
     r"\b(?:interval|intervals|booking|bookings|meeting|meetings|talk|talks|job|jobs|"
@@ -910,6 +912,68 @@ class ChatService:
         return solutions[-1]["path"] if solutions else None
 
     # ---------------------------------------------------------------- sync
+    def counterexample_action(self, run_id: str, evidence_id: str, body: dict) -> dict:
+        result = self.service.counterexample_action(run_id, evidence_id, body)
+        if not result["evidenceId"]:
+            self._assistant(run_id, "notice", "The previous check has an unknown outcome. It was not run again.",
+                            dedupe=f"counterexample-unknown:{result['operationId']}")
+        self._sync_author_checks(run_id)
+        return result
+
+    def mutation_action(self, run_id: str, evidence_id: str, body: dict) -> dict:
+        result = self.service.mutation_action(run_id, evidence_id, body)
+        if not result["evidenceId"]:
+            self._assistant(run_id, "notice", "The previous mutation check has an unknown outcome. Submit a new check to run it again.",
+                            dedupe=f"mutation-unknown:{result['operationId']}")
+        self._sync_author_checks(run_id)
+        return result
+
+    def _sync_author_checks(self, run_id: str) -> None:
+        store = self.service.store(run_id)
+        missing = store.read_all(
+            """SELECT e.id FROM evidence e WHERE e.run_id=? AND e.domain IN (?,?) AND NOT EXISTS
+               (SELECT 1 FROM chat_messages m WHERE m.run_id=e.run_id AND m.dedupe_key=
+                    (CASE WHEN e.domain=? THEN 'counterexample:' ELSE 'mutation-matrix:' END) || e.id)
+               ORDER BY e.created_at, e.rowid""", (run_id, DOMAIN, MATRIX_DOMAIN, DOMAIN),
+        )
+        for row in missing:
+            evidence = store.get_evidence(row["id"])
+            report = json.loads(store.get_blob(evidence["artifact_refs"][0]))
+            if evidence["domain"] == MATRIX_DOMAIN:
+                store.append_chat_message(run_id, role="author", kind="mutation_request",
+                                          text="Check which tests catch the mutants.",
+                                          dedupe_key=f"mutation-request:{evidence['operation_id']}")
+                counts = report["counts"]
+                if evidence["freshness"] != "current":
+                    text = "The conversation changed. This mutation matrix is earlier evidence."
+                elif not report["qualifiedTests"]:
+                    text = f"Mutation checks stopped before execution ({report['termination'].replace('_', ' ')})."
+                elif not report["controlPassed"]:
+                    text = "The correct control could not qualify the selected tests. Mutant scoring stopped."
+                else:
+                    text = (f"Mutation matrix: {counts['killed']} caught, {counts['survived']} survived, "
+                            f"{counts['compile_error']} failed to compile, {counts['unresolved']} unresolved.")
+                self._assistant(run_id, "mutation_matrix", text, dedupe=f"mutation-matrix:{evidence['id']}")
+                continue
+            label = "Replay and reduce the counterexample" if report["action"] == "reduce" else "Replay the original counterexample"
+            store.append_chat_message(run_id, role="author", kind="counterexample_request", text=label + ".",
+                                      dedupe_key=f"counterexample-request:{evidence['operation_id']}")
+            status = report["status"]
+            if evidence["freshness"] != "current":
+                text = "The conversation changed. This counterexample check is earlier evidence."
+            elif status == "reduced":
+                text = ("The original mismatch reproduced. A smaller legal input kept the recorded failure. "
+                        f"Stopped after {len(report['trials'])} checks ({report['termination'].replace('_', ' ')}).")
+            elif status == "reproduced":
+                text = "The exact original input reproduced the same expected and actual answers."
+            elif status == "not_reproduced":
+                text = f"The original mismatch did not reproduce. The replay returned {report['replay']['actual']}."
+            elif status == "no_reduction":
+                text = "The mismatch reproduced. The simplifications checked did not preserve it on a smaller input."
+            else:
+                text = f"The counterexample check stopped ({report['termination'].replace('_', ' ')}). " + report.get("detail", "")
+            self._assistant(run_id, "counterexample", text, dedupe=f"counterexample:{evidence['id']}")
+
     def _pump(self, run_id: str) -> None:
         try:
             self.service.pump_sync(run_id, max_steps=140)
@@ -1352,6 +1416,7 @@ class ChatService:
         )
 
     def transcript(self, run_id: str, after: int = 0, *, before: int | None = None) -> dict:
+        self._sync_author_checks(run_id)
         store = self.service.store(run_id)
         if before is not None:
             messages = store.recent_chat_messages(run_id, before=before, limit=100)
@@ -1362,12 +1427,17 @@ class ChatService:
                 "nextSeq": (messages[-1]["seq"] + 1) if messages else after + 1}
 
     def view(self, run_id: str, *, studio: bool = False) -> dict:
+        self._sync_author_checks(run_id)
         view = self.service.view(run_id)
         store = self.service.store(run_id)
         view["chatMessages"] = store.recent_chat_messages(run_id, limit=100 if studio else 200)
         view["hasEarlierChat"] = bool(view["chatMessages"] and view["chatMessages"][0]["seq"] > 1)
         if studio:
             view["requestContext"] = store.request_context(run_id)
+            view["mutationCampaigns"] = [row["id"] for row in store.read_all(
+                "SELECT id FROM evidence WHERE run_id=? AND domain='weighted_campaign' AND freshness='current' AND visibility='author'",
+                (run_id,),
+            )]
         view["evidenceCards"] = project_cards(store, run_id, view["chatMessages"])
         view["artifacts"] = [
             {"id": artifact["id"], "kind": artifact["kind"], "path": artifact["path"],

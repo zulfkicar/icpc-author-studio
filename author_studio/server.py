@@ -536,6 +536,13 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send_json(engine_service().campaign_receipt(run_id, parts[5]))
                     except LedgerError as exc:
                         return self.send_error_json(str(exc), 404)
+                if len(parts) == 6 and parts[4] == "counterexamples":
+                    from engine.witness_service import receipt
+                    return self.send_json(receipt(engine_service().store(run_id), run_id, parts[5]))
+                if len(parts) == 6 and parts[4] == "mutation-matrices":
+                    from engine.author_check import receipt
+                    from engine.mutation_service import DOMAIN
+                    return self.send_json(receipt(engine_service().store(run_id), run_id, parts[5], DOMAIN))
                 if len(parts) == 5 and parts[4] == "chat":
                     try:
                         after = max(0, int((query.get("after") or ["0"])[0]))
@@ -799,6 +806,10 @@ class Handler(BaseHTTPRequestHandler):
                         recover_input_id=body.get("recoverInputId"),
                         expected_interaction_id=body.get("expectedInteractionId"),
                     ), 200)
+                if len(parts) == 6 and parts[4] == "counterexamples":
+                    return self.send_json(chat_service().counterexample_action(run_id, parts[5], self.read_json()))
+                if len(parts) == 6 and parts[4] == "mutation-matrices":
+                    return self.send_json(chat_service().mutation_action(run_id, parts[5], self.read_json()))
                 if len(parts) == 5 and parts[4] == "contributions":
                     # Contributions must enter through the durable input/inbox
                     # path so the barrier and idempotency apply before ack.

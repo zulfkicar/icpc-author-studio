@@ -1948,6 +1948,7 @@ class ApplicationStore:
         reservation_id: str,
         case_charge: int = 0,
         wall_charge: int = 0,
+        activate: bool = True,
     ) -> tuple[dict, bool]:
         now = self.clock.now_iso()
         with self.tx() as conn:
@@ -1979,8 +1980,9 @@ class ApplicationStore:
                 (operation_id, run_id, kind, request_hash, input_revision, goal_generation,
                  steering_epoch, controller_epoch, reservation_id, "admitted", "pending", now, now),
             )
-            conn.execute("UPDATE runs SET active_operation_id=?, updated_at=? WHERE run_id=?",
-                         (operation_id, now, run_id))
+            if activate:
+                conn.execute("UPDATE runs SET active_operation_id=?, updated_at=? WHERE run_id=?",
+                             (operation_id, now, run_id))
         return self.get_operation(operation_id), True
 
     def get_operation(self, operation_id: str) -> dict:
@@ -2034,7 +2036,8 @@ class ApplicationStore:
                                    "classification": classification})
 
     def commit_operation_result(self, operation_id: str, result: OperationResultV1,
-                                evidence: EvidenceV1 | None = None, *, evidence_epoch: tuple | None = None) -> dict:
+                                evidence: EvidenceV1 | None = None, *, evidence_epoch: tuple | None = None,
+                                evidence_grant_id: str | None = None) -> dict:
         now = self.clock.now_iso()
         run_id = ""
         with self.tx() as conn:
@@ -2050,7 +2053,12 @@ class ApplicationStore:
                 barrier = conn.execute(
                     "SELECT 1 FROM inputs WHERE run_id=? AND barrier=1 AND status IN ('received','interpreting')", (run_id,)
                 ).fetchone()
-                if not run or tuple(run) != evidence_epoch or barrier:
+                invalid_grant = evidence_grant_id and not conn.execute(
+                    """SELECT 1 FROM grants WHERE id=? AND run_id=? AND revoked_at IS NULL
+                       AND (expires_at IS NULL OR julianday(expires_at)>julianday(?))""",
+                    (evidence_grant_id, run_id, now),
+                ).fetchone()
+                if not run or tuple(run) != evidence_epoch or barrier or invalid_grant:
                     evidence = evidence.model_copy(update={"freshness": "stale"})
                     result = result.model_copy(update={"status": "incomplete", "classification": "stale"})
             conn.execute(
@@ -2072,8 +2080,9 @@ class ApplicationStore:
                      canonical_json(evidence.artifact_refs), evidence.environment_ref,
                      evidence.visibility, evidence.freshness, evidence.classification, now),
                 )
-            conn.execute("UPDATE runs SET active_operation_id=NULL, updated_at=? WHERE run_id=?",
-                         (now, run_id))
+            conn.execute("""UPDATE runs SET active_operation_id=CASE WHEN active_operation_id=? THEN NULL
+                         ELSE active_operation_id END, updated_at=? WHERE run_id=?""",
+                         (operation_id, now, run_id))
         self.append_event(run_id, "operation_receipt", role="worker",
                           payload={"operationId": operation_id, "status": result.status,
                                    "classification": result.classification,
@@ -2280,7 +2289,7 @@ class ApplicationStore:
             ).fetchone()
             if existing is not None:
                 return dict(existing)
-            if int(budget["model_attempts_used"]) >= int(budget["model_attempts_limit"]):
+            if attempts_limit > 0 and int(budget["model_attempts_used"]) >= int(budget["model_attempts_limit"]):
                 raise LedgerError("run model attempt budget exhausted")
             reservation_id = "resv-" + sha256_text({"run": run_id, "action": action_id})[:12]
             conn.execute(

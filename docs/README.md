@@ -24,6 +24,8 @@
 | [Studio Releases 1–4](design/product-experience/README.md) | The 58-item experience plan, browser evidence and outstanding qualification |
 | [Engine V0–V3](implementation/v0-v3/README.md) | Stage contracts, offline graph tests and repair history |
 | [T34 weighted scheduling campaigns](implementation/T34-WEIGHTED-CAMPAIGNS.md) | Chat workflow, independent oracle, replay manifest, budgets and verification |
+| [T35 counterexample replay and reduction](implementation/T35-COUNTEREXAMPLES.md) | Exact replay, failure signatures, bounded reduction and durable case pairs |
+| [T36 test-by-mutant matrix](implementation/T36-MUTATION-MATRIX.md) | Per-test verdicts, correct control, coverage limits and surviving candidates |
 | [Live verification](design/author-studio/VERIFICATION.md) | Scoped provider, worker and package experiments with their limitations |
 | [Current roadmap](../ROADMAP.md) | Upcoming engine versions, ordered items and release gates |
 | [C2 engine design](research/agentic-engine-portfolio/07-ROADMAP-AND-PORTFOLIO.md) | Original investigation, delivery and qualification plan |
