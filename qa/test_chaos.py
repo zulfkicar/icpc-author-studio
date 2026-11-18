@@ -77,12 +77,16 @@ def event_replay() -> None:
             emit("three", {"n": 3})
             return {"ok": True}
 
-        job = server.start_job("Chaos replay", slug, work, chat_id=chat)
+        job_id = server.start_job("Chaos replay", slug, work, chat_id=chat)["id"]
         for _ in range(50):
-            if job["state"] != "running":
+            with server.JOB_LOCK:
+                job = server.JOBS[job_id]
+                state = job["state"]
+                events = list(job["events"])
+            if state != "running":
                 break
             time.sleep(0.02)
-        events = job["events"]
+        check("event job finished", state == "done", state)
         check("events have sequence numbers", [event["seq"] for event in events] == [1, 2, 3], events)
         replay = [event for event in events if event["seq"] > 1]
         check("replay after loss", [event["seq"] for event in replay] == [2, 3], replay)
