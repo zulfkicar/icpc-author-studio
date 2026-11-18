@@ -157,7 +157,7 @@ class IsolateWorker:
         self.batch_limit = batch_limit
 
     def describe(self) -> dict:
-        import isolate_client
+        from author_studio.judging import isolate_client
 
         return {
             "identity": self.identity,
@@ -170,7 +170,7 @@ class IsolateWorker:
     def submit(self, job: dict) -> dict:
         from .protocol import aggregate, normalize_isolate_case
 
-        import isolate_client
+        from author_studio.judging import isolate_client
         if not isolate_client.configured():
             raise WorkerUnavailable(
                 "No isolated worker is configured (AUTHOR_AGENT_ISOLATE_URL); "
@@ -249,7 +249,7 @@ class IsolateWorker:
 
 def json_identity() -> str:
     try:
-        import isolate_client
+        from author_studio.judging import isolate_client
 
         return isolate_client.health().get("version", "isolate-client")
     except Exception:  # noqa: BLE001

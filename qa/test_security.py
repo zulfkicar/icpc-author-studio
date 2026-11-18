@@ -6,8 +6,8 @@ import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-import config
-import workspace
+from author_studio import config
+from author_studio.packages import workspace
 
 
 def check(name, condition, detail=""):

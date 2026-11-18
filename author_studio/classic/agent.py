@@ -15,11 +15,11 @@ import re
 import shlex
 import sys
 
-from config import TEMPLATES
-import config
-import verify
-import winutil
-import workspace
+from author_studio.config import TEMPLATES
+from author_studio import config
+from author_studio.judging import verify
+from author_studio import winutil
+from author_studio.packages import workspace
 
 SYSTEM = """You are ICPC Author Agent, a careful problem-setting agent working inside a local workspace.
 

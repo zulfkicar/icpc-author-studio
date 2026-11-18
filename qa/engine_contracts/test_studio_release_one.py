@@ -1,5 +1,5 @@
 """Release 1 compatibility and recovery through the real local HTTP routes."""
-import workspace
+from author_studio.packages import workspace
 from engine.chat import ChatService
 from engine.service import EngineService
 from qa.engine_contracts.test_api_boundary import api

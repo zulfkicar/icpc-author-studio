@@ -16,7 +16,7 @@ import urllib.request
 import pytest
 from http.server import HTTPServer
 
-import server
+from author_studio import server
 from engine.clock import CrashInjected
 from engine.domain import Instance, Job
 from engine.interpretation import interpret_authorization, interpret_semantics
@@ -644,7 +644,7 @@ def _mock_success(**overrides):
 
 
 def test_ir05_success_ok_exit_zero_normalizes_and_evaluates(monkeypatch):
-    import isolate_client
+    from author_studio.judging import isolate_client
 
     responses = [_mock_success()]
     monkeypatch.setattr(isolate_client, "configured", lambda: True)
@@ -670,7 +670,7 @@ def test_ir05_success_ok_exit_zero_normalizes_and_evaluates(monkeypatch):
 
 
 def test_ir05_protocol_failures_remain_distinct(monkeypatch):
-    import isolate_client
+    from author_studio.judging import isolate_client
 
     monkeypatch.setattr(isolate_client, "configured", lambda: True)
     outcomes = {
@@ -718,7 +718,7 @@ def test_ir05_protocol_failures_remain_distinct(monkeypatch):
 
 
 def test_ir05_transport_failure_fails_closed_without_native_fallback(monkeypatch, tmp_path):
-    import isolate_client
+    from author_studio.judging import isolate_client
 
     monkeypatch.setattr(isolate_client, "configured", lambda: True)
 
@@ -749,7 +749,7 @@ def test_ir05_transport_failure_fails_closed_without_native_fallback(monkeypatch
 
 
 def test_ir05_truncated_batch_cannot_become_agreement(monkeypatch):
-    import isolate_client
+    from author_studio.judging import isolate_client
 
     monkeypatch.setattr(isolate_client, "configured", lambda: True)
     monkeypatch.setattr(isolate_client, "run", lambda *a, **k: _mock_success(stdout="12\n"))

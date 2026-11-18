@@ -13,9 +13,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "qa"))
 
-import graph_agent
-import winutil
-import workspace
+from author_studio.classic import graph_agent
+from author_studio import winutil
+from author_studio.packages import workspace
 from stress_agent import FakeChat, use_model
 
 RUNS = int(os.environ.get("SOAK_RUNS", "20"))

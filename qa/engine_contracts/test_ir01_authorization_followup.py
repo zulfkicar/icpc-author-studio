@@ -16,7 +16,7 @@ import urllib.request
 import pytest
 from http.server import HTTPServer
 
-import server
+from author_studio import server
 from engine.clock import CrashInjected
 from engine.interpretation import interpret_authorization
 from engine.model import FakeModelAdapter

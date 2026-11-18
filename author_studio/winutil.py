@@ -16,6 +16,8 @@ import time
 import urllib.error
 import urllib.request
 
+from author_studio.config import ROOT
+
 CREATE_NO_WINDOW = 0x08000000
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 SEM_FAILCRITICALERRORS = 0x0001
@@ -54,7 +56,7 @@ def python_env() -> dict:
     """
     env = os.environ.copy()
     env.setdefault("PYTHONIOENCODING", "utf-8")
-    sandbox = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sandbox")
+    sandbox = str(ROOT / "sandbox")
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = sandbox + (os.pathsep + existing if existing else "")
     return env

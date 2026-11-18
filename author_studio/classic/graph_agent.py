@@ -34,7 +34,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command, interrupt
 
-from agent_middleware import (
+from author_studio.classic.agent_middleware import (
     ContextBudgetMiddleware,
     PinnedContextMiddleware,
     ProviderRefusalMiddleware,
@@ -42,13 +42,13 @@ from agent_middleware import (
     ToolErrorMiddleware,
     conservative_token_count,
 )
-from agent_state import AuthorState, clean_brief, clean_decisions, clean_list
-import agent
-import config
-import prompt_loader
-import skill_registry
-import winutil
-import workspace
+from author_studio.classic.agent_state import AuthorState, clean_brief, clean_decisions, clean_list
+from author_studio.classic import agent
+from author_studio import config
+from author_studio.classic import prompt_loader
+from author_studio.classic import skill_registry
+from author_studio import winutil
+from author_studio.packages import workspace
 
 REVIEWER_PROMPT = """You are an independent ICPC problem reviewer. You do not approve, export,
 edit or run code. Review only the selected workspace files and the verification summary.

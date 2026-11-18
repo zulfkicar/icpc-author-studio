@@ -14,8 +14,8 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import verify  # noqa: E402
-import workspace  # noqa: E402
+from author_studio.judging import verify  # noqa: E402
+from author_studio.packages import workspace  # noqa: E402
 
 SLUG = "eval-claim-or-concede-2"
 BUDGET_SECONDS = 900.0

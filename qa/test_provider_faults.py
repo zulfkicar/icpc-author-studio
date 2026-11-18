@@ -15,8 +15,8 @@ sys.path.insert(0, str(ROOT / "qa"))
 
 from langchain_core.exceptions import ModelRefusalError
 
-import graph_agent
-import workspace
+from author_studio.classic import graph_agent
+from author_studio.packages import workspace
 from fault_proxy import FaultServer
 
 

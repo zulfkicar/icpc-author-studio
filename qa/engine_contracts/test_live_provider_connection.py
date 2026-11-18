@@ -6,7 +6,7 @@ import httpx
 import pytest
 from openai import AuthenticationError, RateLimitError
 
-import server
+from author_studio import server
 from engine.chat import ChatService
 from engine.demo import FRAME_QUESTION
 from engine.model import FakeModelAdapter, SingleRequestOpenAIAdapter

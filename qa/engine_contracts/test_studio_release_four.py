@@ -2,13 +2,13 @@
 import json
 import uuid
 
-import workspace
+from author_studio.packages import workspace
 from engine.context import conversation_context
 from engine.request_meter import measure
 from qa.engine_contracts.test_api_boundary import api, wait_for
 from qa.engine_contracts.test_studio_release_one import start
 from qa.engine_contracts.test_studio_routes import finish
-from studio_sample import SOURCE
+from author_studio.studio_sample import SOURCE
 
 
 def test_sample_is_distinct_resumable_and_uses_no_configured_worker(api, monkeypatch, tmp_path):
@@ -89,7 +89,7 @@ def test_long_transcript_pages_keep_newest_turns_in_both_models(api):
 
 
 def test_stop_keeps_queued_verification_from_changing_saved_package(api, monkeypatch, tmp_path):
-    import server
+    from author_studio import server
 
     monkeypatch.setattr(workspace, "WORKSPACES", tmp_path / "packages")
     slug = workspace.create("Cancel waiting verification")["slug"]

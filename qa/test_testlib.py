@@ -9,9 +9,9 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import package_model
-import verification_modes
-import workspace
+from author_studio.packages import package_model
+from author_studio.judging import verification_modes
+from author_studio.packages import workspace
 
 FIXTURES = ROOT / "qa" / "fixtures" / "testlib"
 

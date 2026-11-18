@@ -22,9 +22,9 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import graph_agent
-import verify
-import workspace
+from author_studio.classic import graph_agent
+from author_studio.judging import verify
+from author_studio.packages import workspace
 
 KICKOFF = (
     "Author this problem end-to-end from the idea in NOTES.md. State assumptions in "

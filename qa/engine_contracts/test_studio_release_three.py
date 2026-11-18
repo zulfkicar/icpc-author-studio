@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-import workspace
+from author_studio.packages import workspace
 from engine.domain import render_instance, witness_weighted_greedy
 from qa.engine_contracts.test_api_boundary import api, wait_for
 from qa.engine_contracts.test_studio_release_one import start

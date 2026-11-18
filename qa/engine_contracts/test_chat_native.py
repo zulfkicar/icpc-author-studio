@@ -14,7 +14,7 @@ import threading
 import urllib.request
 from http.server import HTTPServer
 
-import server
+from author_studio import server
 from engine.chat import ChatService
 from engine.demo import demo_script
 from engine.interpretation import interpret_authorization

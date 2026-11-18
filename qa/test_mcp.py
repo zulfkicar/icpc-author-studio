@@ -7,8 +7,8 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-import mcp_consent
-import workspace
+from author_studio import mcp_consent
+from author_studio.packages import workspace
 
 
 def check(name, condition, detail=""):
@@ -39,7 +39,9 @@ def main():
     })
     check("consent enabled", consent["enabled"] and consent["tools"]["read_file"], consent)
     process = subprocess.Popen(
-        [sys.executable, str(ROOT / "mcp_server.py"), "--slug", slug, "--consent", mcp_consent.consent_path(slug)],
+        [sys.executable, "-m", "author_studio.mcp_server", "--slug", slug,
+         "--consent", mcp_consent.consent_path(slug)],
+        cwd=ROOT,
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
     )
     try:

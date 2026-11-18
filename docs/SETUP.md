@@ -12,7 +12,7 @@ git clone https://github.com/zulfkicar/icpc-author-studio.git
 Set-Location icpc-author-studio
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe server.py --port 8787
+.\.venv\Scripts\python.exe -m author_studio --port 8787
 ```
 
 On Linux or macOS, run the following.
@@ -22,12 +22,14 @@ git clone https://github.com/zulfkicar/icpc-author-studio.git
 cd icpc-author-studio
 python3.13 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python server.py --port 8787
+.venv/bin/python -m author_studio --port 8787
 ```
 
 Open [Author Studio](http://127.0.0.1:8787/) for the chat and workspace. Open
 [Classic workbench](http://127.0.0.1:8787/workbench) for the earlier editor and
 Provider settings. The default bind address is `127.0.0.1`.
+Existing `python server.py` commands and `mcp_server.py` stdio configurations
+continue to work through the root launchers.
 Use `Ctrl+C` in the terminal to stop the app. For an occupied port, start it
 with `--port 8788` and open the matching URL.
 

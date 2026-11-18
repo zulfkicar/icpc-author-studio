@@ -113,7 +113,7 @@ def test_chat_draft_publishes_model_bytes_with_independent_answers(tmp_path, mod
 
 @pytest.mark.parametrize("mode", ["repair", "worker_failure", "unchanged", "declined", "budget"])
 def test_automatic_oracle_checks_through_chat(tmp_path, monkeypatch, mode):
-    import isolate_client
+    from author_studio.judging import isolate_client
 
     calls = []
     def run(source, language, stdin, **limits):

@@ -2,7 +2,7 @@
 import pathlib, sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from schemas import Event, EventLedger
+from author_studio.schemas import Event, EventLedger
 
 
 def main():

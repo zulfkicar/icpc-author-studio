@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import package_model
+from author_studio.packages import package_model
 
 
 @dataclass

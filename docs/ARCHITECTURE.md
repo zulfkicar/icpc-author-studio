@@ -45,11 +45,11 @@ revision and steering state before publishing current evidence.
 
 ## Workspace and export
 
-[`studio.py`](../studio.py) links a conversation to a package and manages naming
-and editor tools. [`workspace.py`](../workspace.py) owns saved paths, file
-hashes, the change journal and review baselines. [`verify.py`](../verify.py)
+[`studio.py`](../author_studio/studio.py) links a conversation to a package and manages naming
+and editor tools. [`workspace.py`](../author_studio/packages/workspace.py) owns saved paths, file
+hashes, the change journal and review baselines. [`verify.py`](../author_studio/judging/verify.py)
 runs the selected sources and checks the saved package. Its report records the
-snapshot it verified. [`package_workflow.py`](../package_workflow.py) evaluates
+snapshot it verified. [`package_workflow.py`](../author_studio/packages/package_workflow.py) evaluates
 whether that snapshot can be reviewed or exported.
 
 An agent artifact is available for inspection in chat. Copying it to the

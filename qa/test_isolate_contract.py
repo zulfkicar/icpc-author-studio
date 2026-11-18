@@ -8,8 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import winutil
-import workspace
+from author_studio import winutil
+from author_studio.packages import workspace
 
 
 def check(name, condition, detail=""):

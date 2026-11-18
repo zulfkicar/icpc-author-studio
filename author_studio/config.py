@@ -11,7 +11,7 @@ import pathlib
 import re
 import threading
 
-ROOT = pathlib.Path(__file__).resolve().parent
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 STATE_DIR = ROOT / ".author-agent"
 CONFIG_PATH = STATE_DIR / "config.json"
 WORKSPACES = pathlib.Path(os.environ.get("AUTHOR_AGENT_WORKSPACES_ROOT") or ROOT / "workspaces").resolve()

@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 import yaml
 
-import workspace
+from author_studio.packages import workspace
 
 PROGRAM_SUFFIXES = (".cpp", ".cc", ".cxx", ".c", ".py", ".java")
 VALIDATION_PREFIXES = ("default", "custom")

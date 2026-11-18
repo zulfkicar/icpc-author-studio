@@ -18,7 +18,7 @@ isolate-worker:
   security_opt: [seccomp=unconfined, apparmor=unconfined]
   networks: [sandbox, default]
   volumes:
-    - ./isolate_worker.py:/app/isolate_worker.py:ro
+    - ./workers/isolate_worker.py:/app/isolate_worker.py:ro
     - isolate-box:/var/local/lib/isolate
 ```
 

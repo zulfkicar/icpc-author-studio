@@ -17,16 +17,16 @@ from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
-import agent
-import isolate_worker
-import judge0_adapter
-import mcp_consent
-import mcp_server
-import skill_registry
-import agent_state
-import verify
-import winutil
-import workspace
+from author_studio.classic import agent
+from workers import isolate_worker
+from author_studio.judging import judge0_adapter
+from author_studio import mcp_consent
+from author_studio import mcp_server
+from author_studio.classic import skill_registry
+from author_studio.classic import agent_state
+from author_studio.judging import verify
+from author_studio import winutil
+from author_studio.packages import workspace
 
 
 def main():

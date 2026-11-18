@@ -10,8 +10,8 @@ import zipfile
 import pytest
 from http.server import HTTPServer
 
-import server
-import workspace
+from author_studio import server
+from author_studio.packages import workspace
 from engine.demo import demo_script
 from engine.model import FakeModelAdapter
 from engine.policy import render_text_escaped

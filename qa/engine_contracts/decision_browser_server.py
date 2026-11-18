@@ -14,7 +14,7 @@ from http.server import HTTPServer
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-import server  # noqa: E402
+from author_studio import server  # noqa: E402
 from engine.decisions import AdapterResult, ScriptedDecisionAdapter  # noqa: E402
 from engine.demo import ConversationDemoModel  # noqa: E402
 from engine.service import EngineService  # noqa: E402

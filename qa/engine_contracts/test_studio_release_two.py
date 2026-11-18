@@ -3,8 +3,8 @@ from subprocess import CompletedProcess
 import urllib.parse
 import urllib.request
 
-import server
-import workspace
+from author_studio import server
+from author_studio.packages import workspace
 from qa.engine_contracts.test_api_boundary import api
 
 

@@ -8,10 +8,10 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import package_model
-import scoring
-import verify
-import workspace
+from author_studio.packages import package_model
+from author_studio.judging import scoring
+from author_studio.judging import verify
+from author_studio.packages import workspace
 
 
 def check(name, condition, detail=""):

@@ -17,17 +17,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
       - name: Compile Python modules
-        run: |
-          python -m py_compile \
-            server.py agent.py agent_state.py agent_middleware.py graph_agent.py \
-            workspace.py verify.py config.py winutil.py executor_server.py schemas.py skill_registry.py prompt_loader.py package_model.py verification_modes.py mcp_server.py mcp_consent.py icpc_spec.py scoring.py judge0_adapter.py isolate_worker.py isolate_client.py \
-            eval/run_eval.py qa/stress_agent.py qa/test_phase1.py qa/test_skills.py \
-            qa/test_verification_modes.py qa/test_interactive.py qa/test_hunks.py qa/test_snapshots.py qa/test_mcp.py \
-            qa/test_groups_float.py qa/test_security.py qa/test_stale_export.py \
-            qa/test_context_500k.py qa/test_context_budget.py qa/test_adversarial_manifest.py qa/probe_long_context.py qa/test_stale_export.py qa/test_accessibility.py \
-            qa/test_event_ledger.py qa/test_ui_contracts.py qa/test_disk_db_failure.py qa/test_icpc_spec.py \
-            qa/test_group_scoring.py qa/test_testlib.py qa/test_isolate_contract.py qa/test_provider_faults.py \
-            qa/test_chaos.py qa/test_judge0_adapter.py qa/test_isolate_worker.py qa/test_live_judge0.py qa/soak.py
+        run: python -m compileall -q author_studio engine workers qa eval scripts server.py mcp_server.py
       - name: Check UI JavaScript
         run: node --check web/app.js
       - name: Run Phase 1 tests

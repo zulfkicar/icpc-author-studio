@@ -21,9 +21,9 @@ import zipfile
 
 import yaml
 
-import package_workflow
-from config import TEMPLATES, WORKSPACES
-from problem_titles import latex_text, statement_title
+from author_studio.packages import package_workflow
+from author_studio.config import TEMPLATES, WORKSPACES
+from author_studio.packages.problem_titles import latex_text, statement_title
 
 _LOCK = threading.RLock()
 

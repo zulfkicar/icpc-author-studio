@@ -22,10 +22,10 @@ import re
 import shutil
 import sys
 
-import config
-import package_model
-import winutil
-import workspace
+from author_studio import config
+from author_studio.packages import package_model
+from author_studio import winutil
+from author_studio.packages import workspace
 
 OUTPUT_CAP = 200_000
 SPEC_AC = 42
@@ -231,7 +231,7 @@ def interactive_selftest(slug: str) -> dict:
         compiled_interactor = _build_program(slug, program.path.relative_to(package.root).as_posix(), build, program=program)
         if not compiled_interactor["ok"]:
             return {"status": "fail", "detail": compiled_interactor["error"], "cases": []}
-        from verify import _solutions, _compile  # local import avoids a module cycle
+        from author_studio.judging.verify import _solutions, _compile  # local import avoids a module cycle
 
         accepted = [s for s in _solutions(slug) if s["kind"] == "accepted"]
         negative = [s for s in _solutions(slug) if s["kind"] == "negative"]

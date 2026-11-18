@@ -15,7 +15,7 @@ import urllib.request
 import pytest
 from http.server import HTTPServer
 
-import server
+from author_studio import server
 from engine.chat import ChatService
 from engine.clock import CrashInjected
 from engine.decisions import (

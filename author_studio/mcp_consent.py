@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-import workspace
+from author_studio.packages import workspace
 
 FILENAME = "mcp.json"
 DEFAULT_TOOLS = {

@@ -22,9 +22,9 @@ def main():
     root.mkdir(parents=True)
     os.environ.update(AUTHOR_AGENT_ENGINE_ROOT=str(root / "engine"), AUTHOR_AGENT_WORKSPACES_ROOT=str(root / "packages"),
                       AUTHOR_AGENT_ENGINE_DEMO="0", AUTHOR_AGENT_ENGINE_LIVE_MODEL="0")
-    import server
-    import studio
-    import workspace
+    from author_studio import server
+    from author_studio import studio
+    from author_studio.packages import workspace
     from engine.chat import ChatService
 
     service = server.engine_service()

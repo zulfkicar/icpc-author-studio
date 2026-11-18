@@ -5,8 +5,8 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-import verify
-import workspace
+from author_studio.judging import verify
+from author_studio.packages import workspace
 
 
 def main():

@@ -98,7 +98,7 @@ def main() -> int:
         env = dict(os.environ)
         env["AUTHOR_AGENT_ENGINE_ROOT"] = str(engine_root)
         env["AUTHOR_AGENT_ENGINE_DEMO"] = "1"
-        server = subprocess.Popen([sys.executable, "server.py", "--port", str(port)], cwd=ROOT,
+        server = subprocess.Popen([sys.executable, "-m", "author_studio", "--port", str(port)], cwd=ROOT,
                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
         try:
             ready = wait_http(f"http://127.0.0.1:{port}/api/health")

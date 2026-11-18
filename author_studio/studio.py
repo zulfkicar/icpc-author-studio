@@ -10,9 +10,9 @@ import subprocess
 import tempfile
 import threading
 
-import workspace
-from config import STATE_DIR
-from problem_titles import validate_title
+from author_studio.packages import workspace
+from author_studio.config import STATE_DIR
+from author_studio.packages.problem_titles import validate_title
 
 
 LINK_LOCK = threading.Lock()

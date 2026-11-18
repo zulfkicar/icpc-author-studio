@@ -12,7 +12,7 @@ from __future__ import annotations
 import pathlib
 import re
 
-import package_model
+from author_studio.packages import package_model
 
 FILENAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,253}[a-zA-Z0-9]$")
 LANGUAGES = ("en",)

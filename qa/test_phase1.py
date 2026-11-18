@@ -12,11 +12,11 @@ from langchain_core.exceptions import ModelRefusalError
 from langchain_core.messages import AIMessage
 from langchain_core.messages import HumanMessage
 
-import agent
-import config
-import graph_agent
-from agent_middleware import ContextBudgetMiddleware
-import schemas
+from author_studio.classic import agent
+from author_studio import config
+from author_studio.classic import graph_agent
+from author_studio.classic.agent_middleware import ContextBudgetMiddleware
+from author_studio import schemas
 
 
 def check(name, condition, detail=""):

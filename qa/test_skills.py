@@ -6,8 +6,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import prompt_loader
-import skill_registry
+from author_studio.classic import prompt_loader
+from author_studio.classic import skill_registry
 
 
 def check(name, condition, detail=""):

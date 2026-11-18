@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import isolate_client
+from author_studio.judging import isolate_client
 
 
 def check(name, condition, detail=""):

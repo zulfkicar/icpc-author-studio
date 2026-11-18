@@ -10,7 +10,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent / "skills"
+from author_studio.config import ROOT as PROJECT_ROOT
+
+ROOT = PROJECT_ROOT / "skills"
 MAX_ACTIVE = 2
 MAX_PINNED_CHARS = 16000
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")

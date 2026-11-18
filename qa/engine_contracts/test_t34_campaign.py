@@ -231,7 +231,7 @@ def test_pending_campaign_preserves_budgets_and_fences_late_results(tmp_path, en
 
 
 def test_isolate_adapter_stops_sending_cases_on_batch_wall_limit(monkeypatch):
-    import isolate_client
+    from author_studio.judging import isolate_client
 
     sent = []
     moments = iter([50.0, 50.1, 51.1])

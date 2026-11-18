@@ -7,8 +7,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import graph_agent
-import workspace
+from author_studio.classic import graph_agent
+from author_studio.packages import workspace
 from qa.stress_agent import FakeChat, use_model
 
 

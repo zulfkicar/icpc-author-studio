@@ -1,11 +1,10 @@
 """Compose the authoring prompt from durable files and the skill index."""
 from __future__ import annotations
 
-from pathlib import Path
+from author_studio.classic import skill_registry
+from author_studio.config import ROOT as PROJECT_ROOT
 
-import skill_registry
-
-ROOT = Path(__file__).resolve().parent / "prompts"
+ROOT = PROJECT_ROOT / "prompts"
 MODES = ("author", "debug", "review")
 
 
@@ -28,7 +27,7 @@ def compose_system() -> str:
     if text:
         return text
     # Emergency fallback for a partially installed tree.
-    import agent
+    from author_studio.classic import agent
 
     return agent.SYSTEM
 

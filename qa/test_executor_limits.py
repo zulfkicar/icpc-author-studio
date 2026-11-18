@@ -6,8 +6,8 @@ import sys
 import time
 
 sys.path.insert(0, "/app")
-import winutil
-import workspace
+from author_studio import winutil
+from author_studio.packages import workspace
 
 
 def run_code(slug, code, timeout=10, measured=False):

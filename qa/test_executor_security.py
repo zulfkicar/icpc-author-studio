@@ -2,7 +2,7 @@
 import sys
 
 sys.path.insert(0, "/app")
-import executor_server
+from workers import executor_server
 
 
 def check(name, fn, expected_error=False):

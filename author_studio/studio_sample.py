@@ -2,8 +2,8 @@
 import hashlib
 import threading
 
-import studio
-import workspace
+from author_studio import studio
+from author_studio.packages import workspace
 from engine.domain import render_instance, witness_weighted_greedy
 from engine.service import SAMPLE_PROVIDER
 

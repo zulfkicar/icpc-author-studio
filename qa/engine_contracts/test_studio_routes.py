@@ -6,9 +6,9 @@ import urllib.error
 import urllib.request
 import zipfile
 
-import agent
-import mcp_server
-import workspace
+from author_studio.classic import agent
+from author_studio import mcp_server
+from author_studio.packages import workspace
 from qa.engine_contracts.test_api_boundary import api, create_run
 
 

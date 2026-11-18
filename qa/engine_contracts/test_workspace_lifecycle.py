@@ -4,11 +4,11 @@ import time
 import uuid
 import zipfile
 
-import package_workflow
+from author_studio.packages import package_workflow
 import pytest
-import server
-import verify
-import workspace
+from author_studio import server
+from author_studio.judging import verify
+from author_studio.packages import workspace
 
 
 def observe(started, predicate):

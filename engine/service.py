@@ -11,7 +11,7 @@ import pathlib
 import threading
 import time
 
-from problem_titles import validate_title
+from author_studio.packages.problem_titles import validate_title
 
 from .budget import ModelGateway
 from .clock import Clock, Failpoints

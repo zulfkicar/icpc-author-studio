@@ -23,10 +23,10 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-import config
-import graph_agent
-import server
-import workspace
+from author_studio import config
+from author_studio.classic import graph_agent
+from author_studio import server
+from author_studio.packages import workspace
 
 FAILED: list[str] = []
 

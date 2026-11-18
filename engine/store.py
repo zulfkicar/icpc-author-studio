@@ -16,7 +16,7 @@ import pathlib
 import sqlite3
 from typing import Any, Iterator
 
-from problem_titles import statement_title
+from author_studio.packages.problem_titles import statement_title
 
 from .clock import Clock
 from .schemas import (

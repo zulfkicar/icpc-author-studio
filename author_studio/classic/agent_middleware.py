@@ -15,10 +15,10 @@ from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.errors import GraphBubbleUp
 
-import prompt_loader
-import skill_registry
-import workspace
-from agent_state import AuthorState, MAX_CONTEXT_FILES
+from author_studio.classic import prompt_loader
+from author_studio.classic import skill_registry
+from author_studio.packages import workspace
+from author_studio.classic.agent_state import AuthorState, MAX_CONTEXT_FILES
 
 MODE_INSTRUCTIONS = {
     "author": (
@@ -124,7 +124,7 @@ def _pinned_context(state: dict) -> str:
 
 def agent_state_note(slug: str) -> str:
     """Local import avoids a module cycle with graph_agent/agent."""
-    import agent
+    from author_studio.classic import agent
 
     try:
         return agent._state_note(slug)

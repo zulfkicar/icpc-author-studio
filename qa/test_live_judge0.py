@@ -7,8 +7,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import config
-import judge0_adapter
+from author_studio import config
+from author_studio.judging import judge0_adapter
 
 
 def check(name, condition, detail=""):

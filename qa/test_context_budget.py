@@ -15,9 +15,9 @@ sys.path.insert(0, str(ROOT))
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage  # noqa: E402
 
-import agent  # noqa: E402
-import agent_middleware  # noqa: E402
-import workspace  # noqa: E402
+from author_studio.classic import agent  # noqa: E402
+from author_studio.classic import agent_middleware  # noqa: E402
+from author_studio.packages import workspace  # noqa: E402
 
 
 class FakeRequest:

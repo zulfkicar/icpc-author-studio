@@ -11,7 +11,7 @@ import urllib.request
 import pytest
 from http.server import HTTPServer
 
-import server
+from author_studio import server
 from engine.decisions import DecisionService, ModelDecisionAdapter, UnavailableDecisionAdapter
 from engine.demo import ConversationDemoModel
 from engine.model import FakeModelAdapter

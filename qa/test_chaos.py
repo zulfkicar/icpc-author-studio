@@ -10,10 +10,10 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import schemas
-import server
-import winutil
-import workspace
+from author_studio import schemas
+from author_studio import server
+from author_studio import winutil
+from author_studio.packages import workspace
 
 
 def check(name, condition, detail=""):

@@ -6,7 +6,7 @@ import os
 import urllib.error
 import urllib.request
 
-import workspace
+from author_studio.packages import workspace
 
 
 def configured() -> bool:

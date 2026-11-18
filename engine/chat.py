@@ -14,7 +14,7 @@ import uuid
 
 from .model import PROVIDER_ERRORS
 from .policy import LOCAL_ACTOR, PolicyDenied, validate_text
-from problem_titles import validate_title
+from author_studio.packages.problem_titles import validate_title
 from .schemas import canonical_json, sha256_text
 from .service import EngineService
 from .store import IdempotencyConflict, LedgerError

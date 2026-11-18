@@ -8,8 +8,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import icpc_spec
-import workspace
+from author_studio.packages import icpc_spec
+from author_studio.packages import workspace
 
 
 def check(name, condition, detail=""):

@@ -19,7 +19,7 @@ git clone https://github.com/zulfkicar/icpc-author-studio.git
 cd icpc-author-studio
 python3.13 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python server.py --port 8787
+.venv/bin/python -m author_studio --port 8787
 ```
 
 Open [Author Studio](http://127.0.0.1:8787/) and choose
@@ -62,6 +62,15 @@ provider credentials, workspaces, and unsent drafts private.
 [Local trust and execution boundaries](SECURITY.md)
 
 ## Develop
+
+| Directory | What lives there |
+| --- | --- |
+| `author_studio/` | HTTP app, classic workbench, judging and saved packages |
+| `engine/` | Collaborative investigation graph, decisions and durable receipts |
+| `workers/` | Standalone execution services used in Docker |
+| `web/` | Studio and classic browser interfaces |
+| `prompts/`, `skills/`, `templates/` | Runtime authoring resources and starter packages |
+| `qa/`, `eval/`, `scripts/` | Tests, evaluation harness and maintenance commands |
 
 See [Contributing](CONTRIBUTING.md) for local checks and documentation
 conventions. The [docs index](docs/README.md) links setup, architecture,

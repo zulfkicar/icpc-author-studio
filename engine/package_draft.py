@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
-from problem_titles import latex_text
+from author_studio.packages.problem_titles import latex_text
 
 from .domain import MAX_COORD, MAX_N, MAX_REWARD, MAX_SUM, oracle_subset, parse_instance, render_instance
 from .schemas import Model

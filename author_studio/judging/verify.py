@@ -19,13 +19,13 @@ import time
 import uuid
 import zipfile
 
-from config import TEMPLATES
-import icpc_spec
-import package_model
-import scoring
-import verification_modes
-import winutil
-import workspace
+from author_studio.config import TEMPLATES
+from author_studio.packages import icpc_spec
+from author_studio.packages import package_model
+from author_studio.judging import scoring
+from author_studio.judging import verification_modes
+from author_studio import winutil
+from author_studio.packages import workspace
 
 SOLUTION_EXT = {".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".c": "c", ".py": "py", ".java": "java"}
 NEGATIVE_DIRS = ("wrong_answer", "time_limit_exceeded", "wrong_solutions")
