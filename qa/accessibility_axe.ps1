@@ -37,7 +37,7 @@ try {
     return $res.result.result.value
   }
   Invoke-Cdp 'Runtime.enable' @{} | Out-Null
-  Invoke-Cdp 'Page.navigate' @{ url = 'http://127.0.0.1:8787/' } | Out-Null
+  Invoke-Cdp 'Page.navigate' @{ url = 'http://127.0.0.1:8787/workbench' } | Out-Null
   Start-Sleep -Seconds 3
   $expression = $axe + "`n;axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21a','wcag21aa']}}).then(r=>JSON.stringify({violations:r.violations.map(v=>({id:v.id,impact:v.impact,nodes:v.nodes.length,help:v.help,targets:v.nodes.map(n=>n.target),details:v.nodes.slice(0,12).map(n=>({target:n.target,summary:n.failureSummary,data:n.any&&n.any[0]&&n.any[0].data}))})),passes:r.passes.length,incomplete:r.incomplete.length}))"
   $audit = Eval $expression
@@ -83,7 +83,7 @@ try {
   # Optional light theme: reload with the saved preference and run the same
   # WCAG audit, so contrast is a gate in both themes.
   Eval 'localStorage.setItem("author-agent-theme", "light"); true' | Out-Null
-  Invoke-Cdp 'Page.navigate' @{ url = 'http://127.0.0.1:8787/' } | Out-Null
+  Invoke-Cdp 'Page.navigate' @{ url = 'http://127.0.0.1:8787/workbench' } | Out-Null
   Start-Sleep -Seconds 3
   $lightTheme = Eval 'document.documentElement.dataset.theme'
   if ($lightTheme -ne 'light') { throw ("light theme did not apply: " + $lightTheme) }

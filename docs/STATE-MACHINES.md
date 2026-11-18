@@ -1,5 +1,9 @@
 # UI state machines
 
+The [current application-wide inventory and decision](architecture/state-machines.md)
+cover Author Studio, the classic workbench, both agent runtimes and the package
+and job contracts. This document records the classic workbench observer design.
+
 The workbench grew around a handful of nullable fields and booleans:
 
 ```js

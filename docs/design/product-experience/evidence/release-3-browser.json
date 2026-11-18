@@ -1,0 +1,12 @@
+{
+  "pack": "/api/workspaces/evidence-browser-fixture",
+  "snapshot": "e8f2332f6763bcbbca197f907d43737e4babcd1a9e93d883471df0ce40088d85",
+  "name": "evidence-browser-fixture-domjudge.zip",
+  "bytes": 34928,
+  "review": true,
+  "width": 390,
+  "handoff": true,
+  "clipboard": true,
+  "restoredRun": true,
+  "reconnectSameJob": true
+}
